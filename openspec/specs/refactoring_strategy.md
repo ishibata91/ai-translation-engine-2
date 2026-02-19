@@ -28,6 +28,7 @@
 ### ① Interface as the Contract (契約としてのインターフェース)
 *   全てのモジュール間連携は抽象的な **Contract (Interface)** を介して定義する。
 *   具象実装（Struct/Method Body）への直接依存を禁止する（DIP: Dependency Inversion Principle）。
+*   **依存性の注入 (DI) を原則** とし、`google/wire` を使用して依存解決コードを自動生成する。コンストラクタはインターフェースを返すか、具象型を返す場合はWire Providerとして機能させる。
 
 ### ② Code is an Artifact (コードは生成物)
 *   実装コードは人間が書くものではなく、仕様とContractから生成される **ビルド中間生成物** とみなす。

@@ -138,14 +138,15 @@ type LoadScreen struct {
 // ---------------------------------------------------------------------
 
 type ExtractedData struct {
-	DialogueGroups []DialogueGroup   `json:"dialogue_groups"`
-	Quests         []Quest           `json:"quests"`
-	Items          []Item            `json:"items"`
-	Magic          []Magic           `json:"magic"`
-	Locations      []Location        `json:"locations"`
-	Cells          []Location        `json:"cells"`
-	System         []SystemRecord    `json:"system"`
-	Messages       []Message         `json:"messages"`
-	LoadScreens    []LoadScreen      `json:"load_screens"`
-	NPCs           map[string]NPC    `json:"npcs"`
+	DialogueGroups []DialogueGroup `json:"dialogue_groups"`
+	Quests         []Quest         `json:"quests"`
+	Items          []Item          `json:"items"`
+	Magic          []Magic         `json:"magic"`
+	Locations      []Location      `json:"locations"`
+	Cells          []Location      `json:"cells"`
+	System         []SystemRecord  `json:"system"`
+	Messages       []Message       `json:"messages"`
+	LoadScreens    []LoadScreen    `json:"load_screens"`
+	NPCs           map[string]NPC  `json:"npcs"`
+	SourceJSON     string          `json:"-"` // Metadata, not in JSON
 }
