@@ -8,13 +8,13 @@ package main
 
 import (
 	"github.com/ishibata91/ai-translation-engine-2/pkg/contract"
-	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/loader"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/loader"
 )
 
 // Injectors from wire.go:
 
 // InitializeLoader creates a new Loader instance with all dependencies wired.
 func InitializeLoader() contract.Loader {
-	contractLoader := loader.NewJSONLoader()
+	contractLoader := loader.ProvideLoader()
 	return contractLoader
 }

@@ -79,27 +79,44 @@
 
 ---
 
-## 5. データフローの刷新 (Interface-Driven)
+## 5. データフローの刷新 (Vertical Slice & Process Manager)
+
+単一の複雑なパイプラインではなく、**「自律したVertical Slice（縦のコンテキスト）」**を構築し、**「Process Manager（UI/オーケストレーター）」**がそれらを順次呼び出すアーキテクチャを採用する。
+
+各Slice内では「Contract（インターフェース）」と「Implementation（実装）」が厳格に分離されており、AIは他Sliceの実装詳細を知ることなく、Contractのみをコンテキストとして実装を生成する。
 
 ```mermaid
 graph TD
-    classDef contract fill:#fffde7,stroke:#fbc02d,stroke-width:2px;
-    classDef impl fill:#e8f5e9,stroke:#2e7d32,stroke-width:1px;
+    classDef ui fill:#e3f2fd,stroke:#1565c0,stroke-width:2px;
+    classDef slice fill:#f3e5f5,stroke:#8e24aa,stroke-width:2px;
+    classDef state fill:#ffe0b2,stroke:#e65100,stroke-width:1px;
 
-    JSON[xEdit Output JSON] -->|Load| Loader(Loader Impl):::impl
-    Loader -.->|Implements| ILoader(ILoader Contract):::contract
+    PM["Process Manager (UI / Orchestrator)"]:::ui
+    State["Translation State (Resume Data)"]:::state
+
+    subgraph "Phase 1: Term & Structuring"
+        Load_S["Loader Slice"]:::slice
+        P1_S["Pass 1 Slice"]:::slice
+    end
+
+    subgraph "Human-in-the-Loop"
+        Preview["UI Preview & Settings"]:::ui
+    end
+
+    subgraph "Phase 2: Main Execution"
+        P2_S["Pass 2 Slice"]:::slice
+        Out_S["Export Slice"]:::slice
+    end
+
+    PM -->|"1. Request Load"| Load_S
+    PM -->|"2. Extract & Struct"| P1_S
+    P1_S -->|"Save Progress"| State
     
-    ILoader -->|Returns| Models(Data Models):::contract
+    PM -.->|"3. Pause Flow"| Preview
+    Preview -.->|"4. Approve"| PM
+
+    PM -->|"5. Translate"| P2_S
+    P2_S -->|"Update Progress"| State
     
-    Models -->|Input| TermExt(Term Extractor Impl):::impl
-    TermExt -.->|Implements| ITerm(ITermExtractor Contract):::contract
-    
-    TermExt -->|Use| Dict(Dictionary Impl):::impl
-    Dict -.->|Implements| IDict(IDictionary Contract):::contract
-    
-    Models & Dict -->|Input| Ctx(Context Engine Impl):::impl
-    Ctx -.->|Implements| ICtx(IContextBuilder Contract):::contract
-    
-    Ctx -->|Generate| LLM(LLM Client Impl):::impl
-    LLM -.->|Implements| ILLM(ILLMClient Contract):::contract
+    PM -->|"6. Generate JSON"| Out_S
 ```
