@@ -1,2 +1,0 @@
-cmd\loader\wire_gen.go:11:2: no required module provides package github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/loader; to add it:
-	go get github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/loader
