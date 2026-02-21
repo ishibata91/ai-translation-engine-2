@@ -2,160 +2,130 @@
 
 ## 0. ソースファイル単位のStore初期化フロー
 
-```
-ProcessManager                          SQLiteSummaryStore
-     │                                         │
-     │  NewSQLiteSummaryStore(cacheDir, "Skyrim.esm")
-     │────────────────────────────────────────>│
-     │                                         │── open "cacheDir/Skyrim.esm_summary_cache.db"
-     │                                         │
-     │  *SQLiteSummaryStore, nil               │
-     │<────────────────────────────────────────│
-     │                                         │
-     │  InitTable(ctx)                         │
-     │────────────────────────────────────────>│
-     │                                         │── CREATE TABLE IF NOT EXISTS summaries ...
-     │                                         │── CREATE INDEX IF NOT EXISTS ...
-     │  nil                                    │
-     │<────────────────────────────────────────│
-     │                                         │
-     │  (ソースファイルごとに繰り返し)          │
+```mermaid
+sequenceDiagram
+    participant PM as ProcessManager
+    participant SS as SQLiteSummaryStore
+
+    PM->>SS: NewSQLiteSummaryStore(cacheDir, "Skyrim.esm")
+    SS->>SS: open "cacheDir/Skyrim.esm_summary_cache.db"
+    SS-->>PM: *SQLiteSummaryStore, nil
+
+    PM->>SS: InitTable(ctx)
+    SS->>SS: CREATE TABLE IF NOT EXISTS summaries ...
+    SS->>SS: CREATE INDEX IF NOT EXISTS ...
+    SS-->>PM: nil
+
+    Note over PM,SS: ソースファイルごとに繰り返し
 ```
 
 ## 1. 会話要約生成フロー
 
-```
-ProcessManager          SummaryGeneratorImpl       CacheKeyHasher       SummaryStore(SQLite)       LLMClient
-     │                         │                        │                      │                      │
-     │ GenerateDialogueSummaries(ctx, groups, progress)  │                      │                      │
-     │────────────────────────>│                        │                      │                      │
-     │                         │                        │                      │                      │
-     │                         │── for each group ──────────────────────────────────────────────────── │
-     │                         │                        │                      │                      │
-     │                         │  BuildCacheKey(groupID, lines)                │                      │
-     │                         │───────────────────────>│                      │                      │
-     │                         │  cacheKey              │                      │                      │
-     │                         │<──────────────────────│                      │                      │
-     │                         │                        │                      │                      │
-     │                         │  Get(ctx, cacheKey)    │                      │                      │
-     │                         │───────────────────────────────────────────────>│                      │
-     │                         │  *SummaryRecord / nil  │                      │                      │
-     │                         │<─────────────────────────────────────────────│                      │
-     │                         │                        │                      │                      │
-     │                         │── [cache miss] ────────────────────────────────────────────────────── │
-     │                         │                        │                      │                      │
-     │                         │  buildDialoguePrompt(lines)                   │                      │
-     │                         │──(internal)            │                      │                      │
-     │                         │                        │                      │                      │
-     │                         │  Complete(LLMRequest{system, user, maxTokens=200, temp=0.3})         │
-     │                         │─────────────────────────────────────────────────────────────────────>│
-     │                         │  LLMResponse{content}  │                      │                      │
-     │                         │<────────────────────────────────────────────────────────────────────│
-     │                         │                        │                      │                      │
-     │                         │  Upsert(ctx, SummaryRecord)                   │                      │
-     │                         │───────────────────────────────────────────────>│                      │
-     │                         │  ok                    │                      │                      │
-     │                         │<─────────────────────────────────────────────│                      │
-     │                         │                        │                      │                      │
-     │                         │── end [cache miss] ────────────────────────────────────────────────── │
-     │                         │                        │                      │                      │
-     │  progress(done, total)  │                        │                      │                      │
-     │<────────────────────────│                        │                      │                      │
-     │                         │                        │                      │                      │
-     │                         │── end for each ────────────────────────────────────────────────────── │
-     │                         │                        │                      │                      │
-     │  []SummaryResult        │                        │                      │                      │
-     │<────────────────────────│                        │                      │                      │
+```mermaid
+sequenceDiagram
+    participant PM as ProcessManager
+    participant SG as SummaryGeneratorImpl
+    participant CK as CacheKeyHasher
+    participant SS as SummaryStore (SQLite)
+    participant LLM as LLMClient
+
+    PM->>SG: GenerateDialogueSummaries(ctx, groups, progress)
+
+    loop for each group
+        SG->>CK: BuildCacheKey(groupID, lines)
+        CK-->>SG: cacheKey
+
+        SG->>SS: Get(ctx, cacheKey)
+        SS-->>SG: *SummaryRecord / nil
+
+        alt cache miss
+            SG->>SG: buildDialoguePrompt(lines)
+            SG->>LLM: Complete(LLMRequest{system, user, maxTokens=200, temp=0.3})
+            LLM-->>SG: LLMResponse{content}
+            SG->>SS: Upsert(ctx, SummaryRecord)
+            SS-->>SG: ok
+        end
+
+        SG-->>PM: progress(done, total)
+    end
+
+    SG-->>PM: []SummaryResult
 ```
 
 ## 2. クエスト要約生成フロー（累積的処理）
 
-```
-ProcessManager          SummaryGeneratorImpl       CacheKeyHasher       SummaryStore(SQLite)       LLMClient
-     │                         │                        │                      │                      │
-     │ GenerateQuestSummaries(ctx, quests, progress)     │                      │                      │
-     │────────────────────────>│                        │                      │                      │
-     │                         │                        │                      │                      │
-     │                         │── for each quest ──────────────────────────────────────────────────── │
-     │                         │                        │                      │                      │
-     │                         │  sort stages by Index (ascending)             │                      │
-     │                         │──(internal)            │                      │                      │
-     │                         │                        │                      │                      │
-     │                         │  BuildCacheKey(questID, allStageTexts)        │                      │
-     │                         │───────────────────────>│                      │                      │
-     │                         │  cacheKey              │                      │                      │
-     │                         │<──────────────────────│                      │                      │
-     │                         │                        │                      │                      │
-     │                         │  Get(ctx, cacheKey)    │                      │                      │
-     │                         │───────────────────────────────────────────────>│                      │
-     │                         │  *SummaryRecord / nil  │                      │                      │
-     │                         │<─────────────────────────────────────────────│                      │
-     │                         │                        │                      │                      │
-     │                         │── [cache miss] ────────────────────────────────────────────────────── │
-     │                         │                        │                      │                      │
-     │                         │  buildQuestPrompt(stageTexts)                 │                      │
-     │                         │──(internal)            │                      │                      │
-     │                         │                        │                      │                      │
-     │                         │  Complete(LLMRequest{system, user, maxTokens=200, temp=0.3})         │
-     │                         │─────────────────────────────────────────────────────────────────────>│
-     │                         │  LLMResponse{content}  │                      │                      │
-     │                         │<────────────────────────────────────────────────────────────────────│
-     │                         │                        │                      │                      │
-     │                         │  Upsert(ctx, SummaryRecord)                   │                      │
-     │                         │───────────────────────────────────────────────>│                      │
-     │                         │  ok                    │                      │                      │
-     │                         │<─────────────────────────────────────────────│                      │
-     │                         │                        │                      │                      │
-     │                         │── end [cache miss] ────────────────────────────────────────────────── │
-     │                         │                        │                      │                      │
-     │  progress(done, total)  │                        │                      │                      │
-     │<────────────────────────│                        │                      │                      │
-     │                         │                        │                      │                      │
-     │                         │── end for each ────────────────────────────────────────────────────── │
-     │                         │                        │                      │                      │
-     │  []SummaryResult        │                        │                      │                      │
-     │<────────────────────────│                        │                      │                      │
+```mermaid
+sequenceDiagram
+    participant PM as ProcessManager
+    participant SG as SummaryGeneratorImpl
+    participant CK as CacheKeyHasher
+    participant SS as SummaryStore (SQLite)
+    participant LLM as LLMClient
+
+    PM->>SG: GenerateQuestSummaries(ctx, quests, progress)
+
+    loop for each quest
+        SG->>SG: sort stages by Index (ascending)
+
+        SG->>CK: BuildCacheKey(questID, allStageTexts)
+        CK-->>SG: cacheKey
+
+        SG->>SS: Get(ctx, cacheKey)
+        SS-->>SG: *SummaryRecord / nil
+
+        alt cache miss
+            SG->>SG: buildQuestPrompt(stageTexts)
+            SG->>LLM: Complete(LLMRequest{system, user, maxTokens=200, temp=0.3})
+            LLM-->>SG: LLMResponse{content}
+            SG->>SS: Upsert(ctx, SummaryRecord)
+            SS-->>SG: ok
+        end
+
+        SG-->>PM: progress(done, total)
+    end
+
+    SG-->>PM: []SummaryResult
 ```
 
 ## 3. Pass 2 参照フロー
 
-```
-TranslatorSlice         SummaryStore(SQLite)
-     │                         │
-     │  (該当ソースファイルのSummaryStoreを使用)
-     │                         │
-     │  GetByRecordID(ctx, dialogueGroupID, "dialogue")
-     │────────────────────────>│
-     │  *SummaryRecord / nil   │
-     │<────────────────────────│
-     │                         │
-     │  GetByRecordID(ctx, questID, "quest")
-     │────────────────────────>│
-     │  *SummaryRecord / nil   │
-     │<────────────────────────│
-     │                         │
-     │  (要約をLLMプロンプトのコンテキストに挿入)
-     │──(internal)             │
+```mermaid
+sequenceDiagram
+    participant TS as TranslatorSlice
+    participant SS as SummaryStore (SQLite)
+
+    Note over TS,SS: 該当ソースファイルのSummaryStoreを使用
+
+    TS->>SS: GetByRecordID(ctx, dialogueGroupID, "dialogue")
+    SS-->>TS: *SummaryRecord / nil
+
+    TS->>SS: GetByRecordID(ctx, questID, "quest")
+    SS-->>TS: *SummaryRecord / nil
+
+    Note over TS: 要約をLLMプロンプトのコンテキストに挿入
 ```
 
 ## 4. 並列実行モデル
 
-```
-SummaryGeneratorImpl
-     │
-     │── Goroutine Pool (semaphore: concurrency=10) ──
-     │                                                 │
-     │  ┌─ goroutine 1: summarize(group[0]) ─────────┐│
-     │  │  cache check → [miss] → LLM call → upsert  ││
-     │  └─────────────────────────────────────────────┘│
-     │  ┌─ goroutine 2: summarize(group[1]) ─────────┐│
-     │  │  cache check → [hit] → return cached        ││
-     │  └─────────────────────────────────────────────┘│
-     │  ┌─ goroutine 3: summarize(group[2]) ─────────┐│
-     │  │  cache check → [miss] → LLM call → upsert  ││
-     │  └─────────────────────────────────────────────┘│
-     │  ...                                            │
-     │─────────────────────────────────────────────────│
-     │
-     │  collect results, notify progress
+```mermaid
+sequenceDiagram
+    participant SG as SummaryGeneratorImpl
+    participant W1 as goroutine 1
+    participant W2 as goroutine 2
+    participant W3 as goroutine 3
+
+    Note over SG: Goroutine Pool (semaphore: concurrency=10)
+
+    par 並列実行
+        SG->>W1: summarize(group[0])
+        Note over W1: cache check → [miss] → LLM call → upsert
+    and
+        SG->>W2: summarize(group[1])
+        Note over W2: cache check → [hit] → return cached
+    and
+        SG->>W3: summarize(group[2])
+        Note over W3: cache check → [miss] → LLM call → upsert
+    end
+
+    Note over SG: collect results, notify progress
 ```

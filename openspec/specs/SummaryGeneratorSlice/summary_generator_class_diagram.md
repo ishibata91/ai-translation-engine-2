@@ -2,130 +2,92 @@
 
 ## クラス構成
 
-```
-┌─────────────────────────────────────────┐
-│         <<interface>>                   │
-│        SummaryGenerator                 │
-├─────────────────────────────────────────┤
-│ + GenerateDialogueSummaries(            │
-│     ctx context.Context,                │
-│     groups []DialogueGroupInput,        │
-│     progress func(done, total int),     │
-│   ) ([]SummaryResult, error)            │
-│                                         │
-│ + GenerateQuestSummaries(               │
-│     ctx context.Context,                │
-│     quests []QuestInput,                │
-│     progress func(done, total int),     │
-│   ) ([]SummaryResult, error)            │
-└─────────────────────────────────────────┘
-                    ▲
-                    │ implements
-┌─────────────────────────────────────────┐
-│        SummaryGeneratorImpl             │
-├─────────────────────────────────────────┤
-│ - llmClient    LLMClient               │
-│ - store        SummaryStore             │
-│ - hasher       CacheKeyHasher           │
-│ - concurrency  int                      │
-│ - maxTokens    int                      │
-│ - temperature  float64                  │
-├─────────────────────────────────────────┤
-│ + GenerateDialogueSummaries(...)        │
-│ + GenerateQuestSummaries(...)           │
-│ - summarizeSingle(ctx, input) string    │
-│ - buildDialoguePrompt(lines) string     │
-│ - buildQuestPrompt(stages) string       │
-└─────────────────────────────────────────┘
-          │              │
-          │ uses         │ uses
-          ▼              ▼
-┌──────────────┐  ┌─────────────────────────────┐
-│  LLMClient   │  │     <<interface>>            │
-│ (共通infra)  │  │      SummaryStore            │
-└──────────────┘  ├─────────────────────────────┤
-                  │ + InitTable(ctx) error       │
-                  │ + Get(ctx, cacheKey)          │
-                  │     (*SummaryRecord, error)   │
-                  │ + Upsert(ctx, record) error   │
-                  │ + GetByRecordID(ctx,          │
-                  │     recordID, summaryType)    │
-                  │     (*SummaryRecord, error)   │
-                  │ + Close() error               │
-                  └─────────────────────────────┘
-                              ▲
-                              │ implements
-                  ┌─────────────────────────────┐
-                  │    SQLiteSummaryStore        │
-                  ├─────────────────────────────┤
-                  │ - db        *sql.DB          │
-                  │ - dbPath    string           │
-                  ├─────────────────────────────┤
-                  │ + NewSQLiteSummaryStore(     │
-                  │     cacheDir string,         │
-                  │     sourcePlugin string,     │
-                  │   ) (*SQLiteSummaryStore,    │
-                  │      error)                  │
-                  │ + InitTable(ctx) error       │
-                  │ + Get(ctx, cacheKey)          │
-                  │     (*SummaryRecord, error)   │
-                  │ + Upsert(ctx, record) error   │
-                  │ + GetByRecordID(ctx,          │
-                  │     recordID, summaryType)    │
-                  │     (*SummaryRecord, error)   │
-                  │ + Close() error               │
-                  └─────────────────────────────┘
+```mermaid
+classDiagram
+    class SummaryGenerator {
+        <<interface>>
+        +GenerateDialogueSummaries(ctx context.Context, groups []DialogueGroupInput, progress func(done, total int)) ([]SummaryResult, error)
+        +GenerateQuestSummaries(ctx context.Context, quests []QuestInput, progress func(done, total int)) ([]SummaryResult, error)
+    }
 
-┌─────────────────────────────────────────┐
-│          CacheKeyHasher                 │
-├─────────────────────────────────────────┤
-│ + BuildCacheKey(                        │
-│     recordID string,                    │
-│     lines []string,                     │
-│   ) string                              │
-└─────────────────────────────────────────┘
+    class SummaryGeneratorImpl {
+        -llmClient LLMClient
+        -store SummaryStore
+        -hasher CacheKeyHasher
+        -concurrency int
+        -maxTokens int
+        -temperature float64
+        +GenerateDialogueSummaries(...)
+        +GenerateQuestSummaries(...)
+        -summarizeSingle(ctx, input) string
+        -buildDialoguePrompt(lines) string
+        -buildQuestPrompt(stages) string
+    }
+
+    class SummaryStore {
+        <<interface>>
+        +InitTable(ctx) error
+        +Get(ctx, cacheKey) (*SummaryRecord, error)
+        +Upsert(ctx, record) error
+        +GetByRecordID(ctx, recordID, summaryType) (*SummaryRecord, error)
+        +Close() error
+    }
+
+    class SQLiteSummaryStore {
+        -db *sql.DB
+        -dbPath string
+        +NewSQLiteSummaryStore(cacheDir string, sourcePlugin string) (*SQLiteSummaryStore, error)
+        +InitTable(ctx) error
+        +Get(ctx, cacheKey) (*SummaryRecord, error)
+        +Upsert(ctx, record) error
+        +GetByRecordID(ctx, recordID, summaryType) (*SummaryRecord, error)
+        +Close() error
+    }
+
+    class CacheKeyHasher {
+        +BuildCacheKey(recordID string, lines []string) string
+    }
+
+    SummaryGenerator <|.. SummaryGeneratorImpl : implements
+    SummaryGeneratorImpl --> LLMClient : uses
+    SummaryGeneratorImpl --> SummaryStore : uses
+    SummaryGeneratorImpl --> CacheKeyHasher : uses
+    SummaryStore <|.. SQLiteSummaryStore : implements
 ```
 
 ## DTO定義
 
-```
-┌─────────────────────────────────────────┐
-│         DialogueGroupInput              │
-├─────────────────────────────────────────┤
-│ + GroupID       string                  │
-│ + PlayerText    *string                 │
-│ + Lines         []string                │
-└─────────────────────────────────────────┘
+```mermaid
+classDiagram
+    class DialogueGroupInput {
+        +GroupID string
+        +PlayerText *string
+        +Lines []string
+    }
 
-┌─────────────────────────────────────────┐
-│            QuestInput                   │
-├─────────────────────────────────────────┤
-│ + QuestID       string                  │
-│ + StageTexts    []string                │
-└─────────────────────────────────────────┘
+    class QuestInput {
+        +QuestID string
+        +StageTexts []string
+    }
 
-┌─────────────────────────────────────────┐
-│          SummaryResult                  │
-├─────────────────────────────────────────┤
-│ + RecordID      string                  │
-│ + SummaryType   string                  │
-│ + SummaryText   string                  │
-│ + CacheHit      bool                    │
-└─────────────────────────────────────────┘
+    class SummaryResult {
+        +RecordID string
+        +SummaryType string
+        +SummaryText string
+        +CacheHit bool
+    }
 
-┌─────────────────────────────────────────┐
-│          SummaryRecord                  │
-├─────────────────────────────────────────┤
-│ + ID             int64                  │
-│ + RecordID       string                 │
-│ + SummaryType    string                 │
-│ + CacheKey       string                 │
-│ + InputHash      string                 │
-│ + SummaryText    string                 │
-│ + InputLineCount int                    │
-│ + CreatedAt      time.Time              │
-│ + UpdatedAt      time.Time              │
-└─────────────────────────────────────────┘
+    class SummaryRecord {
+        +ID int64
+        +RecordID string
+        +SummaryType string
+        +CacheKey string
+        +InputHash string
+        +SummaryText string
+        +InputLineCount int
+        +CreatedAt time.Time
+        +UpdatedAt time.Time
+    }
 ```
 
 ## ソースファイル単位キャッシュの構成

@@ -31,7 +31,7 @@
 
 ## 4. 文脈エンジンロジック (Phase 3)
 **目的**: AIに渡すコンテキスト構築ロジックを設計する。
-- **ドキュメント**: `context_engine_design.md`, `npc_persona_generator/spec.md`, `SummaryGeneratorSlice/spec.md`
+- **ドキュメント**: `ContextEngineSlice/spec.md`, `Pass2TranslatorSlice/spec.md`, `PersonaGenSlice/spec.md`, `SummaryGeneratorSlice/spec.md`
 - **内容**:
     - **Context Builder**: 会話ツリー (`Previous Lines`) のトラバース方法。
     - **Speaker Profiling**: 種族・クラス・性格データからの口調 (`Tone`) 推定ロジック。
