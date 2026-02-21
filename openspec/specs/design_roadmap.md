@@ -22,7 +22,7 @@
 
 ## 3. 用語翻訳ロジック (Phase 2)
 **目的**: 固有名詞の抽出と辞書管理の仕組みを設計する。
-- **ドキュメント**: `term_translation_design.md`, `dictionary_builder/spec.md`
+- **ドキュメント**: `term_translator/spec.md`, `dictionary_builder/spec.md`
 - **内容**:
     - **Dictionary Builder**: xTranslator形式XMLからの用語抽出と、SQLiteベースの辞書DB構築を行う自律的Sliceの設計。
     - **Extraction Rules**: 正規表現やロジックによる固有名詞（NPC名、地名、アイテム名）の抽出ルール。
@@ -31,10 +31,11 @@
 
 ## 4. 文脈エンジンロジック (Phase 3)
 **目的**: AIに渡すコンテキスト構築ロジックを設計する。
-- **ドキュメント**: `context_engine_design.md`
+- **ドキュメント**: `context_engine_design.md`, `npc_persona_generator/spec.md`
 - **内容**:
     - **Context Builder**: 会話ツリー (`Previous Lines`) のトラバース方法。
     - **Speaker Profiling**: 種族・クラス・性格データからの口調 (`Tone`) 推定ロジック。
+    - **NPC Persona Generator**: NPCごとに会話データ（最大100件）を収集し、LLMにリクエストしてペルソナ（性格・口調・背景）を自動生成するSliceの設計。NPCごとの想定トークン利用量を事前計算し、コンテキスト長の評価を行うことで、LLMのコンテキストウィンドウ超過を防止する。
     - **Prompt Engineering**: LLMへのシステムプロンプトのテンプレート設計。
 
 ## 5. Web API & UI (Phase 4)
@@ -50,7 +51,7 @@
 ## 実行順序
 以下の順序で設計ドキュメントを作成し、各段階でレビューを行います。
 
-1.  **Data Schema** (現在ここに着手)
-2.  **Term Logic**
+1.  **Data Schema** (完了)
+2.  **Term Logic** (現在ここに着手)
 3.  **Context Logic**
 4.  **UI/API**

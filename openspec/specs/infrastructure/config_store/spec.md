@@ -92,7 +92,6 @@ Interface-First AIDD v2 アーキテクチャに則り、各Sliceや上位層が
 | `llm.gemini` | Geminiプロバイダー固有 | `endpoint` | `https://generativelanguage.googleapis.com` |
 | `llm.openai` | OpenAIプロバイダー固有 | `endpoint` | `https://api.openai.com` |
 | `llm.local` | ローカルLLM固有 | `server_url`, `model_path` | `http://localhost:1234`, `/models/gemma` |
-| `dictionary_builder` | 辞書ビルダー設定 | `target_recs`, `last_import_path` | `BOOK:FULL,NPC_:FULL`, `C:\data\dict.xml` |
 
 ### `ui_state` テーブル（UIステート）
 | 名前空間 | 用途 | キー例 | 値の例 |
