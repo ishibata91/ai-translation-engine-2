@@ -101,6 +101,124 @@
 
 各Slice内では「Contract（インターフェース）」と「Implementation（実装）」が厳格に分離されており、AIは他Sliceの実装詳細を知ることなく、Contractのみをコンテキストとして実装を生成する。
 
+---
+
+## 6. テスト戦略 (Testing Strategy)
+
+### 6.1 スライス単位の網羅的パラメタライズドテスト
+
+*   **原則**: テストは各 Vertical Slice に対する **網羅的なパラメタライズドテスト（Table-Driven Test）** で行う。
+*   **テスト用DBの利用**: データベースにアクセスするスライスのテストにおいては、本番環境や開発環境のデータを汚染しないよう、**必ずテスト専用のDB（インメモリSQLite `:memory:` または テスト実行ごとに初期化・破棄される独立したファイルDB）** を作成して使用すること。
+*   **ユニットテストの排除**: 個別関数に対する細粒度のユニットテストは作成しない。ユニットテストはAIの機動力（コード再生成の自由度）を低下させるため、仕様書やユースケースが実現できていればそれで十分とする。
+*   **根拠**: コードは再生成可能な使い捨ての生成物（Artifact）であり、ユニットテストは人間の意図表明に過ぎない。Contract と仕様に対するスライスレベルの検証が品質保証の主軸となる。
+
+### 6.2 構造化デバッグログによるユニットテスト代替
+
+ユニットテストを排除する代わりに、**セクション 7 の構造化ログ基盤（OpenTelemetry + slog）** を活用した以下のデバッグログ戦略を全スライスに義務付け、デバッグ容易性を確保する。
+
+#### ① Entry/Exit ログの強制（slog + TraceID 自動付与）
+*   すべての重要関数（Contract メソッド、主要な内部関数）の入り口と出口で、**引数と戻り値を `slog.DebugContext(ctx, ...)` で記録** する。
+*   `context.Context` を伝播させることで、OpenTelemetry の **TraceID / SpanID が自動付与** される（セクション 7.3 参照）。
+*   ログレベルは `debug` とし、本番環境ではハンドラ設定で `info` 以上に制限する。
+*   例（JSON 出力）:
+    ```json
+    {"time":"2026-02-21T21:30:00Z","level":"DEBUG","msg":"ENTER BuildTranslationRequests","trace_id":"4bf92f3577b34da6a3ce929d0e0e4736","span_id":"00f067aa0ba902b7","slice":"ContextEngine","args":{"dataRecords":1523,"config":{"mod":"Skyrim.esm"}}}
+    {"time":"2026-02-21T21:30:00.045Z","level":"DEBUG","msg":"EXIT BuildTranslationRequests","trace_id":"4bf92f3577b34da6a3ce929d0e0e4736","span_id":"00f067aa0ba902b7","slice":"ContextEngine","result":{"requestCount":1523,"elapsed":"45ms"}}
+    ```
+
+#### ② トレースIDによる横断追跡（相関IDの代替）
+*   旧来の独自相関ID（Correlation ID）は廃止し、**OpenTelemetry の TraceID に統一** する。
+*   Process Manager が HTTP リクエスト / イベントを発行する際に `otelhttp` が TraceID を自動生成し、`context.Context` 経由でスライス内の全ログに伝播する。
+*   同一 TraceID でフィルタリングすることで、スライスを横断した処理の全ログを時系列で追跡できる。
+
+#### ③ 実行単位のログファイル出力
+*   デバッグ容易性のため、**実行開始単位（ジョブ / セッション）ごとに独立したログファイル** を出力する。
+*   ファイル名規約: `logs/{timestamp}_{slice_or_job_name}.jsonl`（例: `logs/20260221_213000_ContextEngine.jsonl`）
+*   `slog.Handler` をマルチ出力（stdout + ファイル）に構成し、ファイル側は常に `debug` レベルで全量記録する。
+*   これにより、障害発生時に該当ジョブのログファイルをそのままAIに渡してデバッグ指示が可能となる。
+
+#### ④ AI用デバッグプロンプトの定型化
+*   障害発生時、該当ジョブのログファイル（③）を以下の定型プロンプトでAIに渡し、仕様との乖離を自動修正させる:
+
+    ```
+    以下はスライス「{SliceName}」の実行ログファイル（{LogFilePath}）の内容である。
+    仕様書（{SpecFilePath}）の期待動作と比較し、乖離がある箇所を特定して修正コードを生成せよ。
+
+    --- 実行ログ ---
+    {ログファイル内容}
+
+    --- 期待される仕様 ---
+    {仕様書の該当セクション}
+    ```
+
+*   このプロンプトテンプレートを各スライスの仕様書（`spec.md`）に付記し、再現可能なデバッグフローを確立する。
+
+---
+
+## 7. 構造化ログ基盤 (Structured Logging with OpenTelemetry + slog)
+
+### 7.1 アーキテクチャ概要
+
+OpenTelemetry と Go 標準の `log/slog` を組み合わせ、全スライスで統一的な構造化ログを出力する。
+
+```mermaid
+graph TD
+    A["HTTP Request / Event"] --> B["otelhttp.NewHandler<br/>(TraceIDの自動抽出・生成)"]
+    B --> C["Request Context<br/>(TraceIDを内包)"]
+    C --> D["Your Slice Logic<br/>(AI Generated)"]
+    D --> E["slog.InfoContext(ctx, ...)"]
+    E --> F["slog Handler Wrapper<br/>(例: slog-otel)"]
+    F --> G["JSON Output<br/>(trace_idが自動付与される)"]
+    
+    style B fill:#e1f5fe,stroke:#03a9f4
+    style F fill:#e1f5fe,stroke:#03a9f4
+```
+
+### 7.2 技術スタック
+
+| レイヤー         | 技術                                    | 役割                                                              |
+| :--------------- | :-------------------------------------- | :---------------------------------------------------------------- |
+| **トレース生成** | `go.opentelemetry.io/otel` + `otelhttp` | HTTP リクエストから TraceID / SpanID を自動抽出・生成             |
+| **ログ出力**     | `log/slog` (Go 標準)                    | 構造化ログの統一 API                                              |
+| **TraceID 連携** | `slog-otel` 等の Handler Wrapper        | `context.Context` から TraceID を抽出し、ログフィールドに自動付与 |
+| **出力形式**     | `slog.JSONHandler`                      | JSON 形式でのログ出力（`trace_id`, `span_id` フィールド含む）     |
+
+### 7.3 実装規約
+
+*   **`context.Context` の伝播**: 全スライスの公開メソッドは第一引数に `ctx context.Context` を受け取り、内部関数にも伝播させる。
+*   **`slog.InfoContext(ctx, ...)` の使用**: ログ出力時は必ず `ctx` を渡す `*Context` 系メソッドを使用し、TraceID の自動付与を保証する。
+*   **セクション 6.2 との統合**: Entry/Exit ログおよび相関ID（セクション 6.2 ①②）は、OpenTelemetry の TraceID/SpanID で代替する。Process Manager が生成していた相関IDは TraceID に統一される。
+*   **ログレベル制御**: 開発時は `debug` レベルで Entry/Exit ログを出力し、本番環境では `info` 以上に制限する。`slog.SetLogLoggerLevel()` またはハンドラ設定で制御する。
+
+### 7.4 JSON ログ出力例
+
+```json
+{
+  "time": "2026-02-21T21:30:00.000Z",
+  "level": "INFO",
+  "msg": "ENTER BuildTranslationRequests",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "span_id": "00f067aa0ba902b7",
+  "slice": "ContextEngine",
+  "args": {
+    "dataRecords": 1523,
+    "config": {"mod": "Skyrim.esm"}
+  }
+}
+```
+
+### 7.5 UI ログ表示 (Human-Readable Log Viewer)
+
+*   **React UI にログ表示パネルを設置**: Process Manager の Web UI 上に、リアルタイムでログを閲覧できる専用パネルを提供する。
+*   **表示要件**:
+    *   JSON ログを人間が読みやすい形式にフォーマットして表示（タイムスタンプ、レベル、メッセージ、TraceID のカラーコード表示）
+    *   TraceID によるフィルタリング: 特定のリクエスト/スライス実行に関連するログのみを抽出表示
+    *   ログレベルによるフィルタリング（DEBUG / INFO / WARN / ERROR）
+    *   自動スクロール（テール表示）と一時停止機能
+*   **データ取得方式**: バックエンドから WebSocket または SSE (Server-Sent Events) でリアルタイムにログをストリーミングする。
+
+---
+
 ```mermaid
 graph TD
     classDef ui fill:#e3f2fd,stroke:#1565c0,stroke-width:2px;

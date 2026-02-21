@@ -1,240 +1,101 @@
-# コンテキストエンジン テスト設計
+# コンテキストエンジン テスト設計 (Context Engine Test Spec)
 
-## テスト方針
-- 全テストはモック（ToneResolver, PersonaLookup, TermLookup, SummaryLookup）を使用し、外部依存なしで実行可能とする。
-- SQLite系Lookup実装のテストにはインメモリSQLite (`:memory:`) を使用する。
+本設計は `refactoring_strategy.md` セクション 6（テスト戦略）および セクション 7（構造化ログ基盤）に厳密に準拠し、個別関数の細粒度なユニットテストを作成せず、Vertical Slice の Contract に対する網羅的なパラメタライズドテスト（Table-Driven Test）を定義する。
 
----
+## 1. テスト方針
 
-## 1. ToneResolver テスト
-
-### 1.1 種族マッピングが正しく適用される
-- **入力**: race=`"KhajiitRace"`, voiceType=`""`, sex=`"Male"`
-- **期待**: カジート固有の口調指示が含まれる。
-
-### 1.2 ボイスタイプマッピングが正しく適用される
-- **入力**: race=`""`, voiceType=`"MaleCommander"`, sex=`"Male"`
-- **期待**: MaleCommander固有の口調指示が含まれる。
-
-### 1.3 種族+ボイスタイプの複合指示が生成される
-- **入力**: race=`"OrcRace"`, voiceType=`"MaleCoward"`, sex=`"Male"`
-- **期待**: 種族指示とボイスタイプ指示が改行で結合される。
-
-### 1.4 ボイスタイプ不明時に性別フォールバックが適用される（Female）
-- **入力**: race=`""`, voiceType=`""`, sex=`"Female"`
-- **期待**: `"標準的な女性の口調"` を含む指示が返る。
-
-### 1.5 ボイスタイプ不明時に性別フォールバックが適用される（Male）
-- **入力**: race=`""`, voiceType=`""`, sex=`"Male"`
-- **期待**: `"標準的な男性の口調"` を含む指示が返る。
-
-### 1.6 全属性が空の場合のフォールバック
-- **入力**: race=`""`, voiceType=`""`, sex=`""`
-- **期待**: 標準的な男性の口調（デフォルト）が返る。パニックしない。
+1. **細粒度ユニットテストの排除**: 内部処理や個別関数単位の振る舞いテストは作成しない。
+2. **網羅的パラメタライズドテスト**: すべてのテストを Table-Driven Test として実装し、インメモリ SQLite (`:memory:`) や適切なモック（ToneResolver, PersonaLookup, TermLookup, SummaryLookup）を用いて Contract 全体の振る舞いを検証する。
+3. **構造化ログの強制検証**: テスト実行時においても、必ず `context.Context` （独自の TraceID を内包）を引き回し、slog を用いた JSON 形式での出力を含める。
 
 ---
 
-## 2. PersonaLookup テスト（SQLite実装）
+## 2. パラメタライズドテストケース (Table-Driven Tests)
 
-### 2.1 存在するSpeakerIDでペルソナが取得できる
-- **セットアップ**: `npc_personas` テーブルにレコードを挿入。
-- **操作**: `FindBySpeakerID("NPC001")` を呼び出す。
-- **期待**: 保存した `persona_text` が返る。
+各Contractに対する入力（初期状態 + アクション）と期待されるアウトプット（戻り値 + 変更後の状態）を表として定義し、ループ内で検証する。
 
-### 2.2 存在しないSpeakerIDでnilが返る
-- **操作**: `FindBySpeakerID("NONEXISTENT")` を呼び出す。
-- **期待**: `nil, nil`（エラーなし、レコードなし）が返る。
+### 2.1 ToneResolver 統合テスト
+種族、ボイスタイプ、性別に応じた適切な口調指示の解決プロセスを検証する。
 
-### 2.3 SpeakerIDが空文字の場合
-- **操作**: `FindBySpeakerID("")` を呼び出す。
-- **期待**: `nil, nil` が返る。パニックしない。
+| ケースID | 目的                       | 初期状態 (入力/DB)                        | アクション (関数呼出)                      | 期待される結果 (出力 / 状態)                 |
+| :------- | :------------------------- | :---------------------------------------- | :----------------------------------------- | :------------------------------------------- |
+| TONE-01  | 種族マッピング適用         | configにKhajiitRaceのマッピング有         | `Resolve("KhajiitRace", "", "Male")`       | カジート固有の口調指示が含まれる             |
+| TONE-02  | ボイスタイプマッピング適用 | configにMaleCommanderのマッピング有       | `Resolve("", "MaleCommander", "Male")`     | MaleCommander固有の口調指示が含まれる        |
+| TONE-03  | 種族・ボイスタイプの複合   | configにOrcRace, MaleCowardのマッピング有 | `Resolve("OrcRace", "MaleCoward", "Male")` | 種族指示とボイスタイプ指示が改行で結合される |
+| TONE-04  | ボイスタイプ不明(女性)     | 該当マッピング無                          | `Resolve("", "", "Female")`                | `"標準的な女性の口調"` を含む指示が返る      |
+| TONE-05  | ボイスタイプ不明(男性)     | 該当マッピング無                          | `Resolve("", "", "Male")`                  | `"標準的な男性の口調"` を含む指示が返る      |
+| TONE-06  | 全属性空(フォールバック)   | 該当マッピング無                          | `Resolve("", "", "")`                      | デフォルトの男性口調が返る。パニックしない   |
 
----
+### 2.2 PersonaLookup 統合テスト (SQLite)
+NPCペルソナの取得処理を検証する。
 
-## 3. TermLookup テスト（SQLite実装）
+| ケースID | 目的                   | 初期状態 (入力/DB)                           | アクション (関数呼出)            | 期待される結果 (出力 / 状態)   |
+| :------- | :--------------------- | :------------------------------------------- | :------------------------------- | :----------------------------- |
+| PERS-01  | 存在するペルソナ取得   | `npc_personas`にSpeakerID="NPC001"が存在する | `FindBySpeakerID("NPC001")`      | 保存した `persona_text` が返る |
+| PERS-02  | 存在しないペルソナ取得 | `npc_personas`に"NONEXISTENT"が存在しない    | `FindBySpeakerID("NONEXISTENT")` | `nil, nil`が返る。エラーなし   |
+| PERS-03  | 空文字のID指定         | -                                            | `FindBySpeakerID("")`            | `nil, nil`が返る。エラーなし   |
 
-### 3.1 完全一致で参照用語と強制翻訳が返る
-- **セットアップ**: 辞書DBに `"Iron Sword"` → `"鉄の剣"` を登録。
-- **操作**: `Search("Iron Sword")` を呼び出す。
-- **期待**: `forcedTranslation` = `"鉄の剣"`, `referenceTerms` に `"Iron Sword"` が含まれる。
+### 2.3 TermLookup 統合テスト (SQLite)
+辞書DB・Mod用語DBからの複数条件による用語参照機構を検証する。
 
-### 3.2 キーワード完全一致で参照用語が返る
-- **セットアップ**: 辞書DBに `"Iron"` → `"鉄"`, `"Sword"` → `"剣"` を登録。
-- **操作**: `Search("Iron Sword of Fire")` を呼び出す。
-- **期待**: `forcedTranslation` = nil, `referenceTerms` に `"Iron"` と `"Sword"` が含まれる。
+| ケースID | 目的                           | 初期状態 (入力/DB)                                              | アクション (関数呼出)                      | 期待される結果 (出力 / 状態)                                 |
+| :------- | :----------------------------- | :-------------------------------------------------------------- | :----------------------------------------- | :----------------------------------------------------------- |
+| TERM-01  | 完全一致検索                   | 辞書に "Iron Sword"→"鉄の剣" を登録                             | `Search("Iron Sword")`                     | `ForcedTranslation`="鉄の剣", `ReferenceTerms`に"Iron Sword" |
+| TERM-02  | キーワード完全一致検索         | 辞書に "Iron"→"鉄", "Sword"→"剣" を登録                         | `Search("Iron Sword of Fire")`             | `ForcedTranslation`=nil, `ReferenceTerms`に"Iron","Sword"    |
+| TERM-03  | 貪欲最長一致による短い候補抑制 | 辞書に "Broken Tower Redoubt"→"壊...", "Broken"→"壊れた" を登録 | `Search("Broken Tower Redoubt is nearby")` | `ReferenceTerms`に"Broken Tower Redoubt"のみ含まれる         |
+| TERM-04  | NPC名の部分一致検索            | NPC FTS5テーブルに "Jon Battle-Born" を登録                     | `Search("Battle-Born family")`             | `ReferenceTerms`に"Jon Battle-Born"が含まれる                |
+| TERM-05  | ステミング対応検索             | 辞書に "Sword"→"剣" を登録                                      | `Search("Daedric Swords")`                 | `ReferenceTerms`に"Sword"が含まれる                          |
+| TERM-06  | 所有格の除去と検索             | 辞書に "Auriel"→"アウリエル" を登録                             | `Search("Auriel's Bow")`                   | `ReferenceTerms`に"Auriel"が含まれる                         |
+| TERM-07  | 空の辞書DB検索                 | DBにデータが登録されていない空のDB                              | `Search("anything")`                       | 空のリストとnilが返る。エラーなし                            |
+| TERM-08  | 複数DB横断検索                 | DB1: "Iron"→"鉄", DB2: "Steel"→"鋼"                             | `Search("Iron and Steel")`                 | `ReferenceTerms`に"Iron"と"Steel"が含まれる                  |
 
-### 3.3 貪欲最長一致で短い候補が抑制される
-- **セットアップ**: 辞書DBに `"Broken Tower Redoubt"` → `"壊れた塔の砦"`, `"Broken"` → `"壊れた"` を登録。
-- **操作**: `Search("Broken Tower Redoubt is nearby")` を呼び出す。
-- **期待**: `referenceTerms` に `"Broken Tower Redoubt"` のみが含まれ、`"Broken"` 単独は含まれない。
+### 2.4 SummaryLookup 統合テスト (SQLite)
+会話・クエスト要約の取得処理を検証する。
 
-### 3.4 NPC名の部分一致検索
-- **セットアップ**: NPC FTS5テーブルに `"Jon Battle-Born"` → `"ジョン・バトルボーン"` を登録。
-- **操作**: `Search("Battle-Born family")` を呼び出す。
-- **期待**: `referenceTerms` に `"Jon Battle-Born"` が含まれる。
+| ケースID | 目的             | 初期状態 (入力/DB)                     | アクション (関数呼出)                | 期待される結果 (出力 / 状態)   |
+| :------- | :--------------- | :------------------------------------- | :----------------------------------- | :----------------------------- |
+| SUMM-01  | 会話要約取得     | `summaries`に`DIAL001`(`dialogue`)登録 | `FindDialogueSummary("DIAL001")`     | 保存した `summary_text` が返る |
+| SUMM-02  | クエスト要約取得 | `summaries`に`QUST001`(`quest`)登録    | `FindQuestSummary("QUST001")`        | 保存した `summary_text` が返る |
+| SUMM-03  | 存在しないID検索 | 対象レコードなし                       | `FindDialogueSummary("NONEXISTENT")` | `nil, nil`が返る。エラーなし   |
+| SUMM-04  | 種別不一致検索   | `summaries`に`DIAL001`(`dialogue`)登録 | `FindQuestSummary("DIAL001")`        | `nil, nil`が返る。エラーなし   |
 
-### 3.5 ステミングによる形態変化対応
-- **セットアップ**: 辞書DBに `"Sword"` → `"剣"` を登録。
-- **操作**: `Search("Daedric Swords")` を呼び出す。
-- **期待**: `referenceTerms` に `"Sword"` が含まれる（`Swords` → stem `sword` → マッチ）。
+### 2.5 ContextEngine 統合テスト（エンドツーエンド）
+抽出データ (ExtractedData) 全体から各リクエストモデル (TranslationRequest) への構築フローを一気通貫で検証する（Lookup系はモックまたはインメモリDBにて対応）。
 
-### 3.6 所有格の除去とステミング
-- **セットアップ**: 辞書DBに `"Auriel"` → `"アウリエル"` を登録。
-- **操作**: `Search("Auriel's Bow")` を呼び出す。
-- **期待**: `referenceTerms` に `"Auriel"` が含まれる。
-
-### 3.7 辞書DBが空の場合
-- **操作**: 空の辞書DBに対して `Search("anything")` を呼び出す。
-- **期待**: 空の `referenceTerms`, `forcedTranslation` = nil。エラーなし。
-
-### 3.8 複数DB横断検索
-- **セットアップ**: DB1に `"Iron"` → `"鉄"`, DB2に `"Steel"` → `"鋼"` を登録。
-- **操作**: `Search("Iron and Steel")` を呼び出す。
-- **期待**: `referenceTerms` に `"Iron"` と `"Steel"` の両方が含まれる。
-
----
-
-## 4. SummaryLookup テスト（SQLite実装）
-
-### 4.1 会話要約が取得できる
-- **セットアップ**: `summaries` テーブルに `record_id="DIAL001"`, `summary_type="dialogue"` のレコードを挿入。
-- **操作**: `FindDialogueSummary("DIAL001")` を呼び出す。
-- **期待**: 保存した `summary_text` が返る。
-
-### 4.2 クエスト要約が取得できる
-- **セットアップ**: `summaries` テーブルに `record_id="QUST001"`, `summary_type="quest"` のレコードを挿入。
-- **操作**: `FindQuestSummary("QUST001")` を呼び出す。
-- **期待**: 保存した `summary_text` が返る。
-
-### 4.3 存在しないIDでnilが返る
-- **操作**: `FindDialogueSummary("NONEXISTENT")` を呼び出す。
-- **期待**: `nil, nil` が返る。
-
-### 4.4 種別の不一致でnilが返る
-- **セットアップ**: `summaries` テーブルに `record_id="DIAL001"`, `summary_type="dialogue"` のレコードを挿入。
-- **操作**: `FindQuestSummary("DIAL001")` を呼び出す。
-- **期待**: `nil, nil` が返る（種別が不一致）。
+| ケースID | 目的                           | 初期状態 (入力/DB)                              | アクション (関数呼出)                    | 期待される結果 (出力 / 状態)                                 |
+| :------- | :----------------------------- | :---------------------------------------------- | :--------------------------------------- | :----------------------------------------------------------- |
+| CENG-01  | INFO NAM1リクエスト生成        | 1件のDialogueGroup(DialogueResponse1件+NPC情報) | `BuildTranslationRequests(data, config)` | INFO NAM1のリクエストが1件生成され、Speaker情報が付与される  |
+| CENG-02  | 前回発言のトラッキング         | PlayerText="Hello", Response 2件                | `BuildTranslationRequests(data, config)` | リク1のPrevious="Hello", リク2のPrevious=(リク1のText)       |
+| CENG-03  | DIAL FULLリクエスト生成        | PlayerText="Choose wisely"                      | `BuildTranslationRequests(data, config)` | DIAL FULLのリクエスト生成、TopicNameが算出・設定される       |
+| CENG-04  | プレイヤー無言時のDIALスキップ | PlayerText=nil                                  | `BuildTranslationRequests(data, config)` | DIAL FULLのリクエストは生成されない                          |
+| CENG-05  | トピック名抽出優先順位         | TopicText=有, NAM1=有                           | `BuildTranslationRequests(data, config)` | TopicNameが優先的にTopicTextとなる                           |
+| CENG-06  | クエスト生成(CNAM, NNAM)       | Stages=3件, Objectives=2件のQuest               | `BuildTranslationRequests(data, config)` | QUST CNAM(x3), QUST NNAM(x2)のリクエストがそれぞれ生成される |
+| CENG-07  | アイテムDESC生成               | TypeHint="Weapon", Desc="A sharp blade"         | `BuildTranslationRequests(data, config)` | `Weapon DESC` リクエストが要求通りに生成される               |
+| CENG-08  | 書籍チャンク処理               | TypeHint="Book", 閾値を超過する長文のText       | `BuildTranslationRequests(data, config)` | 長文がBook DESC複数リクエストへと自動的に分割される          |
+| CENG-09  | 翻訳済みスキップ               | 既に日本語が含まれるテキスト                    | `BuildTranslationRequests(data, config)` | 当該テキストに対するリクエスト生成から除外される             |
+| CENG-10  | Lookupエラーの耐性             | TermLookup.Searchがエラーを返す意図的モック設定 | `BuildTranslationRequests(data, config)` | ログに該当エラーが出力されパニックせず後続の処理は継続する   |
+| CENG-11  | 空データの入力                 | ExtractedDataが空のセット                       | `BuildTranslationRequests(data, config)` | 空配列 `[]` が返る。エラーなし                               |
 
 ---
 
-## 5. ContextEngineImpl テスト
+## 3. 構造化ログとデバッグフロー (Log-based Debugging)
 
-### 5.1 会話リクエスト: INFO NAM1が正しく生成される
-- **モック**: ToneResolver → 固定指示, PersonaLookup → nil, TermLookup → 空, SummaryLookup → nil
-- **入力**: 1件のDialogueGroup（1件のDialogueResponse、SpeakerID付き）
-- **期待**: INFO NAM1のTranslationRequestが1件生成される。Speaker情報が設定されている。
+本スライスで不具合が発生した場合やテストが失敗した場合は、ステップ実行やユニットテストの追加による原因追及を行わず、実行生成物である構造化ログを用いたAIデバッグを徹底する。
 
-### 5.2 会話リクエスト: Previous Lineが正しく追跡される
-- **入力**: 1件のDialogueGroup（PlayerText="Hello", 2件のResponse）
-- **期待**:
-  - 1件目のINFO NAM1の `PreviousLine` が `"Hello"`（PlayerText）。
-  - 2件目のINFO NAM1の `PreviousLine` が1件目のResponse.Text。
+### 3.1 テスト基盤でのログ準備
+テストコードから Contract メソッドを呼び出す際は、サブテスト（Table-Drivenの各ケース）ごとに一意の TraceID を持つ `context.Context` を生成して引き回すこと。
+各テスト実行時の `slog` の出力先はファイル（例: `logs/test_{timestamp}_ContextEngine.jsonl`）に記録するようルーティングする。
 
-### 5.3 会話リクエスト: DIAL FULLが生成される
-- **入力**: DialogueGroup（PlayerText="Choose wisely"）
-- **期待**: DIAL FULLのTranslationRequestが生成される。RecordType=`"DIAL FULL"`。
+### 3.2 AIデバッグ専用プロンプトの定型化
+障害発生時、またはテスト失敗時には、該当ジョブのログファイルをそのままAIに渡し、以下の定型プロンプトを用いたデバッグと修正指示を行う。
 
-### 5.4 会話リクエスト: PlayerTextがnilの場合DIAL FULLがスキップされる
-- **入力**: DialogueGroup（PlayerText=nil）
-- **期待**: DIAL FULLのリクエストが生成されない。
+```text
+以下はスライス「Context Engine Slice」の実行ログファイル（logs/{LogFilePath}）の内容である。
+仕様書（openspec/specs/ContextEngineSlice/spec.md）の期待動作と比較し、乖離がある箇所を特定して修正コードを生成せよ。
 
-### 5.5 会話リクエスト: INFO RNAMが生成される
-- **入力**: DialogueResponse（MenuDisplayText="Yes, I'll help"）
-- **期待**: INFO RNAMのTranslationRequestが生成される。
+--- 実行ログ ---
+{ログファイル内容}
 
-### 5.6 会話リクエスト: 日本語テキストがスキップされる
-- **入力**: DialogueResponse（Text="こんにちは"）
-- **期待**: INFO NAM1のリクエストが生成されない。
-
-### 5.7 会話リクエスト: 空テキストがスキップされる
-- **入力**: DialogueResponse（Text=""）
-- **期待**: INFO NAM1のリクエストが生成されない。
-
-### 5.8 会話リクエスト: SpeakerIDがnilの場合Speakerがnilになる
-- **入力**: DialogueResponse（SpeakerID=nil）
-- **期待**: TranslationRequest.Context.Speaker が nil。
-
-### 5.9 会話リクエスト: ペルソナが存在する場合SpeakerProfileに設定される
-- **モック**: PersonaLookup → `"勇敢な戦士。粗野だが義理堅い。"`
-- **入力**: DialogueResponse（SpeakerID="NPC001"）
-- **期待**: SpeakerProfile.PersonaText が設定されている。
-
-### 5.10 会話リクエスト: 会話要約がコンテキストに含まれる
-- **モック**: SummaryLookup.FindDialogueSummary → `"Ulfric orders march on Whiterun"`
-- **入力**: 1件のDialogueGroup
-- **期待**: TranslationRequest.Context.DialogueSummary が設定されている。
-
-### 5.11 トピック名: TopicText優先
-- **入力**: DialogueResponse（TopicText="Greetings"）, DialogueGroup（NAM1="Topic1"）
-- **期待**: TopicName = `"Greetings"`。
-
-### 5.12 トピック名: TopicTextがnilの場合NAM1にフォールバック
-- **入力**: DialogueResponse（TopicText=nil）, DialogueGroup（NAM1="Topic1"）
-- **期待**: TopicName = `"Topic1"`。
-
-### 5.13 トピック名: 100文字超過時に切り詰められる
-- **入力**: TopicText = 120文字の文字列
-- **期待**: TopicName が100文字以内（97文字 + `"..."`）。
-
-### 5.14 クエストリクエスト: QUST FULLが生成される
-- **入力**: Quest（Name="The Golden Claw"）
-- **期待**: QUST FULLのTranslationRequestが生成される。
-
-### 5.15 クエストリクエスト: QUST CNAMがステージごとに生成される
-- **入力**: Quest（Stages=3件）
-- **期待**: QUST CNAMのTranslationRequestが3件生成される。各リクエストにIndexが設定されている。
-
-### 5.16 クエストリクエスト: QUST NNAMが目標ごとに生成される
-- **入力**: Quest（Objectives=2件）
-- **期待**: QUST NNAMのTranslationRequestが2件生成される。
-
-### 5.17 クエストリクエスト: クエスト要約がCNAM/NNAMに含まれる
-- **モック**: SummaryLookup.FindQuestSummary → `"Retrieve the Dragonstone"`
-- **入力**: Quest（Stages=1件）
-- **期待**: QUST CNAMのContext.QuestSummary が設定されている。
-
-### 5.18 クエストリクエスト: QUST FULLにはクエスト要約が含まれない
-- **モック**: SummaryLookup.FindQuestSummary → `"summary"`
-- **入力**: Quest（Name="Test Quest"）
-- **期待**: QUST FULLのContext.QuestSummary が nil。
-
-### 5.19 アイテムリクエスト: {Type} DESCが生成される
-- **入力**: Item（Description="A sharp blade", TypeHint="Weapon"）
-- **期待**: TranslationRequestが生成される。Context.ItemTypeHint = `"Weapon"`。
-
-### 5.20 アイテムリクエスト: BOOK DESCが生成される
-- **入力**: Item（Text="<p>Long book text...</p>", TypeHint="Book"）
-- **期待**: BOOK DESCのTranslationRequestが生成される。
-
-### 5.21 強制翻訳: 辞書完全一致時にForcedTranslationが設定される
-- **モック**: TermLookup.Search → forcedTranslation=`"鉄の剣"`
-- **入力**: Item（Description="Iron Sword"）
-- **期待**: TranslationRequest.ForcedTranslation = `"鉄の剣"`。
-
-### 5.22 参照用語: ReferenceTermsが設定される
-- **モック**: TermLookup.Search → referenceTerms=[{OriginalEN:"Iron", OriginalJA:"鉄"}]
-- **入力**: 任意のレコード
-- **期待**: TranslationRequest.ReferenceTerms に用語が含まれる。
-
-### 5.23 SourcePlugin/SourceFileが全リクエストに設定される
-- **入力**: config.SourceFile=`"MyMod_Export.json"`, レコードのSource=`"MyMod.esp"`
-- **期待**: 全TranslationRequestに SourcePlugin と SourceFile が設定されている。
-
----
-
-## 6. 統合テスト（インメモリSQLite）
-
-### 6.1 End-to-End: 全レコードタイプの翻訳リクエスト生成
-- **セットアップ**: インメモリSQLite + モック各Lookup
-- **入力**: DialogueGroup×1, Quest×1, Item×1, Magic×1, Message×1 を含む ExtractedData
-- **操作**: `BuildTranslationRequests(data, config)` を呼び出す。
-- **期待**: 各レコードタイプに対応するTranslationRequestが生成される。
-
-### 6.2 End-to-End: 空のExtractedDataで空リストが返る
-- **入力**: 全フィールドが空の ExtractedData
-- **期待**: 空の `[]TranslationRequest` が返る。エラーなし。
-
-### 6.3 End-to-End: Lookup系エラー時にプロセスが継続する
-- **モック**: TermLookup.Search → エラー
-- **入力**: 1件のDialogueGroup
-- **期待**: エラーがログ出力されるが、パニックせず処理が継続する。参照用語は空で設定される。
+--- 期待される仕様 ---
+{仕様書の該当セクション}
+```
