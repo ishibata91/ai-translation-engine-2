@@ -2,11 +2,14 @@ package loader_test
 
 import (
 	"context"
+	"database/sql"
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/ishibata91/ai-translation-engine-2/pkg/config_store"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/loader_slice"
+	_ "modernc.org/sqlite"
 )
 
 func TestLoader_LoadExtractedJSON_UTF8(t *testing.T) {
@@ -35,8 +38,23 @@ func TestLoader_LoadExtractedJSON_UTF8(t *testing.T) {
 		t.Fatalf("failed to create temp file: %v", err)
 	}
 
-	// 2. Initialize Loader
-	l := loader_slice.ProvideLoader()
+	// 2. Initialize Loader with a dummy ConfigStore for testing
+	// In a real scenario, we might use a mock or an in-memory SQLiteStore.
+	// For this test, we can pass a simple mock if needed, but for now we'll
+	// just use a nil or minimal implementation if ProvideLoader allows it,
+	// or we can instantiate a real in-memory store. Let's use an in-memory store.
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("failed to open in-memory db: %v", err)
+	}
+	defer db.Close()
+
+	store, err := config_store.NewSQLiteStore(context.Background(), db)
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+
+	l := loader_slice.ProvideLoader(store)
 
 	// 3. Load Data
 	data, err := l.LoadExtractedJSON(context.Background(), filePath)

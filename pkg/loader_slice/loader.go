@@ -4,15 +4,18 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/ishibata91/ai-translation-engine-2/pkg/config_store"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/domain/models"
 )
 
 // jsonLoader implements contract.Loader interface.
-type jsonLoader struct{}
+type jsonLoader struct {
+	config config_store.ConfigStore
+}
 
 // newJSONLoader creates a new instance of jsonLoader.
-func newJSONLoader() Loader {
-	return &jsonLoader{}
+func newJSONLoader(config config_store.ConfigStore) Loader {
+	return &jsonLoader{config: config}
 }
 
 // LoadExtractedJSON loads extracted data from a JSON file.

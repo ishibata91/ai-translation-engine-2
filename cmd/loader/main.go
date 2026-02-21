@@ -19,7 +19,13 @@ func main() {
 	start := time.Now()
 
 	// Initialize Loader via Wire
-	l := InitializeLoader()
+	ctx := context.Background()
+	l, cleanup, err := InitializeLoader(ctx)
+	if err != nil {
+		fmt.Printf("Error initializing loader: %v\n", err)
+		os.Exit(1)
+	}
+	defer cleanup()
 
 	// Load Data
 	data, err := l.LoadExtractedJSON(context.Background(), filePath)

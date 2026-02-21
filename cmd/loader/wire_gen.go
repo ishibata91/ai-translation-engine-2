@@ -7,13 +7,27 @@
 package main
 
 import (
+	"context"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/config_store"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/database"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/loader_slice"
 )
 
 // Injectors from wire.go:
 
 // InitializeLoader creates a new Loader instance with all dependencies wired.
-func InitializeLoader() loader_slice.Loader {
-	loader := loader_slice.ProvideLoader()
-	return loader
+func InitializeLoader(ctx context.Context) (loader_slice.Loader, func(), error) {
+	db, cleanup, err := database.NewSQLiteDB()
+	if err != nil {
+		return nil, nil, err
+	}
+	sqLiteStore, err := config_store.NewSQLiteStore(ctx, db)
+	if err != nil {
+		cleanup()
+		return nil, nil, err
+	}
+	loader := loader_slice.ProvideLoader(sqLiteStore)
+	return loader, func() {
+		cleanup()
+	}, nil
 }

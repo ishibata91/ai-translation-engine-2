@@ -1,6 +1,9 @@
 package config_store
 
-import "context"
+import (
+	"context"
+	"fmt"
+)
 
 // TypedAccessor wraps ConfigStore and provides type-safe access with default values.
 // This is exclusively for the config table and does not support JSON operations.
@@ -15,36 +18,51 @@ func NewTypedAccessor(store ConfigStore) *TypedAccessor {
 
 // GetString returns a string value for the given namespace/key, or defaultVal if not found.
 func (t *TypedAccessor) GetString(ctx context.Context, ns string, key string, defaultVal string) string {
-	_ = ctx
-	_ = ns
-	_ = key
-	_ = defaultVal
-	panic("not implemented")
+	val, err := t.store.Get(ctx, ns, key)
+	if err != nil || val == "" {
+		return defaultVal
+	}
+	return val
 }
 
 // GetInt returns an int value for the given namespace/key, or defaultVal if not found.
 func (t *TypedAccessor) GetInt(ctx context.Context, ns string, key string, defaultVal int) int {
-	_ = ctx
-	_ = ns
-	_ = key
-	_ = defaultVal
-	panic("not implemented")
+	val, err := t.store.Get(ctx, ns, key)
+	if err != nil || val == "" {
+		return defaultVal
+	}
+	var i int
+	if _, err := fmt.Sscanf(val, "%d", &i); err != nil {
+		return defaultVal
+	}
+	return i
 }
 
 // GetFloat returns a float64 value for the given namespace/key, or defaultVal if not found.
 func (t *TypedAccessor) GetFloat(ctx context.Context, ns string, key string, defaultVal float64) float64 {
-	_ = ctx
-	_ = ns
-	_ = key
-	_ = defaultVal
-	panic("not implemented")
+	val, err := t.store.Get(ctx, ns, key)
+	if err != nil || val == "" {
+		return defaultVal
+	}
+	var f float64
+	if _, err := fmt.Sscanf(val, "%f", &f); err != nil {
+		return defaultVal
+	}
+	return f
 }
 
 // GetBool returns a bool value for the given namespace/key, or defaultVal if not found.
 func (t *TypedAccessor) GetBool(ctx context.Context, ns string, key string, defaultVal bool) bool {
-	_ = ctx
-	_ = ns
-	_ = key
-	_ = defaultVal
-	panic("not implemented")
+	val, err := t.store.Get(ctx, ns, key)
+	if err != nil || val == "" {
+		return defaultVal
+	}
+	switch val {
+	case "true", "1", "yes", "on":
+		return true
+	case "false", "0", "no", "off":
+		return false
+	default:
+		return defaultVal
+	}
 }
