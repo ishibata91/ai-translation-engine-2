@@ -31,11 +31,12 @@
 
 ## 4. 文脈エンジンロジック (Phase 3)
 **目的**: AIに渡すコンテキスト構築ロジックを設計する。
-- **ドキュメント**: `context_engine_design.md`, `npc_persona_generator/spec.md`
+- **ドキュメント**: `context_engine_design.md`, `npc_persona_generator/spec.md`, `SummaryGeneratorSlice/spec.md`
 - **内容**:
     - **Context Builder**: 会話ツリー (`Previous Lines`) のトラバース方法。
     - **Speaker Profiling**: 種族・クラス・性格データからの口調 (`Tone`) 推定ロジック。
     - **NPC Persona Generator**: NPCごとに会話データ（最大100件）を収集し、LLMにリクエストしてペルソナ（性格・口調・背景）を自動生成するSliceの設計。NPCごとの想定トークン利用量を事前計算し、コンテキスト長の評価を行うことで、LLMのコンテキストウィンドウ超過を防止する。
+    - **Summary Generator**: クエスト・会話の要約情報をLLMで生成し、SQLiteにキャッシュするSliceの設計。クエストステージの累積的要約と会話フローの要約を提供し、Pass 2の翻訳コンテキストとして参照される。
     - **Prompt Engineering**: LLMへのシステムプロンプトのテンプレート設計。
 
 ## 5. Web API & UI (Phase 4)
@@ -44,6 +45,7 @@
 - **内容**:
     - **API Definition**: ファイルロード、翻訳実行、設定変更などのREST/WebSocket API定義。
     - **UI Wireframes**: ダッシュボード、進捗表示、設定画面のモックアップ。全てのLLMユースケースで共通のLLM選択モーダルUI（ローカル/Gemini/xAI/バッチAPI）を含む。
+    - **Prompt Template Editor**: レコード種別ごとのシステムプロンプトテンプレートをUI上で閲覧・編集し、Config Storeに永続化する機能の設計。
     - **State Management**: React側での状態管理 (React Query / Context) 設計。
 
 ---

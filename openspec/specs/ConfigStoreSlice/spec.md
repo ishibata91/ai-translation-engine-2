@@ -39,9 +39,10 @@ Interface-First AIDD v2 アーキテクチャに則り、各Sliceや上位層が
 3. **APIキー管理**: UIからLLMプロバイダーごとのAPIキーを登録・更新・削除できる。APIキーは `secrets` テーブルに格納する。
 4. **LLM選択状態の保存**: ユーザーが最後に選択したLLMプロバイダー・モデル・パラメータを `config` テーブルに永続化し、次回起動時に復元する。
 5. **UIレイアウトの保存**: ウィンドウサイズ、パネル配置、表示カラム等のUI状態を `ui_state` テーブルに永続化する。
-6. **名前空間による分離**: 各Slice（`dictionary_builder`, `translator` 等）やシステム（`ui`, `llm`）ごとに名前空間を持つ。
-7. **デフォルト値**: キーが未設定の場合にデフォルト値を返す仕組みを提供する。
-8. **変更通知**: 特定の名前空間/キーの変更を監視し、コールバックで通知する。
+6. **プロンプトテンプレートの保存**: レコード種別（会話、武器、本など）ごとのシステムプロンプトテンプレートを `config` テーブルに永続化する。UIから編集された内容を保存し、翻訳エンジンが動的に参照できるようにする。デフォルトテンプレートはアプリケーションコードに埋め込み、ユーザーがカスタマイズした場合のみ `config` テーブルに上書き保存する。
+7. **名前空間による分離**: 各Slice（`dictionary_builder`, `translator` 等）やシステム（`ui`, `llm`）ごとに名前空間を持つ。
+8. **デフォルト値**: キーが未設定の場合にデフォルト値を返す仕組みを提供する。プロンプトテンプレートについては、未設定時にアプリケーション組み込みのデフォルトテンプレートを返す。
+9. **変更通知**: 特定の名前空間/キーの変更を監視し、コールバックで通知する。
 
 ### 非機能要件
 1. **スレッドセーフ**: 複数のGoroutineから同時にアクセスしても安全であること。
@@ -92,6 +93,7 @@ Interface-First AIDD v2 アーキテクチャに則り、各Sliceや上位層が
 | `llm.gemini` | Geminiプロバイダー固有 | `endpoint` | `https://generativelanguage.googleapis.com` |
 | `llm.openai` | OpenAIプロバイダー固有 | `endpoint` | `https://api.openai.com` |
 | `llm.local` | ローカルLLM固有 | `server_url`, `model_path` | `http://localhost:1234`, `/models/gemma` |
+| `prompt_template` | プロンプトテンプレート | `dialogue`, `weapon`, `armor`, `book`, `quest`, `npc`, `default` | `You are a translator specializing in ...`（レコード種別ごとのシステムプロンプト全文） |
 
 ### `ui_state` テーブル（UIステート）
 | 名前空間 | 用途 | キー例 | 値の例 |
