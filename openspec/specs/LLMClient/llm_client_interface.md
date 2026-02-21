@@ -13,7 +13,7 @@ Interface-First AIDD 原則に基づき、具体的なLLMプロバイダー（Op
 ## 3. 主要コンポーネント (Components)
 - `LLMClient`: LLMへのリクエスト送信を担当するコアインターフェース。
 - `LLMProvider`: 特定のプロバイダー（Gemini, OpenAI等）の実装。
-- `LLMManager`: 利用可能なプロバイダーを管理し、設定に基づいたインスタンス提供を行う。
+- `LLMManager`: 利用可能なプロバイダーを管理するファクトリ。`ConfigStore`（またはそこから抽出された設定情報）を受け取り、現在選択されているプロバイダー（Gemini, Local, xAI 等）およびその設定（APIキー、エンドポイント等）に基づいて、適切な `LLMClient` インスタンスを提供する。
 - `BatchHandler`: 非同期バッチAPIのジョブ管理と結果取得を抽象化する。
 
 ## 4. クラス図とシーケンス図

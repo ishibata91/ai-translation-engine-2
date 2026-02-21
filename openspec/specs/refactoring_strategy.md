@@ -101,6 +101,11 @@
 
 各Slice内では「Contract（インターフェース）」と「Implementation（実装）」が厳格に分離されており、AIは他Sliceの実装詳細を知ることなく、Contractのみをコンテキストとして実装を生成する。
 
+**LLM統合の原則 (LLM Integration Principle)**:
+*   **動的プロバイダ解決**: LLMを利用する全てのスライス（`ContextEngineSlice`, `DictionaryBuilderSlice` 等）は、特定プロバイダ（Gemini, Local等）の具体的な実装に直接依存してはならない。
+*   **ConfigStore経由の設定受信**: 各スライスは、`ConfigStoreSlice` によって管理される設定情報（`namespace: llm` 等の値）を引数またはDIなどで受け取らなければならない。
+*   **LLMClientファクトリの利用**: スライスは受信した設定情報を用いて `LLMManager`（または同等のファクトリクラス）から、その時点のユーザー設定に合致した `LLMClient` インターフェースのインスタンスを動的に取得し、使用するものとする。
+
 ---
 
 ## 6. テスト戦略 (Testing Strategy)

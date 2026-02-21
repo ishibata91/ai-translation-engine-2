@@ -10,6 +10,20 @@ classDiagram
         +HealthCheck(ctx Context) error
     }
 
+    class LLMManager {
+        <<interface>>
+        +GetClient(ctx Context, config LLMConfig) (LLMClient, error)
+        +GetBatchClient(ctx Context, config LLMConfig) (BatchClient, error)
+    }
+
+    class LLMConfig {
+        +Provider string
+        +APIKey string
+        +Endpoint string
+        +Model string
+        +Parameters Map~string, interface~
+    }
+
     class BatchClient {
         <<interface>>
         +SubmitBatch(ctx Context, reqs List~Request~) (BatchJobID, error)
@@ -83,6 +97,10 @@ classDiagram
     LLMClient ..> Request : uses
     LLMClient ..> Response : returns
     Response *-- TokenUsage
+    
+    LLMManager ..> LLMClient : creates
+    LLMManager ..> BatchClient : creates
+    LLMManager ..> LLMConfig : uses
 ```
 
 ## 主要エンティティの説明

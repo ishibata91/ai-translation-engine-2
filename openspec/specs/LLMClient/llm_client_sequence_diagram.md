@@ -6,10 +6,13 @@
 ```mermaid
 sequenceDiagram
     participant App as 呼び出し元 (Slice Logic)
+    participant Manager as LLMManager
     participant Client as LLMClient (Interface)
     participant Provider as Provider Implementation (e.g. Gemini)
     participant API as External LLM API
 
+    App->>Manager: GetClient(ctx, LLMConfig)
+    Manager-->>App: Client
     App->>Client: Complete(ctx, Request)
     Client->>Provider: Complete(ctx, Request)
     Provider->>Provider: リクエストの変換 (Go Struct -> API JSON)
@@ -26,12 +29,15 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     participant App as 呼び出し元 (Slice Logic)
+    participant Manager as LLMManager
     participant Batch as BatchClient (Interface)
     participant Provider as Provider (e.g. OpenAI)
     participant API as Batch API
     participant Store as Job Store (DB/File)
 
     Note over App, API: ジョブの投入
+    App->>Manager: GetBatchClient(ctx, LLMConfig)
+    Manager-->>App: BatchClient
     App->>Batch: SubmitBatch(ctx, []Request)
     Batch->>Provider: SubmitBatch(ctx, []Request)
     Provider->>API: Create Batch Job
@@ -65,10 +71,13 @@ UIでリアルタイムに生成過程を表示する場合に使用される。
 sequenceDiagram
     participant UI as React Frontend
     participant Srv as Go Server (API)
+    participant Manager as LLMManager
     participant Client as LLMClient
     participant Provider as Provider
 
     UI->>Srv: WebSocket / SSE Request
+    Srv->>Manager: GetClient(ctx, LLMConfig)
+    Manager-->>Srv: Client
     Srv->>Client: StreamComplete(ctx, Request)
     Client->>Provider: StreamComplete(ctx, Request)
     Provider->>Provider: HTTP Stream開始
