@@ -10,19 +10,18 @@ classDiagram
         +String Addon
     }
 
-    class DictionaryParser {
+    class DictionaryImporter {
         <<Interface>>
-        +ParseXML(ctx context.Context, file io.Reader) ([]DictTerm, error)
+        +ImportXML(ctx context.Context, file io.Reader) (int, error)
     }
 
-    class GlobalStore {
+    class DictionaryStore {
         <<Interface>>
         +SaveTerms(ctx context.Context, terms []DictTerm) error
     }
 
     class ProcessManager {
-        -DictionaryParser parser
-        -GlobalStore store
+        -DictionaryImporter importer
         +HandleImport(w http.ResponseWriter, r *http.Request)
     }
 
@@ -30,23 +29,30 @@ classDiagram
         +Parse(file io.Reader) ([]DictTerm, error)
     }
 
-    class SQLiteGlobalStore {
+    class SQLiteDictionaryStore {
         -db *sql.DB
         +SaveTerms(ctx context.Context, terms []DictTerm) error
     }
 
-    ProcessManager --> DictionaryParser : uses
-    ProcessManager --> GlobalStore : uses
-    DictionaryParser <|.. XMLParser : implements
-    GlobalStore <|.. SQLiteGlobalStore : implements
-    ProcessManager ..> DictTerm : coordinates
-    DictionaryParser ..> DictTerm : creates
-    GlobalStore ..> DictTerm : stores
+    class DictionaryImporterImpl {
+        -XMLParser parser
+        -DictionaryStore store
+        +ImportXML(ctx context.Context, file io.Reader) (int, error)
+    }
+
+    ProcessManager --> DictionaryImporter : uses
+    DictionaryImporter <|.. DictionaryImporterImpl : implements
+    DictionaryImporterImpl --> XMLParser : uses
+    DictionaryImporterImpl --> DictionaryStore : uses
+    DictionaryStore <|.. SQLiteDictionaryStore : implements
+    DictionaryImporterImpl ..> DictTerm : creates
+    DictionaryStore ..> DictTerm : stores
 ```
 
-## アーキテクチャの補足：永続化の委譲
-本コンテキスト（Dictionary Builder Slice）では**データの抽出とパースのみ**に責務を持ち、`DictionaryParser` は `[]DictTerm` を返却するだけにとどめる。
-抽出されたデータは、全体の制御を司る `ProcessManager`（またはHTTPハンドラー）が受け取り、アプリケーション共通の永続化インターフェースである `GlobalStore` を介して1つのSQLite DBファイルに保存する。これにより、各フローごとに類似のDB保存処理を重複して記述する（COBOL的な）設計を防ぐ。
+## アーキテクチャの補足：基本インフラの注入による純粋な Vertical Slicing
+本コンテキスト（Dictionary Builder Slice）は、**「XMLパース」から「DBテーブルスキーマ(DTO)定義」「SQL永続化」までの全責務をこのスライス単体で負う**。
+AIDDにおいてAIが変更範囲を迷わず限定・自己完結させて決定的にコードを生成できるよう、あえて全体での「DRY」は捨て、他のコンテキスト（例：翻訳時の辞書読み込み等）とはStoreやモデルを共有しない。
+外部（プロセスマネージャー等）からは、DBのプーリングや接続管理のためだけのインフラモジュール（例：`*sql.DB` コネクションプール）のみをDIで注入する形とする。
 
 ## 推奨ライブラリ (Go Backend)
 *   **XML 解析**: `encoding/xml` (標準ライブラリ)
