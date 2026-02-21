@@ -16,8 +16,9 @@
 *   **目標**: Goの静的型付けと構造体により、コンパイル時に整合性を保証する。
 
 ### 1.3 ユーザー体験 (UX) の改善
-*   **現状**: CLIベースで、進捗やエラー確認が困難。
+*   **現状**: CLIベースで、進捗やエラー確認が困難。また、LLMの切り替えが煩雑。
 *   **目標**: ReactベースのSPAを提供し、リアルタイム進捗可視化とGUI設定を実現する。
+*   **LLM選択の統合**: 全てのLLM利用ユースケースにおいて、同じモーダルUIからローカル、Gemini、xAI、バッチAPIモードなどをシームレスに選択できるようにする。
 
 ---
 
@@ -63,9 +64,9 @@
 *   **Artifacts**: `Data Loader` / `Extracted Models`
 
 ### Phase 2: 用語処理 (Term Translation)
-*   **Goal**: 固有名詞の抽出と、辞書ベースの翻訳適用。
+*   **Goal**: xTranslator XML等からの辞書DB構築 (Dictionary Builder)、固有名詞の抽出と、辞書ベースの翻訳適用。
 *   **Contract**: `TermExtractor` / `TermDictionary` インターフェース。
-*   **Artifacts**: `Term Extractor` / `SQLite Adapter`
+*   **Artifacts**: `Dictionary Builder` / `Term Extractor` / `SQLite Adapter`
 
 ### Phase 3: 文脈エンジン (Context Engine)
 *   **Goal**: 会話ツリー解析とLLMプロンプト生成。
