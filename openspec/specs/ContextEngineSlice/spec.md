@@ -91,14 +91,19 @@ type ReferenceTerm struct {
 
 ### 2. 会話ツリー解析
 
-`DialogueGroup` 内の `DialogueResponse` を `Order` 昇順で処理し、会話の流れを追跡する。
+`DialogueGroup` および `DialogueResponse` の情報を基に会話ツリーを有向非巡回グラフ (DAG) として捉え、`Previous Lines` トラバースによる直前の発言を特定する。
+
+**トラバースアルゴリズムの設計**:
+1. **DAGベースの探索**: `DialogueResponse.PreviousID` のチェーンをたどり、各会話ノードのリンクを解析する。
+2. **分岐と合流の処理**:
+    - 複数のレスポンスが同じグループ（発言）を指す場合など、複雑な会話パスにおいては、`Order` 昇順で最後に解決されたパス、またはデフォルトルートルート（ゲーム内で主要とされる進行ルート）の `PreviousLine` を採用する。
+3. **循環参照（無限ループ）の防止**: トラバース中に無限ループを検知・回避するため、探索の深さ制限（Max Depth: Config定義、デフォルト5）を設ける。制限に達した場合はトラバースを打ち切り、そこまでのルートを採用する。
 
 **Previous Line の決定ルール**:
 1. 各 `DialogueGroup` の処理開始時、`last_line` を `DialogueGroup.PlayerText`（プレイヤーの発言）で初期化する。`PlayerText` が nil の場合は空文字列とする。
-2. `DialogueResponse` を `Order` 昇順で順次処理する。
+2. 上記のトラバースアルゴリズムを加味し、`DialogueResponse` を順次処理する。
 3. 各 `DialogueResponse` の `INFO RNAM`（プロンプト/選択肢）リクエスト生成後、`last_line` を当該レスポンスの `MenuDisplayText` または `Prompt` で更新する。
 4. 各 `DialogueResponse` の `INFO NAM1`（NPCセリフ）リクエスト生成後、`last_line` を当該レスポンスの `Text` で更新する。
-5. これにより、各翻訳リクエストの `PreviousLine` には直前の発言テキストが設定される。
 
 **トピック名の決定ルール**:
 1. `DialogueResponse.TopicText` を最優先で使用する。
@@ -109,27 +114,28 @@ type ReferenceTerm struct {
 
 ### 3. 話者プロファイリング
 
-NPCの属性から口調指示文を生成し、`SpeakerProfile` を構築する。
+NPCの属性（種族・クラス等）と性格データ（ペルソナ）を統合して最適な口調指示文を生成し、`SpeakerProfile` を構築する。
 
-**口調推定ロジック**:
-1. **種族ベースの口調マッピング**: NPCの種族（`Race`）に基づく口調指示を取得する。種族ごとの口調マッピングはConfig定義とする。
-   - 例: カジート → 独特の三人称話法、オーク → 粗野な口調、アルトマー → 高慢な口調
-2. **ボイスタイプベースの口調マッピング**: NPCのボイスタイプ（`Voice`）に基づく口調指示を取得する。ボイスタイプごとの口調マッピングはConfig定義とする。
-3. **性別ベースのフォールバック**: ボイスタイプが不明な場合、性別に基づく標準口調を適用する。
+**口調モデリングアルゴリズム（優先度順）**:
+1. **ペルソナ（性格データ）によるオーバーライド**: 
+   - Persona Generator Slice が生成した `npc_personas` テーブルを `SpeakerID` で検索し、固有の性格・背景テキストが存在する場合、これが最も強い口調の文脈として適用される（種族やクラスの一般的な口調を上書き、または補強する）。
+2. **種族ベースのマッピング**: NPCの種族（`Race`）に基づく口調指示（Config定義）。
+   - 例: カジート → 独特の三人称話法、オーク → 粗野な口調、アルトマー → 高慢な口調。
+3. **クラス（職業）ベースのマッピング**: NPCのクラス（`Class` / 戦士、魔術師、貴族など）に基づく口調の微調整（Config定義）。
+   - 例: 種族がノルドでも、クラスが貴族であれば、野蛮な口調を抑え知的な言い回しを含める。
+4. **ボイスタイプベースのマッピング**: NPCのボイスタイプ（`Voice`）に基づく口調指示。
+5. **性別ベースのフォールバック**: 上記情報が不十分な場合、性別に基づく標準口調を適用。
    - Female: `"標準的な女性の口調（一人称は主に「私」を使い、落ち着いた知的な、あるいは世話好きな態度）"`
    - Male: `"標準的な男性の口調（一人称は状況に応じて「私」または「俺」を使い、粗暴すぎず丁寧すぎない、落ち着いた態度）"`
-4. **口調指示の合成**: 種族指示とボイスタイプ指示（またはフォールバック）を改行で結合する。
 
-**ペルソナの参照**:
-1. `SpeakerID` をキーとして `npc_personas` テーブル（Persona Generator Slice管理）からペルソナテキストを検索する。
-2. ペルソナが存在する場合、`SpeakerProfile.PersonaText` に設定する。
-3. ペルソナが存在しない場合、`PersonaText` は nil とし、種族・ボイスタイプベースの口調推定のみで翻訳を行う。
+**プロファイルの合成**: 
+ペルソナテキストが存在する場合はそれを主体とし、存在しない場合は種族・クラス・ボイスの各指示を組み合わせて、LLMが理解しやすいプレーンな「口調指示文」として `ToneInstruction` に結合する。
 
 **`ToneResolver` インターフェース**:
 ```go
 // ToneResolver はNPC属性から口調指示文を生成する。
 type ToneResolver interface {
-    Resolve(race string, voiceType string, sex string) string
+    Resolve(race string, class string, voiceType string, sex string) string
 }
 ```
 
@@ -178,11 +184,11 @@ type TermLookup interface {
 
 #### 5.1 会話レコード（DIAL/INFO）
 
-| レコードタイプ | ソース | 説明 |
-| :--- | :--- | :--- |
-| `DIAL FULL` | `DialogueGroup.PlayerText` | プレイヤーの選択肢テキスト（グループレベル） |
-| `INFO RNAM` | `DialogueResponse.MenuDisplayText` or `Prompt` | プレイヤーの選択肢/プロンプト |
-| `INFO NAM1` | `DialogueResponse.Text` | NPCのセリフ |
+| レコードタイプ | ソース                                         | 説明                                         |
+| :------------- | :--------------------------------------------- | :------------------------------------------- |
+| `DIAL FULL`    | `DialogueGroup.PlayerText`                     | プレイヤーの選択肢テキスト（グループレベル） |
+| `INFO RNAM`    | `DialogueResponse.MenuDisplayText` or `Prompt` | プレイヤーの選択肢/プロンプト                |
+| `INFO NAM1`    | `DialogueResponse.Text`                        | NPCのセリフ                                  |
 
 **コンテキスト構築**:
 - `PreviousLine`: §2 の会話ツリー解析で決定。
@@ -194,11 +200,11 @@ type TermLookup interface {
 
 #### 5.2 クエストレコード（QUST）
 
-| レコードタイプ | ソース | 説明 |
-| :--- | :--- | :--- |
-| `QUST FULL` | `Quest.Name` | クエスト名 |
-| `QUST CNAM` | `QuestStage.Text` | クエストステージ記述 |
-| `QUST NNAM` | `QuestObjective.Text` | クエスト目標テキスト |
+| レコードタイプ | ソース                | 説明                 |
+| :------------- | :-------------------- | :------------------- |
+| `QUST FULL`    | `Quest.Name`          | クエスト名           |
+| `QUST CNAM`    | `QuestStage.Text`     | クエストステージ記述 |
+| `QUST NNAM`    | `QuestObjective.Text` | クエスト目標テキスト |
 
 **コンテキスト構築**:
 - `QuestName`: `Quest.Name` を設定する。
@@ -207,10 +213,10 @@ type TermLookup interface {
 
 #### 5.3 アイテムレコード
 
-| レコードタイプ | ソース | 説明 |
-| :--- | :--- | :--- |
-| `BOOK DESC` | `Item.Text` | 書籍の本文 |
-| `{Type} DESC` | `Item.Description` | アイテム説明文 |
+| レコードタイプ | ソース             | 説明           |
+| :------------- | :----------------- | :------------- |
+| `BOOK DESC`    | `Item.Text`        | 書籍の本文     |
+| `{Type} DESC`  | `Item.Description` | アイテム説明文 |
 
 **コンテキスト構築**:
 - `ItemTypeHint`: `Item.TypeHint` を設定する（例: `"Weapon"`, `"Armor"`, `"Book"`）。
@@ -223,15 +229,15 @@ type TermLookup interface {
 
 #### 5.4 魔法レコード
 
-| レコードタイプ | ソース | 説明 |
-| :--- | :--- | :--- |
-| `{Type} DESC` | `Magic.Description` | 魔法効果の説明文 |
+| レコードタイプ | ソース              | 説明             |
+| :------------- | :------------------ | :--------------- |
+| `{Type} DESC`  | `Magic.Description` | 魔法効果の説明文 |
 
 #### 5.5 メッセージレコード
 
-| レコードタイプ | ソース | 説明 |
-| :--- | :--- | :--- |
-| `MESG DESC` | `Message.Description` | メッセージの説明文 |
+| レコードタイプ | ソース                | 説明               |
+| :------------- | :-------------------- | :----------------- |
+| `MESG DESC`    | `Message.Description` | メッセージの説明文 |
 
 #### 5.6 共通ルール
 - 翻訳対象テキストが既に日本語を含む場合はスキップする（`contains_japanese` 判定）。
@@ -260,7 +266,50 @@ type SummaryLookup interface {
 - Summary Generator Sliceが管理するソースファイル単位のSQLiteキャッシュファイルへの `*sql.DB` をDIで受け取る。
 - 本Slice内の `SummaryLookup` 実装が SELECT 操作のみを行う（読み取り専用）。
 
-### 7. メインインターフェース
+### 7. プロンプトエンジニアリング設計 (Prompt Engineering Template Design)
+
+レコード種別（会話、クエスト、アイテム等）に応じ、`ConfigStore` のテンプレートを呼び出して動的にパラメータを埋め込むことで、LLMへ送信するプロンプトを構築する。
+
+**基本方針**:
+- **役割の分離**: 「システムプロンプト」は翻訳者としての役割、前提条件（ペルソナや要約）、出力ルールを定義する。「ユーザープロンプト」は翻訳対象の入力テキストのみを持たせる。
+- **変数の埋め込み**: `{VaraibleName}` 形式のプレースホルダーを、本Sliceで収集したコンテキスト情報に置換する。
+
+**システムプロンプトの動的変数定義**:
+- `{SpeakerTone}`: 話者の口調、ペルソナ、背景設定のテキスト
+- `{PreviousLine}`: 直前のセリフのテキスト
+- `{DialogueSummary}`: 会話フローの要約
+- `{QuestSummary}`: クエスト全体のこれまでのあらすじ
+- `{ItemTypeHint}`: アイテム種別ヒント 
+- `{ReferenceTerms}`: 抽出された用語の [英語: 日本語] ペアのリスト
+
+**レコード種別別標準テンプレート例**:
+1. **会話系 (INFO / DIAL)**: 会話文のトーンを維持し、直前の流れを汲み取らせる形。
+   ```
+   You are an expert translator for the game Skyrim. Translate the given text into natural conversational Japanese.
+   
+   Speaker Persona: {SpeakerTone}
+   Previous Line: {PreviousLine}
+   Conversation Context: {DialogueSummary}
+   
+   Rules:
+   - Use the designated persona for the speaker's tone.
+   - Match the provided terminology exactly: {ReferenceTerms}
+   ```
+2. **クエスト系 (QUST)**: 要約との整合性を持たせた、ジャーナル風の端的な表現。
+   ```
+   Translate the quest log/objective into Japanese, keeping it concise and informative as a player's journal.
+   
+   Quest Context: {QuestSummary}
+   Terminology to strictly follow: {ReferenceTerms}
+   ```
+3. **アイテム・書籍系 (DESC)**: アイテムとしてのフレーバー維持や、書籍らしい文体（段落維持）。
+   ```
+   Translate the description into Japanese. It is a description for an in-game item.
+   Item Type: {ItemTypeHint}
+   Terminology to strictly follow: {ReferenceTerms}
+   ```
+
+### 8. メインインターフェース
 
 **`ContextEngine` インターフェース**:
 ```go
@@ -283,11 +332,11 @@ type ContextEngineConfig struct {
 }
 ```
 
-### 8. 進捗通知
+### 9. 進捗通知
 - 翻訳リクエスト構築の進捗（レコードタイプ別の完了数/総数）をコールバックまたはチャネル経由でProcess Managerに通知し、UIでのリアルタイム進捗表示を可能にする。
 - 参照用語のバッチ検索進捗も通知する。
 
-### 9. ライブラリの選定
+### 10. ライブラリの選定
 - DBアクセス (PM側): `github.com/mattn/go-sqlite3` または標準 `database/sql`
 - 依存性注入: `github.com/google/wire`
 - 並行処理: Go標準 `sync`, `context`
