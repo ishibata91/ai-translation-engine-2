@@ -1,12 +1,11 @@
-package loader
+package loader_slice
 
 import (
 	"github.com/google/wire"
-	"github.com/ishibata91/ai-translation-engine-2/pkg/contract"
 )
 
-// ProvideLoader returns an implementation of contract.Loader.
-func ProvideLoader() contract.Loader {
+// ProvideLoader returns an implementation of Loader.
+func ProvideLoader() Loader {
 	return newJSONLoader()
 }
 

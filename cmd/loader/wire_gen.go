@@ -7,14 +7,13 @@
 package main
 
 import (
-	"github.com/ishibata91/ai-translation-engine-2/pkg/contract"
-	"github.com/ishibata91/ai-translation-engine-2/pkg/loader"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/loader_slice"
 )
 
 // Injectors from wire.go:
 
 // InitializeLoader creates a new Loader instance with all dependencies wired.
-func InitializeLoader() contract.Loader {
-	contractLoader := loader.ProvideLoader()
-	return contractLoader
+func InitializeLoader() loader_slice.Loader {
+	loader := loader_slice.ProvideLoader()
+	return loader
 }

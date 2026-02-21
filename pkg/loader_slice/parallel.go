@@ -1,4 +1,4 @@
-package loader
+package loader_slice
 
 import (
 	"context"

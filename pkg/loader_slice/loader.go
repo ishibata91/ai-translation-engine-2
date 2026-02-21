@@ -1,10 +1,9 @@
-package loader
+package loader_slice
 
 import (
 	"context"
 	"fmt"
 
-	"github.com/ishibata91/ai-translation-engine-2/pkg/contract"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/domain/models"
 )
 
@@ -12,7 +11,7 @@ import (
 type jsonLoader struct{}
 
 // newJSONLoader creates a new instance of jsonLoader.
-func newJSONLoader() contract.Loader {
+func newJSONLoader() Loader {
 	return &jsonLoader{}
 }
 

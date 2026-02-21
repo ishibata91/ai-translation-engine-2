@@ -334,9 +334,9 @@ type TranslationVerifier interface {
 - JSON処理: Go標準 `encoding/json`
 
 ## 関連ドキュメント
-- [クラス図](./pass2_translator_class_diagram.md) ✅
-- [シーケンス図](./pass2_translator_sequence_diagram.md) ✅
-- [テスト設計](./pass2_translator_test_spec.md) ✅
+- [クラス図](main_translator_class_diagram.md) ✅
+- [シーケンス図](main_translator_sequence_diagram.md) ✅
+- [テスト設計](main_translator_test_spec.md) ✅
 - [要件定義書](../requirements.md)
 - [Context Engine Slice 仕様書](../ContextEngineSlice/spec.md)
 - [Term Translator Slice 仕様書](../TermTranslatorSlice/spec.md)

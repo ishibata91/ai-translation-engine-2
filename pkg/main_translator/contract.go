@@ -1,4 +1,4 @@
-package pass2_translator
+package main_translator
 
 import (
 	"context"

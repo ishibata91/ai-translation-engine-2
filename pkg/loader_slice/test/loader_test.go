@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/ishibata91/ai-translation-engine-2/pkg/loader"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/loader_slice"
 )
 
 func TestLoader_LoadExtractedJSON_UTF8(t *testing.T) {
@@ -36,7 +36,7 @@ func TestLoader_LoadExtractedJSON_UTF8(t *testing.T) {
 	}
 
 	// 2. Initialize Loader
-	l := loader.ProvideLoader()
+	l := loader_slice.ProvideLoader()
 
 	// 3. Load Data
 	data, err := l.LoadExtractedJSON(context.Background(), filePath)

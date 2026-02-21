@@ -1,4 +1,4 @@
-package pass2_translator
+package main_translator
 
 // TranslationResult represents the result of translating a single record.
 type TranslationResult struct {

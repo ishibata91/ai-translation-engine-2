@@ -1,4 +1,4 @@
-package contract
+package loader_slice
 
 import (
 	"context"
