@@ -193,5 +193,5 @@ Pass 2（本文翻訳）において、翻訳対象の `DialogueResponse` の `S
 - [テスト設計](./npc_persona_generator_test_spec.md)
 - [要件定義書](../requirements.md)
 - [Term Translator Slice 仕様書](../term_translator/spec.md)
-- [LLMクライアントインターフェース](../infrastructure/llm_client/llm_client_interface.md)
-- [Config Store 仕様書](../infrastructure/config_store/spec.md)
+- [LLMクライアントインターフェース](../llm_client/llm_client_interface.md)
+- [Config Store 仕様書](../config_store/spec.md)

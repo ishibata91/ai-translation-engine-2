@@ -166,5 +166,5 @@ NPC名（`NPC_:FULL`, `NPC_:SHRT`）は、他のレコードタイプと異な�
 - [シーケンス図](./term_translator_sequence_diagram.md)
 - [テスト設計](./term_translator_test_spec.md)
 - [Dictionary Builder Slice 仕様書](../dictionary_builder/spec.md)
-- [LLMクライアントインターフェース](../infrastructure/llm_client/llm_client_interface.md)
-- [Config Store 仕様書](../infrastructure/config_store/spec.md)
+- [LLMクライアントインターフェース](../llm_client/llm_client_interface.md)
+- [Config Store 仕様書](../config_store/spec.md)

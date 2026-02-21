@@ -112,6 +112,6 @@ Interface-First AIDD v2 アーキテクチャに則り、各Sliceや上位層が
 - JSON操作: Go標準 `encoding/json`（`ui_state`テーブル用のみ）
 
 ## 関連ドキュメント
-- [クラス図](./config_store_class_diagram.md)
-- [シーケンス図](./config_store_sequence_diagram.md)
-- [テスト設計](./config_store_test_spec.md)
+- [クラス図](config_store_class_diagram.md)
+- [シーケンス図](config_store_sequence_diagram.md)
+- [テスト設計](config_store_test_spec.md)
