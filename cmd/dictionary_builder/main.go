@@ -24,11 +24,6 @@ func main() {
 	}
 	xmlFilePath := args[0]
 
-	// Configure structured logging (slog)
-	handler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		Level: slog.LevelDebug,
-	})
-	slog.SetDefault(slog.New(handler))
 
 	ctx := context.Background()
 	slog.InfoContext(ctx, "Starting Dictionary Builder", "dbPath", *dbPath, "xmlFilePath", xmlFilePath)

@@ -10,6 +10,7 @@ import (
 	"context"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/config_store"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/database"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/logger"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/loader_slice"
 )
 
@@ -21,7 +22,8 @@ func InitializeLoader(ctx context.Context) (loader_slice.Loader, func(), error) 
 	if err != nil {
 		return nil, nil, err
 	}
-	sqLiteStore, err := config_store.NewSQLiteStore(ctx, db)
+	slogLogger := logger.ProvideLogger()
+	sqLiteStore, err := config_store.NewSQLiteStore(ctx, db, slogLogger)
 	if err != nil {
 		cleanup()
 		return nil, nil, err

@@ -101,10 +101,16 @@
 
 各Slice内では「Contract（インターフェース）」と「Implementation（実装）」が厳格に分離されており、AIは他Sliceの実装詳細を知ることなく、Contractのみをコンテキストとして実装を生成する。
 
+**1ファイル内でのプライベートメソッド分割によるSRP化 (Method-Level SRP)**:
+*   **人間の認知負荷の軽減**: AIが生成した複雑なロジックを人間がレビュー・デバッグしやすくするため、巨大な処理（Fat Method）は単一責任の原則（SRP）に基づき、意味のある単位に分割する。
+*   **再利用性と個別のユニットテストは不要**: VSAアーキテクチャではスライス間のロジック再利用をあえて放棄しており、テストも「スライス単位のパラメタライズドテスト」（セクション6参照）で担保される。そのため、他モジュールからの再利用を目的としたパッケージの切り出しや、細粒度なユニットテストを行うためのファイル分離は不要である。
+*   **「同一ファイル内のプライベートメソッド」への抽出**: ロジックを分割する際は、外部ファイルに抽出するのではなく、**対象の処理と同じファイル内にプライベートメソッドとして定義**する。これにより、処理の実行フローがファイル内で目次のように自己文書化され、複数ファイルを行き来する人間の認知負荷を劇的に下げることができる。
+
 **LLM統合の原則 (LLM Integration Principle)**:
 *   **動的プロバイダ解決**: LLMを利用する全てのスライス（`ContextEngineSlice`, `DictionaryBuilderSlice` 等）は、特定プロバイダ（Gemini, Local等）の具体的な実装に直接依存してはならない。
 *   **ConfigStore経由の設定受信**: 各スライスは、`ConfigStoreSlice` によって管理される設定情報（`namespace: llm` 等の値）を引数またはDIなどで受け取らなければならない。
 *   **LLMClientファクトリの利用**: スライスは受信した設定情報を用いて `LLMManager`（または同等のファクトリクラス）から、その時点のユーザー設定に合致した `LLMClient` インターフェースのインスタンスを動的に取得し、使用するものとする。
+*   **翻訳出力フォーマットの統一**: 全てのLLMベースの翻訳リクエストにおけるプロンプト要件として、出力フォーマットを `TL: |にほんご|` のパイプ区切り形式に強制する。LLMからのレスポンスはこの形式からパイプ間のテキストのみをプログラム的に抽出・抽出失敗時のフォールバック処理を実装すること。これにより、LLMが余計な説明文等を付加した場合でも安定して翻訳結果だけを取り出せるようにする。
 
 ---
 
@@ -185,7 +191,7 @@ graph TD
 | :--------------- | :-------------------------------------- | :---------------------------------------------------------------- |
 | **トレース生成** | `go.opentelemetry.io/otel` + `otelhttp` | HTTP リクエストから TraceID / SpanID を自動抽出・生成             |
 | **ログ出力**     | `log/slog` (Go 標準)                    | 構造化ログの統一 API                                              |
-| **TraceID 連携** | `slog-otel` 等の Handler Wrapper        | `context.Context` から TraceID を抽出し、ログフィールドに自動付与 |
+| **TraceID 連携** | `github.com/samber/slog-otel`           | `context.Context` から TraceID を抽出し、ログフィールドに自動付与 |
 | **出力形式**     | `slog.JSONHandler`                      | JSON 形式でのログ出力（`trace_id`, `span_id` フィールド含む）     |
 
 ### 7.3 実装規約
@@ -221,6 +227,27 @@ graph TD
     *   ログレベルによるフィルタリング（DEBUG / INFO / WARN / ERROR）
     *   自動スクロール（テール表示）と一時停止機能
 *   **データ取得方式**: バックエンドから WebSocket または SSE (Server-Sent Events) でリアルタイムにログをストリーミングする。
+
+### 7.6 追加要件 (Added Requirements)
+
+#### Requirement: Automatic Trace Correlation
+`pkg/` 以下の各コンポーネントで出力される全ての `slog` ログは、OpenTelemetry のトレース情報（TraceID, SpanID）を保持していなければならない。
+
+#### Requirement: Context Propagation
+全ての `Contract` メソッドおよびその内部処理において、`context.Context` を正しく伝搬させ、`slog.InfoContext` 等の `Context` 付きメソッドを使用しなければならない。
+
+#### Requirement: slog-otel Integration
+`github.com/samber/slog-otel` を利用し、`slog.Handler` レイヤーで `context.Context` からトレース情報を抽出し、JSON ログの `trace_id` および `span_id` フィールドに自動的に記録されるように設定すること。
+
+### 7.7 検証シナリオ (Scenarios)
+
+#### Scenario: Log with TraceID
+- **WHEN** OTel トレースが開始された context を用いてログを出力する
+- **THEN** 出力された JSON ログに、正しい `trace_id` と `span_id` が含まれている
+
+#### Scenario: Log without TraceID
+- **WHEN** OTel トレース情報がない context を用いてログを出力する
+- **THEN** ログは正常に出力され、`trace_id` 等のフィールドは空（または省略）となるが、エラーにはならない
 
 ---
 
