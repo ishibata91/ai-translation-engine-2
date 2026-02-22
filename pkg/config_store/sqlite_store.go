@@ -13,6 +13,7 @@ import (
 // SQLiteStore implements ConfigStore, UIStateStore, and SecretStore using SQLite.
 type SQLiteStore struct {
 	db       *sql.DB
+	logger   *slog.Logger
 	mu       sync.RWMutex
 	watchers map[string][]ChangeCallback
 }
@@ -20,8 +21,8 @@ type SQLiteStore struct {
 // --- ConfigStore Implementation ---
 
 func (s *SQLiteStore) Get(ctx context.Context, namespace string, key string) (string, error) {
-	slog.DebugContext(ctx, "ENTER ConfigStore.Get", slog.String("namespace", namespace), slog.String("key", key))
-	defer slog.DebugContext(ctx, "EXIT ConfigStore.Get")
+	s.logger.DebugContext(ctx, "ENTER ConfigStore.Get", slog.String("namespace", namespace), slog.String("key", key))
+	defer s.logger.DebugContext(ctx, "EXIT ConfigStore.Get")
 
 	var value string
 	err := s.db.QueryRowContext(ctx, "SELECT value FROM config WHERE namespace = ? AND key = ?", namespace, key).Scan(&value)
@@ -35,8 +36,8 @@ func (s *SQLiteStore) Get(ctx context.Context, namespace string, key string) (st
 }
 
 func (s *SQLiteStore) Set(ctx context.Context, namespace string, key string, value string) error {
-	slog.DebugContext(ctx, "ENTER ConfigStore.Set", slog.String("namespace", namespace), slog.String("key", key))
-	defer slog.DebugContext(ctx, "EXIT ConfigStore.Set")
+	s.logger.DebugContext(ctx, "ENTER ConfigStore.Set", slog.String("namespace", namespace), slog.String("key", key))
+	defer s.logger.DebugContext(ctx, "EXIT ConfigStore.Set")
 
 	oldValue, err := s.Get(ctx, namespace, key)
 	if err != nil {
@@ -63,8 +64,8 @@ func (s *SQLiteStore) Set(ctx context.Context, namespace string, key string, val
 }
 
 func (s *SQLiteStore) Delete(ctx context.Context, namespace string, key string) error {
-	slog.DebugContext(ctx, "ENTER ConfigStore.Delete", slog.String("namespace", namespace), slog.String("key", key))
-	defer slog.DebugContext(ctx, "EXIT ConfigStore.Delete")
+	s.logger.DebugContext(ctx, "ENTER ConfigStore.Delete", slog.String("namespace", namespace), slog.String("key", key))
+	defer s.logger.DebugContext(ctx, "EXIT ConfigStore.Delete")
 
 	oldValue, _ := s.Get(ctx, namespace, key)
 
@@ -81,8 +82,8 @@ func (s *SQLiteStore) Delete(ctx context.Context, namespace string, key string) 
 }
 
 func (s *SQLiteStore) GetAll(ctx context.Context, namespace string) (map[string]string, error) {
-	slog.DebugContext(ctx, "ENTER ConfigStore.GetAll", slog.String("namespace", namespace))
-	defer slog.DebugContext(ctx, "EXIT ConfigStore.GetAll")
+	s.logger.DebugContext(ctx, "ENTER ConfigStore.GetAll", slog.String("namespace", namespace))
+	defer s.logger.DebugContext(ctx, "EXIT ConfigStore.GetAll")
 
 	rows, err := s.db.QueryContext(ctx, "SELECT key, value FROM config WHERE namespace = ?", namespace)
 	if err != nil {
@@ -145,8 +146,8 @@ func (s *SQLiteStore) notifyWatchers(namespace, key, oldValue, newValue string) 
 // --- UIStateStore Implementation ---
 
 func (s *SQLiteStore) SetJSON(ctx context.Context, namespace string, key string, value any) error {
-	slog.DebugContext(ctx, "ENTER UIStateStore.SetJSON", slog.String("namespace", namespace), slog.String("key", key))
-	defer slog.DebugContext(ctx, "EXIT UIStateStore.SetJSON")
+	s.logger.DebugContext(ctx, "ENTER UIStateStore.SetJSON", slog.String("namespace", namespace), slog.String("key", key))
+	defer s.logger.DebugContext(ctx, "EXIT UIStateStore.SetJSON")
 
 	data, err := json.Marshal(value)
 	if err != nil {
@@ -168,8 +169,8 @@ func (s *SQLiteStore) SetJSON(ctx context.Context, namespace string, key string,
 }
 
 func (s *SQLiteStore) GetJSON(ctx context.Context, namespace string, key string, target any) error {
-	slog.DebugContext(ctx, "ENTER UIStateStore.GetJSON", slog.String("namespace", namespace), slog.String("key", key))
-	defer slog.DebugContext(ctx, "EXIT UIStateStore.GetJSON")
+	s.logger.DebugContext(ctx, "ENTER UIStateStore.GetJSON", slog.String("namespace", namespace), slog.String("key", key))
+	defer s.logger.DebugContext(ctx, "EXIT UIStateStore.GetJSON")
 
 	var value string
 	err := s.db.QueryRowContext(ctx, "SELECT value FROM ui_state WHERE namespace = ? AND key = ?", namespace, key).Scan(&value)
@@ -189,8 +190,8 @@ func (s *SQLiteStore) GetJSON(ctx context.Context, namespace string, key string,
 // --- SecretStore Implementation ---
 
 func (s *SQLiteStore) GetSecret(ctx context.Context, namespace string, key string) (string, error) {
-	slog.DebugContext(ctx, "ENTER SecretStore.GetSecret", slog.String("namespace", namespace), slog.String("key", key))
-	defer slog.DebugContext(ctx, "EXIT SecretStore.GetSecret")
+	s.logger.DebugContext(ctx, "ENTER SecretStore.GetSecret", slog.String("namespace", namespace), slog.String("key", key))
+	defer s.logger.DebugContext(ctx, "EXIT SecretStore.GetSecret")
 
 	var value string
 	err := s.db.QueryRowContext(ctx, "SELECT value FROM secrets WHERE namespace = ? AND key = ?", namespace, key).Scan(&value)
@@ -204,8 +205,8 @@ func (s *SQLiteStore) GetSecret(ctx context.Context, namespace string, key strin
 }
 
 func (s *SQLiteStore) SetSecret(ctx context.Context, namespace string, key string, value string) error {
-	slog.DebugContext(ctx, "ENTER SecretStore.SetSecret", slog.String("namespace", namespace), slog.String("key", key))
-	defer slog.DebugContext(ctx, "EXIT SecretStore.SetSecret")
+	s.logger.DebugContext(ctx, "ENTER SecretStore.SetSecret", slog.String("namespace", namespace), slog.String("key", key))
+	defer s.logger.DebugContext(ctx, "EXIT SecretStore.SetSecret")
 
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO secrets (namespace, key, value, updated_at)
@@ -222,8 +223,8 @@ func (s *SQLiteStore) SetSecret(ctx context.Context, namespace string, key strin
 }
 
 func (s *SQLiteStore) DeleteSecret(ctx context.Context, namespace string, key string) error {
-	slog.DebugContext(ctx, "ENTER SecretStore.DeleteSecret", slog.String("namespace", namespace), slog.String("key", key))
-	defer slog.DebugContext(ctx, "EXIT SecretStore.DeleteSecret")
+	s.logger.DebugContext(ctx, "ENTER SecretStore.DeleteSecret", slog.String("namespace", namespace), slog.String("key", key))
+	defer s.logger.DebugContext(ctx, "EXIT SecretStore.DeleteSecret")
 
 	_, err := s.db.ExecContext(ctx, "DELETE FROM secrets WHERE namespace = ? AND key = ?", namespace, key)
 	if err != nil {
@@ -233,8 +234,8 @@ func (s *SQLiteStore) DeleteSecret(ctx context.Context, namespace string, key st
 }
 
 func (s *SQLiteStore) ListSecretKeys(ctx context.Context, namespace string) ([]string, error) {
-	slog.DebugContext(ctx, "ENTER SecretStore.ListSecretKeys", slog.String("namespace", namespace))
-	defer slog.DebugContext(ctx, "EXIT SecretStore.ListSecretKeys")
+	s.logger.DebugContext(ctx, "ENTER SecretStore.ListSecretKeys", slog.String("namespace", namespace))
+	defer s.logger.DebugContext(ctx, "EXIT SecretStore.ListSecretKeys")
 
 	rows, err := s.db.QueryContext(ctx, "SELECT key FROM secrets WHERE namespace = ?", namespace)
 	if err != nil {

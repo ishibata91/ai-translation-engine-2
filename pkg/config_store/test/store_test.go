@@ -3,6 +3,7 @@ package test
 import (
 	"context"
 	"database/sql"
+	"log/slog"
 	"testing"
 	"time"
 
@@ -17,7 +18,7 @@ func setupTestDB(t *testing.T) (*sql.DB, *config_store.SQLiteStore) {
 	}
 
 	ctx := context.Background()
-	store, err := config_store.NewSQLiteStore(ctx, db)
+	store, err := config_store.NewSQLiteStore(ctx, db, slog.Default())
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}

@@ -3,6 +3,7 @@ package dictionary_builder_test
 import (
 	"context"
 	"database/sql"
+	"log/slog"
 	"strings"
 	"testing"
 
@@ -68,7 +69,7 @@ func TestImporter_ImportXML(t *testing.T) {
 
 	store := dictionary_builder.NewDictionaryStore(db)
 	config := dictionary_builder.DefaultConfig()
-	importer := dictionary_builder.NewImporter(config, store)
+	importer := dictionary_builder.NewImporter(config, store, slog.Default())
 
 	ctx := context.Background()
 	// Use strings.NewReader directly instead of a temp file

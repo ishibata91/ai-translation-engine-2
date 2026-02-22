@@ -11,21 +11,23 @@ import (
 type xmlImporter struct {
 	config Config
 	store  DictionaryStore
+	logger *slog.Logger
 }
 
 // NewImporter creates a new instance of DictionaryImporter.
-func NewImporter(config Config, store DictionaryStore) DictionaryImporter {
+func NewImporter(config Config, store DictionaryStore, logger *slog.Logger) DictionaryImporter {
 	return &xmlImporter{
 		config: config,
 		store:  store,
+		logger: logger.With("component", "DictionaryImporter"),
 	}
 }
 
 // ImportXML reads an xTranslator XML from io.Reader using a streaming parser
 // to extract allowed noun records and persist them.
 func (i *xmlImporter) ImportXML(ctx context.Context, file io.Reader) (int, error) {
-	slog.DebugContext(ctx, "ENTER DictionaryImporter.ImportXML")
-	defer slog.DebugContext(ctx, "EXIT DictionaryImporter.ImportXML")
+	i.logger.DebugContext(ctx, "ENTER DictionaryImporter.ImportXML")
+	defer i.logger.DebugContext(ctx, "EXIT DictionaryImporter.ImportXML")
 
 	decoder := xml.NewDecoder(file)
 
@@ -68,7 +70,7 @@ func (i *xmlImporter) ImportXML(ctx context.Context, file io.Reader) (int, error
 
 				err = decoder.DecodeElement(&strElem, &se)
 				if err != nil {
-					slog.WarnContext(ctx, "failed to decode String element, skipping", "error", err)
+					i.logger.WarnContext(ctx, "failed to decode String element, skipping", "error", err)
 					continue
 				}
 
@@ -106,6 +108,6 @@ func (i *xmlImporter) ImportXML(ctx context.Context, file io.Reader) (int, error
 		totalImported += len(batch)
 	}
 
-	slog.InfoContext(ctx, "Successfully imported terms", "total", totalImported)
+	i.logger.InfoContext(ctx, "Successfully imported terms", "total", totalImported)
 	return totalImported, nil
 }

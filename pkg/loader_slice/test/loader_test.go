@@ -3,6 +3,7 @@ package loader_test
 import (
 	"context"
 	"database/sql"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
@@ -49,7 +50,7 @@ func TestLoader_LoadExtractedJSON_UTF8(t *testing.T) {
 	}
 	defer db.Close()
 
-	store, err := config_store.NewSQLiteStore(context.Background(), db)
+	store, err := config_store.NewSQLiteStore(context.Background(), db, slog.Default())
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}

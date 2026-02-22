@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
 
 	"github.com/google/wire"
 )
@@ -17,13 +18,14 @@ var ConfigStoreSet = wire.NewSet(
 )
 
 // NewSQLiteStore creates a new SQLiteStore instance and runs migrations.
-func NewSQLiteStore(ctx context.Context, db *sql.DB) (*SQLiteStore, error) {
+func NewSQLiteStore(ctx context.Context, db *sql.DB, logger *slog.Logger) (*SQLiteStore, error) {
 	if err := Migrate(ctx, db); err != nil {
 		return nil, fmt.Errorf("migration failed: %w", err)
 	}
 
 	store := &SQLiteStore{
 		db:       db,
+		logger:   logger.With("component", "SQLiteStore"),
 		watchers: make(map[string][]ChangeCallback),
 	}
 	return store, nil
