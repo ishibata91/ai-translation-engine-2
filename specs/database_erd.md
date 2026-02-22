@@ -153,5 +153,42 @@ erDiagram
     }
 ```
 
+## Job Queue Infrastructure (LLMジョブキュー)
+
+インフラ層の汎用ジョブキュー。ドメイン知識を一切持たず、`ProcessID` と `Request` のペアを永続化します。完了済みジョブはスライスへの結果渡し後に即時物理削除（Hard Delete）されるため、テーブルは常に最小サイズを維持します。
+**データベース名:** `llm_jobs.db` (インフラ専用・全Mod共通)
+
+```mermaid
+%%{init: {'theme': 'dark', 'themeVariables': {
+  'primaryColor': '#2b2b2b',
+  'primaryTextColor': '#e0e0e0',
+  'primaryBorderColor': '#00bcd4',
+  'lineColor': '#888888',
+  'secondaryColor': '#006064',
+  'tertiaryColor': '#00838f',
+  'mainBkg': '#1e1e1e',
+  'nodeBorder': '#5a5a5a'
+}}}%%
+erDiagram
+    llm_jobs ||--o| schema_version : "schema"
+
+    llm_jobs {
+        TEXT id PK "ジョブID (UUID)"
+        TEXT process_id "処理単位ID (UUID, INDEX) ProcessManagerが刈り取りに使用"
+        TEXT request_json "LLMリクエスト (JSON)"
+        TEXT status "PENDING / IN_PROGRESS / COMPLETED / FAILED"
+        TEXT batch_job_id "Batch API ジョブID (batch戦略時のみ使用, nullable)"
+        TEXT response_json "完了時のLLMレスポンス (JSON, nullable)"
+        TEXT error_message "エラーメッセージ (FAILED時のみ, nullable)"
+        DATETIME created_at "登録日時"
+        DATETIME updated_at "最終更新日時"
+    }
+
+    schema_version {
+        INTEGER version "現在のスキーマバージョン"
+        DATETIME applied_at "適用日時"
+    }
+```
+
 ## 補足事項
 - **Vertical Slice Architecture の原則**: VSAの原則（Refactoring Strategy Section 5）に基づき、上記テーブルはDRY原則を避け「あえて分断」されています。各Slice（`ConfigStoreSlice`, `DictionaryBuilderSlice`, `PersonaGenSlice`, `TermTranslatorSlice`）は自身が必要とするテーブルのみに依存し、他Sliceのテーブルに直接クエリを発行することはありません。

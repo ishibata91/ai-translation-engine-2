@@ -66,3 +66,22 @@ func (m *Manager) GetBatchClient(ctx context.Context, config llm.LLMConfig) (llm
 		return nil, fmt.Errorf("llm_manager: unknown provider %q", config.Provider)
 	}
 }
+
+// ResolveBulkStrategy は llm.BulkStrategy を受け取り、プロバイダーに応じた
+// 有効なバルク戦略を返す。
+// ローカルLLM（provider == "local"）は Batch API を持たないため、
+// "batch" が指定されていても強制的に "sync" にフォールバックする。
+func (m *Manager) ResolveBulkStrategy(ctx context.Context, strategy llm.BulkStrategy, provider string) llm.BulkStrategy {
+	m.logger.DebugContext(ctx, "ENTER ResolveBulkStrategy", "strategy", strategy, "provider", provider)
+
+	if provider == "local" && strategy == llm.BulkStrategyBatch {
+		m.logger.WarnContext(ctx, "ResolveBulkStrategy: provider 'local' does not support batch strategy; falling back to sync",
+			"provider", provider,
+		)
+		return llm.BulkStrategySync
+	}
+	if strategy == "" {
+		return llm.BulkStrategySync
+	}
+	return strategy
+}

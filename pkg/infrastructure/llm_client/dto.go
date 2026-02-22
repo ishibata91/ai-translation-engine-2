@@ -25,6 +25,40 @@ type TokenUsage struct {
 	TotalTokens      int `json:"total_tokens"`
 }
 
+// BulkStrategy represents the bulk processing strategy for LLM requests.
+type BulkStrategy string
+
+const (
+	// BulkStrategyBatch uses provider-native async Batch API (e.g., Gemini, xAI).
+	BulkStrategyBatch BulkStrategy = "batch"
+	// BulkStrategySync uses ExecuteBulkSync for synchronous concurrent processing.
+	// This is the only option for local LLM providers.
+	BulkStrategySync BulkStrategy = "sync"
+)
+
+// ConfigStore keys for LLM bulk sync settings.
+const (
+	// LLMConfigNamespace is the ConfigStore namespace for LLM-related settings.
+	LLMConfigNamespace = "llm"
+	// LLMBulkStrategyKey is the ConfigStore key for the bulk processing strategy.
+	// Values: "batch" or "sync".
+	LLMBulkStrategyKey = "bulk_strategy"
+	// LLMSyncConcurrencyKeySuffix is the suffix appended to the provider name
+	// to build the ConfigStore key for sync concurrency (e.g., "sync_concurrency.gemini").
+	LLMSyncConcurrencyKeySuffix = "sync_concurrency"
+)
+
+// DefaultConcurrency returns the default concurrency for a given provider.
+// Local LLM providers default to 1; cloud providers default to 5.
+func DefaultConcurrency(provider string) int {
+	switch provider {
+	case "local":
+		return 1
+	default:
+		return 5
+	}
+}
+
 // LLMConfig holds configuration for a specific LLM provider instance.
 type LLMConfig struct {
 	Provider   string                 `json:"provider"`
@@ -32,6 +66,9 @@ type LLMConfig struct {
 	Endpoint   string                 `json:"endpoint"`
 	Model      string                 `json:"model"`
 	Parameters map[string]interface{} `json:"parameters,omitempty"`
+	// Concurrency controls how many parallel workers are used in ExecuteBulkSync.
+	// Only relevant when BulkStrategy is BulkStrategySync.
+	Concurrency int `json:"concurrency,omitempty"`
 }
 
 // BatchJobID identifies a batch processing job.

@@ -61,3 +61,41 @@ xAI の `BatchClient` 実装は、OpenAI Batch API ではなく xAI 独自のバ
 #### Scenario: xAI Batch 結果の取得
 - **WHEN** `BatchClient.GetBatchResults(ctx, id)` が呼ばれた時
 - **THEN** `GET /v1/batches/{batch_id}/results` をページネーションが尽きるまで繰り返し、全結果を `[]Response` として返すこと
+
+---
+
+### Requirement: 同期バルクリクエストの処理 (ExecuteBulkSync)
+LLMClient（または共通ヘルパー関数）は、複数の `Request` を受け取り、指定された `Concurrency` に基づいて並列に処理を行い、すべてのリクエストが完了した時点で `[]Response` を返さなければならない (MUST)。
+
+#### Scenario: 正常なバルク処理
+- **WHEN** 10件のリクエストリストと `Concurrency=3` が渡された
+- **THEN** ワーカープールが構築され、最大3並列でAPI呼び出しが行われる
+- **AND** すべての処理が完了すると要素数10のレスポンスリストが返る（入力順序保証）
+
+#### Scenario: 一部のリクエストが失敗した場合 (Partial Failure)
+- **WHEN** 複数件のバルクリクエストのうち、1件がAPIエラー（レートリミット等）になった
+- **THEN** 成功したリクエストは正常な `Response` が返り、失敗したリクエストのみ `Response.Success = false` と `Response.Error` が格納される
+- **AND** 全体の関数呼び出しとしてはエラーを返さず処理を完了する
+
+#### Scenario: コンテキストキャンセル
+- **WHEN** `ExecuteBulkSync` 実行中にコンテキストがキャンセルされた
+- **THEN** 実行中のワーカーがコンテキストエラーを受け取り、関数は `ctx.Err()` を返す
+
+---
+
+### Requirement: UIコンフィグによる並列数の適用
+`LLMManager` はプロバイダごとのクライアントを初期化する際、またはバルク処理ヘルパーを実行する際に、`ConfigStore` から取得した並列数（`Concurrency`）を適用しなければならない (MUST)。ローカルLLMプロバイダ（`provider = "local"`）は Batch API を持たないため、`llm.bulk_strategy = "batch"` が設定されていても `"sync"` へ強制フォールバックする。
+
+#### Scenario: 並列数の動的適用
+- **WHEN** ユーザーが設定画面から Gemini の並列実行数を `5` に設定した
+- **THEN** 以降のバルク同期リクエスト処理では `Concurrency=5` として並列実行される
+- **AND** ロックやチャネル競合なく安全に流量制御される
+
+#### Scenario: ローカルLLMでのbatch戦略フォールバック
+- **WHEN** `provider = "local"` かつ `llm.bulk_strategy = "batch"` が設定されている
+- **THEN** `LLMManager.ResolveBulkStrategy` は警告ログを出力し、戦略を `"sync"` にフォールバックして返す
+- **AND** ConfigStore の設定値は書き換えない
+
+#### Scenario: デフォルト並列数の適用
+- **WHEN** `ConfigStore` に `sync_concurrency` が未設定の状態で `ExecuteBulkSync` が呼び出された
+- **THEN** プロバイダのデフォルト値（`local` = 1, その他 = 5）が使用される
