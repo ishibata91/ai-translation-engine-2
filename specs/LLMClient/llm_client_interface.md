@@ -16,6 +16,24 @@ Interface-First AIDD 原則に基づき、具体的なLLMプロバイダー（Op
 - `LLMManager`: 利用可能なプロバイダーを管理するファクトリ。`ConfigStore`（またはそこから抽出された設定情報）を受け取り、現在選択されているプロバイダー（Gemini, Local, xAI 等）およびその設定（APIキー、エンドポイント等）に基づいて、適切な `LLMClient` インスタンスを提供する。
 - `BatchHandler`: 非同期バッチAPIのジョブ管理と結果取得を抽象化する。
 
+### BatchClient プロバイダーサポート状況
+
+| プロバイダー   | 同期 (LLMClient) | バッチ (BatchClient) | 備考                            |
+| -------------- | ---------------- | -------------------- | ------------------------------- |
+| Gemini         | ✅                | ✅                    | OpenAI互換フロー                |
+| xAI (Grok)     | ✅                | ✅                    | **独自フォーマット** — 下記参照 |
+| Local (Ollama) | ✅                | ❌                    | バッチ非対応                    |
+
+> [!IMPORTANT]
+> **xAI Batch API は OpenAI Batch API と非互換**。以下の独自仕様を持つ：
+> - バッチ作成レスポンスキーは `id` でなく **`batch_id`**
+> - リクエスト形式: `batch_requests[].batch_request.chat_get_completion`
+> - ステータス: `state.{num_requests, num_pending, num_success, num_error}` から導出
+> - 結果: `GET /v1/batches/{id}/results`（`pagination_token` でページネーション）
+> - Batch 対応モデル: `grok-3`, `grok-4-*` のみ（**`grok-3-mini` は非対応**）
+>
+> 詳細は [クラス図](llm_client_class_diagram.md) および [シーケンス図](llm_client_sequence_diagram.md) を参照。
+
 ## 4. クラス図とシーケンス図
 詳細な図は別ファイルを参照。
 - [クラス図 (Class Diagram)](llm_client_class_diagram.md)

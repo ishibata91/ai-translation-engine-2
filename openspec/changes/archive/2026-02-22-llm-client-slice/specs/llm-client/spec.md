@@ -35,3 +35,27 @@ LLMClientは、プロバイダ固有の通信エラー（例: HTTP 429 Too Many 
 #### Scenario: APIリクエスト時のログ出力
 - **WHEN** `LLMClient` が外部のAPIにリクエストを送信する前後
 - **THEN** `slog.DebugContext` 等を用いて、実行時間や使用トークン数、TraceIDを含むJSONログが出力されること
+
+---
+
+### Requirement: xAI BatchClient の実装（独自フォーマット準拠）
+xAI の `BatchClient` 実装は、OpenAI Batch API ではなく xAI 独自のバッチフローに従って実装しなければならない (MUST)。
+
+#### xAI Batch API フロー
+| ステップ          | HTTPメソッド + パス                    | 要点                                                                                                      |
+| ----------------- | -------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| 1. バッチ作成     | `POST /v1/batches`                     | リクエストボディ: `{name, endpoint, completion_window}`。レスポンスキーは `id` でなく **`batch_id`**      |
+| 2. リクエスト追加 | `POST /v1/batches/{batch_id}/requests` | 独自形式: `batch_requests[].batch_request.chat_get_completion` にメッセージを格納                         |
+| 3. ステータス確認 | `GET /v1/batches/{batch_id}`           | `state.{num_requests, num_pending, num_success, num_error}` から状態を導出する                            |
+| 4. 結果取得       | `GET /v1/batches/{batch_id}/results`   | ページネーション(`pagination_token`)付き。レスポンス: `batch_result.response.chat_get_completion.choices` |
+
+#### 対応モデル制約
+`grok-3-mini` は Batch API 非対応である。対応モデル: `grok-3`, `grok-4-*` 系のみ。
+
+#### Scenario: xAI Batch ジョブの作成
+- **WHEN** `BatchClient.SubmitBatch(ctx, reqs)` が呼ばれた時
+- **THEN** `POST /v1/batches` でバッチを作成し、`POST /v1/batches/{batch_id}/requests` に独自形式でリクエストを追加し、`batch_id` を返すこと
+
+#### Scenario: xAI Batch 結果の取得
+- **WHEN** `BatchClient.GetBatchResults(ctx, id)` が呼ばれた時
+- **THEN** `GET /v1/batches/{batch_id}/results` をページネーションが尽きるまで繰り返し、全結果を `[]Response` として返すこと

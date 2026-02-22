@@ -15,56 +15,87 @@ sequenceDiagram
     Manager-->>App: Client
     App->>Client: Complete(ctx, Request)
     Client->>Provider: Complete(ctx, Request)
-    Provider->>Provider: リクエストの変換 (Go Struct -> API JSON)
-    Provider->>API: POST /chat/completions (HTTP/gRPC)
+    Provider->>Provider: buildRequest() [private]
+    Provider->>API: POST /chat/completions (HTTP)
     API-->>Provider: APIレスポンス (JSON)
-    Provider->>Provider: レスポンスの変換 (API JSON -> Go Struct)
+    Provider->>Provider: parseResponse() [private]
     Provider-->>Client: Response
     Client-->>App: Response
 ```
 
-## 2. 非同期バッチリクエスト (Batch API)
-大規模な初期翻訳や、コスト削減のために非同期処理を行う場合に使用される。
+## 2. 非同期バッチリクエスト — Gemini (Batch API)
+Gemini向けバッチ処理（OpenAI互換フロー）。
 
 ```mermaid
 sequenceDiagram
     participant App as 呼び出し元 (Slice Logic)
     participant Manager as LLMManager
-    participant Batch as BatchClient (Interface)
-    participant Provider as Provider (e.g. OpenAI)
-    participant API as Batch API
-    participant Store as Job Store (DB/File)
+    participant Batch as BatchClient (Gemini)
+    participant API as Gemini Batch API
 
-    Note over App, API: ジョブの投入
-    App->>Manager: GetBatchClient(ctx, LLMConfig)
+    App->>Manager: GetBatchClient(ctx, LLMConfig{Provider:"gemini"})
     Manager-->>App: BatchClient
     App->>Batch: SubmitBatch(ctx, []Request)
-    Batch->>Provider: SubmitBatch(ctx, []Request)
-    Provider->>API: Create Batch Job
-    API-->>Provider: BatchID
-    Provider->>Store: 保存 (BatchID, Provider, Status="pending")
-    Provider-->>Batch: BatchJobID
+    Batch->>API: POST バッチジョブ作成
+    API-->>Batch: BatchJobID
     Batch-->>App: BatchJobID
 
-    Note over App, API: ステータス確認 (ポーリングまたはタイマー)
     App->>Batch: GetBatchStatus(ctx, BatchJobID)
-    Batch->>Provider: GetBatchStatus(ctx, BatchJobID)
-    Provider->>API: Retrieve Batch Status
-    API-->>Provider: Status (completed)
-    Provider-->>Batch: BatchStatus
+    Batch->>API: GET ステータス確認
+    API-->>Batch: Status (completed)
     Batch-->>App: BatchStatus
 
-    Note over App, API: 結果取得
     App->>Batch: GetBatchResults(ctx, BatchJobID)
-    Batch->>Provider: GetBatchResults(ctx, BatchJobID)
-    Provider->>API: Download Results File
-    API-->>Provider: Result Data (JSONL)
-    Provider->>Provider: パース
-    Provider-->>Batch: []Response
+    Batch->>API: 結果取得
+    API-->>Batch: []Response
     Batch-->>App: []Response
 ```
 
-## 3. ストリーミングリクエスト (StreamComplete)
+## 3. 非同期バッチリクエスト — xAI 独自フロー (BatchClient)
+xAI Batch API は OpenAI Batch API と**非互換**の独自フォーマットを使用する。
+
+```mermaid
+sequenceDiagram
+    participant App as 呼び出し元 (Slice Logic)
+    participant Manager as LLMManager
+    participant Batch as xAIBatchClient
+    participant API as xAI Batch API (api.x.ai/v1)
+
+    Note over App, API: ① バッチジョブ作成
+    App->>Manager: GetBatchClient(ctx, LLMConfig{Provider:"xai"})
+    Manager-->>App: xAIBatchClient
+    App->>Batch: SubmitBatch(ctx, []Request)
+    Batch->>Batch: _createBatch(name) [private]
+    Batch->>API: POST /v1/batches {name, endpoint, completion_window}
+    API-->>Batch: {"batch_id": "..."}  ※ id ではなく batch_id
+    Batch->>Batch: _addRequests(batchID, reqs) [private]
+    Batch->>API: POST /v1/batches/{batch_id}/requests
+    Note right of API: {batch_requests:[{batch_request_id,<br/>batch_request:{chat_get_completion:{...}}}]}
+    API-->>Batch: 200 OK
+    Batch->>Batch: _pollUntilCompleted(batchID) [private]
+
+    Note over App, API: ② ポーリング (state.num_pending > 0 の間繰り返す)
+    loop ポーリング (30秒間隔)
+        Batch->>API: GET /v1/batches/{batch_id}
+        API-->>Batch: {state: {num_requests, num_pending, num_success, num_error}}
+    end
+    API-->>Batch: num_pending == 0 → completed
+    Batch-->>App: BatchJobID
+
+    Note over App, API: ③ 結果取得 (ページネーション)
+    App->>Batch: GetBatchResults(ctx, BatchJobID)
+    Batch->>Batch: _parseResults(data) [private]
+    loop pagination_token が存在する間
+        Batch->>API: GET /v1/batches/{batch_id}/results?pagination_token=...
+        API-->>Batch: {results: [...], pagination_token: "..."}
+    end
+    Note right of Batch: batch_result.response<br/>.chat_get_completion.choices[0]<br/>.message.content を抽出
+    Batch-->>App: []Response
+```
+
+> **対応モデル**: `grok-3`, `grok-4-*` のみ。`grok-3-mini` は Batch API 非対応。
+
+## 4. ストリーミングリクエスト (StreamComplete)
 UIでリアルタイムに生成過程を表示する場合に使用される。
 
 ```mermaid
