@@ -43,17 +43,17 @@ type DialogueCollector interface {
 
 // ImportanceScorer scores dialogue pairs by importance for persona generation.
 type ImportanceScorer interface {
-	Score(englishText string, questID *string, isServicesBranch bool) int
+	Score(ctx context.Context, englishText string, questID *string, isServicesBranch bool) int
 }
 
 // TokenEstimator estimates the token count of a given text.
 type TokenEstimator interface {
-	Estimate(text string) int
+	Estimate(ctx context.Context, text string) int
 }
 
 // ContextEvaluator evaluates token usage and trims dialogues to fit the context window.
 type ContextEvaluator interface {
-	Evaluate(dialogueData NPCDialogueData, config PersonaConfig) (TokenEstimation, []DialogueEntry)
+	Evaluate(ctx context.Context, dialogueData NPCDialogueData, config PersonaConfig) (TokenEstimation, []DialogueEntry)
 }
 
 // PersonaStore manages all operations on the npc_personas SQLite table,
