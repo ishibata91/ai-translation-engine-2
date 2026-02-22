@@ -59,6 +59,16 @@ func (m *mockLLMManager) GetBatchClient(ctx context.Context, config llm_client.L
 	return nil, fmt.Errorf("not implemented")
 }
 
+func (m *mockLLMManager) ResolveBulkStrategy(ctx context.Context, strategy llm_client.BulkStrategy, provider string) llm_client.BulkStrategy {
+	if provider == "local" {
+		return llm_client.BulkStrategySync
+	}
+	if strategy == "" {
+		return llm_client.BulkStrategySync
+	}
+	return strategy
+}
+
 // mockConfigStore implements config_store.ConfigStore for testing.
 type mockConfigStore struct {
 	configs map[string]string

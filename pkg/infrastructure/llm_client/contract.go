@@ -16,6 +16,7 @@ type LLMClient interface {
 type LLMManager interface {
 	GetClient(ctx context.Context, config LLMConfig) (LLMClient, error)
 	GetBatchClient(ctx context.Context, config LLMConfig) (BatchClient, error)
+	ResolveBulkStrategy(ctx context.Context, strategy BulkStrategy, provider string) BulkStrategy
 }
 
 // BatchClient abstracts asynchronous batch API job management and result retrieval.
