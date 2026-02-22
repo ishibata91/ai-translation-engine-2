@@ -153,6 +153,31 @@ erDiagram
     }
 ```
 
+## Summary Generator Slice (要約キャッシュ)
+
+会話やクエストの背景情報をLLMで要約し、再利用するためのキャッシュを管理するコンテキストです。
+**データベース名:** `{PluginName}_summary_cache.db` (ソースプラグイン別)
+
+```mermaid
+%%{init: {'theme': 'dark', 'themeVariables': {
+  'primaryColor': '#2b2b2b',
+  'primaryTextColor': '#e0e0e0',
+  'primaryBorderColor': '#9c27b0',
+  'lineColor': '#888888',
+  'secondaryColor': '#4a148c',
+  'tertiaryColor': '#6a1b9a',
+  'mainBkg': '#1e1e1e',
+  'nodeBorder': '#5a5a5a'
+}}}%%
+erDiagram
+    summaries {
+        INTEGER id PK "自動採番ID"
+        TEXT cache_key "ハッシュキー ({record_id}|{sha256_hash}) UNIQUE"
+        TEXT summary_text "生成された要約文 (英語)"
+        DATETIME updated_at "最終更新日時"
+    }
+```
+
 ## Job Queue Infrastructure (LLMジョブキュー)
 
 インフラ層の汎用ジョブキュー。ドメイン知識を一切持たず、`ProcessID` と `Request` のペアを永続化します。完了済みジョブはスライスへの結果渡し後に即時物理削除（Hard Delete）されるため、テーブルは常に最小サイズを維持します。
@@ -181,6 +206,41 @@ erDiagram
         TEXT response_json "完了時のLLMレスポンス (JSON, nullable)"
         TEXT error_message "エラーメッセージ (FAILED時のみ, nullable)"
         DATETIME created_at "登録日時"
+        DATETIME updated_at "最終更新日時"
+    }
+
+    schema_version {
+        INTEGER version "現在のスキーマバージョン"
+        DATETIME applied_at "適用日時"
+    }
+```
+
+## Process Manager Slice (進行状態管理)
+
+各スライスの実行状態やJobQueueとの紐付けを管理し、プロセスのレジューム（再開）を可能にするコンテキストです。
+**データベース名:** `process-manager.db` (管理用データベース)
+
+```mermaid
+%%{init: {'theme': 'dark', 'themeVariables': {
+  'primaryColor': '#2b2b2b',
+  'primaryTextColor': '#e0e0e0',
+  'primaryBorderColor': '#f44336',
+  'lineColor': '#888888',
+  'secondaryColor': '#b71c1c',
+  'tertiaryColor': '#c62828',
+  'mainBkg': '#1e1e1e',
+  'nodeBorder': '#5a5a5a'
+}}}%%
+erDiagram
+    process_states ||--o| schema_version : "schema"
+
+    process_states {
+        TEXT id PK "プロセスID (UUID)"
+        TEXT target_slice "対象スライス名"
+        TEXT input_file "入力元ファイルパス/識別子"
+        TEXT batch_job_id "Batch API ジョブID (nullable)"
+        TEXT current_phase "現在のフェーズ (PREPARE/WAITING/SAVE)"
+        TEXT status "全体ステータス (PENDING/IN_PROGRESS/COMPLETED/FAILED)"
         DATETIME updated_at "最終更新日時"
     }
 
