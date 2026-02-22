@@ -2,10 +2,13 @@ package progress
 
 import "github.com/google/wire"
 
-// NewNoopNotifier は NoopNotifier を ProgressNotifier として返す Wire Provider。
-func NewNoopNotifier() ProgressNotifier {
-	return &NoopNotifier{}
+// NewHubProvider provides the Hub as a singleton.
+func NewHubProvider() *Hub {
+	return NewHub()
 }
 
 // ProviderSet は progress パッケージの Wire ProviderSet。
-var ProviderSet = wire.NewSet(NewNoopNotifier)
+var ProviderSet = wire.NewSet(
+	NewHubProvider,
+	wire.Bind(new(ProgressNotifier), new(*Hub)),
+)

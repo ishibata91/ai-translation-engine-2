@@ -5,6 +5,7 @@ go 1.25.7
 require (
 	github.com/google/uuid v1.6.0
 	github.com/google/wire v0.7.0
+	github.com/gorilla/websocket v1.5.3
 	github.com/jdkato/prose/v2 v2.0.0
 	github.com/kljensen/snowball v0.10.0
 	github.com/mattn/go-sqlite3 v1.14.34

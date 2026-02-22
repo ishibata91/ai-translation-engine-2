@@ -8,3 +8,8 @@ type NoopNotifier struct{}
 
 // OnProgress は何もしない。
 func (n *NoopNotifier) OnProgress(_ context.Context, _ ProgressEvent) {}
+
+// NewNoopNotifier creates a new NoopNotifier.
+func NewNoopNotifier() ProgressNotifier {
+	return &NoopNotifier{}
+}
