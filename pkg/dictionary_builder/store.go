@@ -26,11 +26,37 @@ func (s *sqliteDictionaryStore) SaveTerms(ctx context.Context, terms []DictTerm)
 		return nil
 	}
 
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.beginUpsertTransaction(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to begin transaction: %w", err)
+		return err
 	}
 	defer tx.Rollback() // Safe to call even if committed
+
+	if err := s.executeUpsertBatch(ctx, tx, terms); err != nil {
+		return err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return nil
+}
+
+// beginUpsertTransaction starts a new database transaction for batch upsert.
+func (s *sqliteDictionaryStore) beginUpsertTransaction(ctx context.Context) (*sql.Tx, error) {
+	slog.DebugContext(ctx, "ENTER DictionaryStore.beginUpsertTransaction")
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	return tx, nil
+}
+
+// executeUpsertBatch prepares and executes upsert statements for all terms within a transaction.
+func (s *sqliteDictionaryStore) executeUpsertBatch(ctx context.Context, tx *sql.Tx, terms []DictTerm) error {
+	slog.DebugContext(ctx, "ENTER DictionaryStore.executeUpsertBatch", slog.Int("count", len(terms)))
 
 	query := `
 	INSERT INTO dictionary_entries (edid, rec, source, dest, addon)
@@ -53,10 +79,6 @@ func (s *sqliteDictionaryStore) SaveTerms(ctx context.Context, terms []DictTerm)
 		if err != nil {
 			return fmt.Errorf("failed to upsert term %s: %w", term.EDID, err)
 		}
-	}
-
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
 	return nil

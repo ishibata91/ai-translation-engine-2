@@ -49,9 +49,26 @@ func NewTermTranslator(
 
 // TranslateTerms orchestrates the term translation process.
 func (t *TermTranslatorImpl) TranslateTerms(ctx context.Context, data models.ExtractedData) ([]TermTranslationResult, error) {
-	t.logger.InfoContext(ctx, "Starting term translation")
+	t.logger.InfoContext(ctx, "ENTER TermTranslatorImpl.TranslateTerms")
+	defer t.logger.InfoContext(ctx, "EXIT TermTranslatorImpl.TranslateTerms")
 
-	// 1. Build translation requests
+	requests, err := t.initializeTranslation(ctx, data)
+	if err != nil {
+		return nil, err
+	}
+	if len(requests) == 0 {
+		return nil, nil
+	}
+
+	results := t.runWorkerPool(ctx, requests)
+
+	return t.saveResults(ctx, results)
+}
+
+// initializeTranslation builds requests and ensures DB schema is ready.
+func (t *TermTranslatorImpl) initializeTranslation(ctx context.Context, data models.ExtractedData) ([]TermTranslationRequest, error) {
+	t.logger.DebugContext(ctx, "ENTER TermTranslatorImpl.initializeTranslation")
+
 	requests, err := t.builder.BuildRequests(ctx, data)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build requests: %w", err)
@@ -59,18 +76,23 @@ func (t *TermTranslatorImpl) TranslateTerms(ctx context.Context, data models.Ext
 	t.logger.InfoContext(ctx, "Built translation requests", "count", len(requests))
 
 	if len(requests) == 0 {
-		return nil, nil // Nothing to do
+		return nil, nil
 	}
 
-	// Ensure DB schema is initialized
 	if err := t.store.InitSchema(ctx); err != nil {
 		return nil, fmt.Errorf("failed to init mod term schema: %w", err)
 	}
 
+	return requests, nil
+}
+
+// runWorkerPool distributes translation requests across workers and collects results.
+func (t *TermTranslatorImpl) runWorkerPool(ctx context.Context, requests []TermTranslationRequest) []TermTranslationResult {
+	t.logger.DebugContext(ctx, "ENTER TermTranslatorImpl.runWorkerPool", slog.Int("requestCount", len(requests)))
+
 	var results []TermTranslationResult
 	var mu sync.Mutex
 
-	// For progress tracking
 	total := len(requests)
 	completed := 0
 
@@ -78,7 +100,6 @@ func (t *TermTranslatorImpl) TranslateTerms(ctx context.Context, data models.Ext
 		t.notifier.OnProgress(0, total)
 	}
 
-	// 2. Prepare workers channel
 	reqChan := make(chan TermTranslationRequest, len(requests))
 	for _, req := range requests {
 		reqChan <- req
@@ -86,7 +107,6 @@ func (t *TermTranslatorImpl) TranslateTerms(ctx context.Context, data models.Ext
 	close(reqChan)
 
 	var wg sync.WaitGroup
-	// 3. Start worker pool
 	for i := 0; i < t.workerCount; i++ {
 		wg.Add(1)
 		go func() {
@@ -95,34 +115,7 @@ func (t *TermTranslatorImpl) TranslateTerms(ctx context.Context, data models.Ext
 				res := t.processRequest(ctx, req)
 
 				mu.Lock()
-				// Expanded paired NPC results
-				if res.Status == "success" || res.Status == "cached" {
-					if req.RecordType == "NPC_" && req.ShortName != "" {
-						// Split the result for FULL and SHRT
-						// In a real implementation, LLM would be instructed to return JSON
-						// with both full and short name translations. For this simplified
-						// implementation, we'll store the same translation or assume
-						// LLM generated a combined string we could split.
-						// Handling simplified here:
-
-						fullRes := res
-						fullRes.RecordType = "NPC_:FULL"
-						results = append(results, fullRes)
-
-						shortRes := res
-						shortRes.RecordType = "NPC_:SHRT"
-						shortRes.SourceText = req.ShortName
-						// Just a heuristic for the mock:
-						shortRes.TranslatedText = strings.Split(res.TranslatedText, " ")[0]
-						results = append(results, shortRes)
-					} else {
-						// normal single result
-						results = append(results, res)
-					}
-				} else {
-					results = append(results, res)
-				}
-
+				results = append(results, t.expandResult(res, req)...)
 				completed++
 				if t.notifier != nil {
 					t.notifier.OnProgress(completed, total)
@@ -132,12 +125,38 @@ func (t *TermTranslatorImpl) TranslateTerms(ctx context.Context, data models.Ext
 		}()
 	}
 
-	// 4. Wait for completion
 	wg.Wait()
-
 	t.logger.InfoContext(ctx, "Term translation completed", "results_count", len(results))
+	return results
+}
 
-	// 5. Save results to Mod DB
+// expandResult handles NPC paired results or returns a single result.
+func (t *TermTranslatorImpl) expandResult(res TermTranslationResult, req TermTranslationRequest) []TermTranslationResult {
+	if (res.Status == "success" || res.Status == "cached") && req.RecordType == "NPC_" && req.ShortName != "" {
+		return t.expandNPCResult(res, req)
+	}
+	return []TermTranslationResult{res}
+}
+
+// expandNPCResult splits a paired NPC translation into FULL and SHRT results.
+func (t *TermTranslatorImpl) expandNPCResult(res TermTranslationResult, req TermTranslationRequest) []TermTranslationResult {
+	t.logger.DebugContext(context.Background(), "ENTER TermTranslatorImpl.expandNPCResult", slog.String("editorID", req.EditorID))
+
+	fullRes := res
+	fullRes.RecordType = "NPC_:FULL"
+
+	shortRes := res
+	shortRes.RecordType = "NPC_:SHRT"
+	shortRes.SourceText = req.ShortName
+	shortRes.TranslatedText = strings.Split(res.TranslatedText, " ")[0]
+
+	return []TermTranslationResult{fullRes, shortRes}
+}
+
+// saveResults persists translation results to the mod DB.
+func (t *TermTranslatorImpl) saveResults(ctx context.Context, results []TermTranslationResult) ([]TermTranslationResult, error) {
+	t.logger.DebugContext(ctx, "ENTER TermTranslatorImpl.saveResults", slog.Int("count", len(results)))
+
 	if err := t.store.SaveTerms(ctx, results); err != nil {
 		return results, fmt.Errorf("failed to save terms: %w", err)
 	}
@@ -146,7 +165,10 @@ func (t *TermTranslatorImpl) TranslateTerms(ctx context.Context, data models.Ext
 	return results, nil
 }
 
+// processRequest handles a single translation request through the full pipeline.
 func (t *TermTranslatorImpl) processRequest(ctx context.Context, req TermTranslationRequest) TermTranslationResult {
+	t.logger.DebugContext(ctx, "ENTER TermTranslatorImpl.processRequest", slog.String("sourceText", req.SourceText))
+
 	res := TermTranslationResult{
 		FormID:       req.FormID,
 		EditorID:     req.EditorID,
@@ -156,43 +178,72 @@ func (t *TermTranslatorImpl) processRequest(ctx context.Context, req TermTransla
 		SourceFile:   req.SourceFile,
 	}
 
-	// Check if already in Mod DB (Skip translation)
+	// Check Mod DB cache
+	if cached, ok := t.checkModDBCache(ctx, req, &res); ok {
+		return cached
+	}
+
+	// Check dictionary cache
+	if cached, ok := t.checkDictionaryCache(ctx, req, &res); ok {
+		return cached
+	}
+
+	// Fetch reference terms for LLM context
+	t.fetchReferenceTerms(ctx, &req)
+
+	// Call LLM and extract translation
+	return t.callLLMAndExtract(ctx, req, res)
+}
+
+// checkModDBCache checks if the term is already translated in the Mod DB.
+func (t *TermTranslatorImpl) checkModDBCache(ctx context.Context, req TermTranslationRequest, res *TermTranslationResult) (TermTranslationResult, bool) {
+	t.logger.DebugContext(ctx, "ENTER TermTranslatorImpl.checkModDBCache", slog.String("term", req.SourceText))
+
 	existingTerm, err := t.store.GetTerm(ctx, req.SourceText)
 	if err != nil {
 		t.logger.WarnContext(ctx, "Failed to get term from Mod DB", "term", req.SourceText, "error", err)
-	} else if existingTerm != "" {
-		res.TranslatedText = existingTerm
-		res.Status = "cached" // Actually "already translated" in this context
-		return res
+		return *res, false
 	}
+	if existingTerm != "" {
+		res.TranslatedText = existingTerm
+		res.Status = "cached"
+		return *res, true
+	}
+	return *res, false
+}
 
-	// Check Exact Match in Reference Dictionary Cache
+// checkDictionaryCache checks for an exact match in the reference dictionary.
+func (t *TermTranslatorImpl) checkDictionaryCache(ctx context.Context, req TermTranslationRequest, res *TermTranslationResult) (TermTranslationResult, bool) {
+	t.logger.DebugContext(ctx, "ENTER TermTranslatorImpl.checkDictionaryCache", slog.String("term", req.SourceText))
+
 	refs, err := t.searcher.SearchExact(ctx, req.SourceText)
 	if err != nil {
 		t.logger.WarnContext(ctx, "Failed to search exact match", "term", req.SourceText, "error", err)
+		return *res, false
 	}
 
 	if len(refs) > 0 {
-		// Found exact translation in dictionary, use it without calling LLM
 		res.TranslatedText = refs[0].Translation
 		res.Status = "cached"
-		return res
+		return *res, true
 	}
+	return *res, false
+}
 
-	// Fetch Reference Terms (Partial / Keyword)
+// fetchReferenceTerms retrieves context reference terms based on the record type.
+func (t *TermTranslatorImpl) fetchReferenceTerms(ctx context.Context, req *TermTranslationRequest) {
+	t.logger.DebugContext(ctx, "ENTER TermTranslatorImpl.fetchReferenceTerms", slog.String("recordType", req.RecordType))
+
 	keywords := strings.Split(req.SourceText, " ")
-
-	var contextRefs []ReferenceTerm
 	isNPC := strings.HasPrefix(req.RecordType, "NPC")
 
+	var contextRefs []ReferenceTerm
 	if isNPC {
-		// NPC Partial Match (First Name / Last Name logic)
 		npcRefs, err := t.searcher.SearchNPCPartial(ctx, keywords, nil, true)
 		if err == nil {
 			contextRefs = append(contextRefs, npcRefs...)
 		}
 	} else {
-		// Standard Keyword Search
 		kwRefs, err := t.searcher.SearchKeywords(ctx, keywords)
 		if err == nil {
 			contextRefs = append(contextRefs, kwRefs...)
@@ -200,8 +251,12 @@ func (t *TermTranslatorImpl) processRequest(ctx context.Context, req TermTransla
 	}
 
 	req.ReferenceTerms = contextRefs
+}
 
-	// Build LLM Prompt
+// callLLMAndExtract builds the prompt, calls LLM, and extracts the translation.
+func (t *TermTranslatorImpl) callLLMAndExtract(ctx context.Context, req TermTranslationRequest, res TermTranslationResult) TermTranslationResult {
+	t.logger.DebugContext(ctx, "ENTER TermTranslatorImpl.callLLMAndExtract", slog.String("term", req.SourceText))
+
 	prompt, err := t.promptBuilder.BuildPrompt(ctx, req)
 	if err != nil {
 		res.Status = "error"
@@ -209,8 +264,6 @@ func (t *TermTranslatorImpl) processRequest(ctx context.Context, req TermTransla
 		return res
 	}
 
-	// Call LLM
-	// Create an empty request body since we pass the prompt directly
 	llmReq := llm_client.Request{
 		SystemPrompt: prompt,
 		UserPrompt:   "Translate the provided term.",
@@ -224,23 +277,24 @@ func (t *TermTranslatorImpl) processRequest(ctx context.Context, req TermTransla
 		return res
 	}
 
-	content := strings.TrimSpace(llmResp.Content)
-	// Extract translation from TL: |...| format
+	res.TranslatedText = t.extractTranslationFromLLMResponse(llmResp.Content)
+	res.Status = "success"
+	return res
+}
+
+// extractTranslationFromLLMResponse extracts the translation text from "TL: |...|" format.
+func (t *TermTranslatorImpl) extractTranslationFromLLMResponse(content string) string {
+	t.logger.Debug("ENTER TermTranslatorImpl.extractTranslationFromLLMResponse")
+
+	content = strings.TrimSpace(content)
 	startIdx := strings.Index(content, "TL: |")
 	if startIdx != -1 {
 		startIdx += 5 // length of "TL: |"
 		endIdx := strings.Index(content[startIdx:], "|")
 		if endIdx != -1 {
-			res.TranslatedText = strings.TrimSpace(content[startIdx : startIdx+endIdx])
-		} else {
-			// fallback if closing pipe is missing
-			res.TranslatedText = strings.TrimSpace(content[startIdx:])
+			return strings.TrimSpace(content[startIdx : startIdx+endIdx])
 		}
-	} else {
-		// fallback if format is not followed
-		res.TranslatedText = content
+		return strings.TrimSpace(content[startIdx:])
 	}
-
-	res.Status = "success"
-	return res
+	return content
 }
