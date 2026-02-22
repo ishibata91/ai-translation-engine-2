@@ -31,9 +31,7 @@ func (i *xmlImporter) ImportXML(ctx context.Context, file io.Reader) (int, error
 
 	decoder := xml.NewDecoder(file)
 
-	// State to keep track of globally scoped values
 	var addonName string
-
 	const batchSize = 1000
 	batch := make([]DictTerm, 0, batchSize)
 	totalImported := 0
@@ -51,63 +49,93 @@ func (i *xmlImporter) ImportXML(ctx context.Context, file io.Reader) (int, error
 			break
 		}
 
-		switch se := t.(type) {
-		case xml.StartElement:
-			// Check for addon name
-			if se.Name.Local == "Addon" {
-				var addon string
-				err = decoder.DecodeElement(&addon, &se)
-				if err == nil && addonName == "" {
-					addonName = addon
-				}
-			} else if se.Name.Local == "String" {
-				var strElem struct {
-					EDID   string `xml:"EDID"`
-					REC    string `xml:"REC"`
-					Source string `xml:"Source"`
-					Dest   string `xml:"Dest"`
-				}
+		se, ok := t.(xml.StartElement)
+		if !ok {
+			continue
+		}
 
-				err = decoder.DecodeElement(&strElem, &se)
+		switch se.Name.Local {
+		case "Addon":
+			addonName = i.handleAddonElement(ctx, decoder, &se, addonName)
+		case "String":
+			term, ok := i.handleStringElement(ctx, decoder, &se, addonName)
+			if !ok {
+				continue
+			}
+			batch = append(batch, term)
+
+			if len(batch) >= batchSize {
+				flushed, err := i.flushBatch(ctx, batch)
 				if err != nil {
-					i.logger.WarnContext(ctx, "failed to decode String element, skipping", "error", err)
-					continue
+					return totalImported, err
 				}
-
-				// Check if the REC type is allowed
-				if !i.config.IsAllowedREC(strElem.REC) {
-					continue
-				}
-
-				term := DictTerm{
-					EDID:   strElem.EDID,
-					REC:    strElem.REC,
-					Source: strElem.Source,
-					Dest:   strElem.Dest,
-					Addon:  addonName,
-				}
-
-				batch = append(batch, term)
-
-				if len(batch) >= batchSize {
-					if err := i.store.SaveTerms(ctx, batch); err != nil {
-						return totalImported, fmt.Errorf("error saving batch: %w", err)
-					}
-					totalImported += len(batch)
-					batch = batch[:0]
-				}
+				totalImported += flushed
+				batch = batch[:0]
 			}
 		}
 	}
 
-	// Upsert any remaining entries
+	// Flush remaining entries
 	if len(batch) > 0 {
-		if err := i.store.SaveTerms(ctx, batch); err != nil {
-			return totalImported, fmt.Errorf("error saving final batch: %w", err)
+		flushed, err := i.flushBatch(ctx, batch)
+		if err != nil {
+			return totalImported, err
 		}
-		totalImported += len(batch)
+		totalImported += flushed
 	}
 
 	i.logger.InfoContext(ctx, "Successfully imported terms", "total", totalImported)
 	return totalImported, nil
+}
+
+// handleAddonElement decodes an Addon element and returns the addon name.
+func (i *xmlImporter) handleAddonElement(ctx context.Context, decoder *xml.Decoder, se *xml.StartElement, currentAddon string) string {
+	i.logger.DebugContext(ctx, "ENTER DictionaryImporter.handleAddonElement")
+
+	var addon string
+	err := decoder.DecodeElement(&addon, se)
+	if err == nil && currentAddon == "" {
+		return addon
+	}
+	return currentAddon
+}
+
+// handleStringElement decodes a String element and returns a DictTerm if the REC type is allowed.
+func (i *xmlImporter) handleStringElement(ctx context.Context, decoder *xml.Decoder, se *xml.StartElement, addonName string) (DictTerm, bool) {
+	i.logger.DebugContext(ctx, "ENTER DictionaryImporter.handleStringElement")
+
+	var strElem struct {
+		EDID   string `xml:"EDID"`
+		REC    string `xml:"REC"`
+		Source string `xml:"Source"`
+		Dest   string `xml:"Dest"`
+	}
+
+	err := decoder.DecodeElement(&strElem, se)
+	if err != nil {
+		i.logger.WarnContext(ctx, "failed to decode String element, skipping", "error", err)
+		return DictTerm{}, false
+	}
+
+	if !i.config.IsAllowedREC(strElem.REC) {
+		return DictTerm{}, false
+	}
+
+	return DictTerm{
+		EDID:   strElem.EDID,
+		REC:    strElem.REC,
+		Source: strElem.Source,
+		Dest:   strElem.Dest,
+		Addon:  addonName,
+	}, true
+}
+
+// flushBatch persists a batch of terms to the store and returns the count saved.
+func (i *xmlImporter) flushBatch(ctx context.Context, batch []DictTerm) (int, error) {
+	i.logger.DebugContext(ctx, "ENTER DictionaryImporter.flushBatch", slog.Int("batchSize", len(batch)))
+
+	if err := i.store.SaveTerms(ctx, batch); err != nil {
+		return 0, fmt.Errorf("error saving batch: %w", err)
+	}
+	return len(batch), nil
 }

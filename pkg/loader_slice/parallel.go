@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
 	"sync"
 
@@ -22,14 +23,32 @@ func NewParallelProcessor(rawMap map[string]json.RawMessage) *ParallelProcessor 
 
 // Process executes the parallel unmarshaling and returns the constructed ExtractedData.
 func (p *ParallelProcessor) Process(ctx context.Context) (*models.ExtractedData, error) {
+	slog.DebugContext(ctx, "ENTER ParallelProcessor.Process")
+	defer slog.DebugContext(ctx, "EXIT ParallelProcessor.Process")
+
 	data := &models.ExtractedData{
 		NPCs: make(map[string]models.NPC),
 	}
 
-	var g sync.WaitGroup
-	errChan := make(chan error, 10) // buffer for errors
+	errChan := p.launchUnmarshalWorkers(ctx, data)
 
-	// Helper to launch goroutine
+	result, err := p.waitAndCollectErrors(ctx, errChan)
+	if err != nil {
+		return nil, err
+	}
+	_ = result
+
+	p.postProcess(data)
+	return data, nil
+}
+
+// launchUnmarshalWorkers starts goroutines for each data section and returns the error channel.
+func (p *ParallelProcessor) launchUnmarshalWorkers(ctx context.Context, data *models.ExtractedData) chan error {
+	slog.DebugContext(ctx, "ENTER ParallelProcessor.launchUnmarshalWorkers")
+
+	var g sync.WaitGroup
+	errChan := make(chan error, 10)
+
 	launch := func(fn func() error) {
 		g.Add(1)
 		go func() {
@@ -38,182 +57,191 @@ func (p *ParallelProcessor) Process(ctx context.Context) (*models.ExtractedData,
 				select {
 				case errChan <- err:
 				default:
-					// Channel full, drop error (or log it if logger available)
 				}
 			}
 		}()
 	}
 
-	// 1. Quests
-	launch(func() error {
-		if raw, ok := p.rawMap["quests"]; ok {
-			var quests []models.Quest
-			if err := json.Unmarshal(raw, &quests); err != nil {
-				return fmt.Errorf("failed to unmarshal quests: %w", err)
-			}
-			data.Quests = quests
-		}
-		return nil
-	})
+	launch(func() error { return p.unmarshalQuests(data) })
+	launch(func() error { return p.unmarshalDialogueGroups(data) })
+	launch(func() error { return p.unmarshalItems(data) })
+	launch(func() error { return p.unmarshalNPCs(data) })
+	launch(func() error { return p.unmarshalLocations(data) })
+	launch(func() error { return p.unmarshalCells(data) })
+	launch(func() error { return p.unmarshalMagic(data) })
+	launch(func() error { return p.unmarshalSystem(data) })
+	launch(func() error { return p.unmarshalMessages(data) })
+	launch(func() error { return p.unmarshalLoadScreens(data) })
 
-	// 2. Dialogue Groups
-	launch(func() error {
-		if raw, ok := p.rawMap["dialogue_groups"]; ok {
-			var dgs []models.DialogueGroup
-			if err := json.Unmarshal(raw, &dgs); err != nil {
-				return fmt.Errorf("failed to unmarshal dialogue_groups: %w", err)
-			}
-			data.DialogueGroups = dgs
-		}
-		return nil
-	})
-
-	// 3. Items
-	launch(func() error {
-		if raw, ok := p.rawMap["items"]; ok {
-			var items []models.Item
-			if err := json.Unmarshal(raw, &items); err != nil {
-				return fmt.Errorf("failed to unmarshal items: %w", err)
-			}
-			data.Items = items
-		}
-		return nil
-	})
-
-	// 4. NPCs (Map Structure)
-	launch(func() error {
-		if raw, ok := p.rawMap["npcs"]; ok {
-			var npcs map[string]models.NPC
-			if err := json.Unmarshal(raw, &npcs); err != nil {
-				return fmt.Errorf("failed to unmarshal npcs: %w", err)
-			}
-			// Normalization: Extract EditorID if needed, though strictly it should be done here.
-			// For now, simple unmarshal is enough as per specs.
-			data.NPCs = npcs
-		}
-		return nil
-	})
-
-	// 5. Locations
-	launch(func() error {
-		if raw, ok := p.rawMap["locations"]; ok {
-			var locs []models.Location
-			if err := json.Unmarshal(raw, &locs); err != nil {
-				return fmt.Errorf("failed to unmarshal locations: %w", err)
-			}
-			data.Locations = locs
-		}
-		return nil
-	})
-
-	// 6. Cells
-	launch(func() error {
-		if raw, ok := p.rawMap["cells"]; ok {
-			var cells []models.Location
-			if err := json.Unmarshal(raw, &cells); err != nil {
-				return fmt.Errorf("failed to unmarshal cells: %w", err)
-			}
-			data.Cells = cells
-		}
-		return nil
-	})
-
-	// 7. Magic
-	launch(func() error {
-		if raw, ok := p.rawMap["magic"]; ok {
-			var magics []models.Magic
-			if err := json.Unmarshal(raw, &magics); err != nil {
-				return fmt.Errorf("failed to unmarshal magic: %w", err)
-			}
-			data.Magic = magics
-		}
-		return nil
-	})
-
-	// 8. System
-	launch(func() error {
-		if raw, ok := p.rawMap["system"]; ok {
-			var sys []models.SystemRecord
-			if err := json.Unmarshal(raw, &sys); err != nil {
-				return fmt.Errorf("failed to unmarshal system: %w", err)
-			}
-			data.System = sys
-		}
-		return nil
-	})
-
-	// 9. Messages
-	launch(func() error {
-		if raw, ok := p.rawMap["messages"]; ok {
-			var msgs []models.Message
-			if err := json.Unmarshal(raw, &msgs); err != nil {
-				return fmt.Errorf("failed to unmarshal messages: %w", err)
-			}
-			data.Messages = msgs
-		}
-		return nil
-	})
-
-	// 10. Load Screens
-	launch(func() error {
-		if raw, ok := p.rawMap["load_screens"]; ok {
-			var ls []models.LoadScreen
-			if err := json.Unmarshal(raw, &ls); err != nil {
-				return fmt.Errorf("failed to unmarshal load_screens: %w", err)
-			}
-			data.LoadScreens = ls
-		}
-		return nil
-	})
-
-	// Wait for all goroutines
-	done := make(chan struct{})
+	// Close errChan when all workers are done
 	go func() {
 		g.Wait()
-		close(done)
+		close(errChan)
 	}()
+
+	return errChan
+}
+
+// waitAndCollectErrors waits for workers to complete and returns the first error if any.
+func (p *ParallelProcessor) waitAndCollectErrors(ctx context.Context, errChan chan error) (bool, error) {
+	slog.DebugContext(ctx, "ENTER ParallelProcessor.waitAndCollectErrors")
+
+	for err := range errChan {
+		if err != nil {
+			return false, err
+		}
+	}
 
 	select {
 	case <-ctx.Done():
-		return nil, ctx.Err()
-	case err := <-errChan:
-		// Return the first error encountered
-		return nil, err
-	case <-done:
-		// Check if any error occurred but wasn't caught by select due to timing
-		select {
-		case err := <-errChan:
-			return nil, err
-		default:
-			// Normalization: Post-process specific fields if required by spec.
-			// Example: Extract EditorID from Name if Name format is "ProperName [EDID:123]"
-			// This can be parallelized inside the specific loaders above, but keeping it simple here.
-			normalizeData(data)
-			return data, nil
-		}
+		return false, ctx.Err()
+	default:
+		return true, nil
 	}
 }
 
+// postProcess applies normalization to the loaded data.
+func (p *ParallelProcessor) postProcess(data *models.ExtractedData) {
+	slog.Debug("ENTER ParallelProcessor.postProcess")
+	normalizeData(data)
+}
+
+// --- Section Unmarshalers ---
+
+func (p *ParallelProcessor) unmarshalQuests(data *models.ExtractedData) error {
+	if raw, ok := p.rawMap["quests"]; ok {
+		var quests []models.Quest
+		if err := json.Unmarshal(raw, &quests); err != nil {
+			return fmt.Errorf("failed to unmarshal quests: %w", err)
+		}
+		data.Quests = quests
+	}
+	return nil
+}
+
+func (p *ParallelProcessor) unmarshalDialogueGroups(data *models.ExtractedData) error {
+	if raw, ok := p.rawMap["dialogue_groups"]; ok {
+		var dgs []models.DialogueGroup
+		if err := json.Unmarshal(raw, &dgs); err != nil {
+			return fmt.Errorf("failed to unmarshal dialogue_groups: %w", err)
+		}
+		data.DialogueGroups = dgs
+	}
+	return nil
+}
+
+func (p *ParallelProcessor) unmarshalItems(data *models.ExtractedData) error {
+	if raw, ok := p.rawMap["items"]; ok {
+		var items []models.Item
+		if err := json.Unmarshal(raw, &items); err != nil {
+			return fmt.Errorf("failed to unmarshal items: %w", err)
+		}
+		data.Items = items
+	}
+	return nil
+}
+
+func (p *ParallelProcessor) unmarshalNPCs(data *models.ExtractedData) error {
+	if raw, ok := p.rawMap["npcs"]; ok {
+		var npcs map[string]models.NPC
+		if err := json.Unmarshal(raw, &npcs); err != nil {
+			return fmt.Errorf("failed to unmarshal npcs: %w", err)
+		}
+		data.NPCs = npcs
+	}
+	return nil
+}
+
+func (p *ParallelProcessor) unmarshalLocations(data *models.ExtractedData) error {
+	if raw, ok := p.rawMap["locations"]; ok {
+		var locs []models.Location
+		if err := json.Unmarshal(raw, &locs); err != nil {
+			return fmt.Errorf("failed to unmarshal locations: %w", err)
+		}
+		data.Locations = locs
+	}
+	return nil
+}
+
+func (p *ParallelProcessor) unmarshalCells(data *models.ExtractedData) error {
+	if raw, ok := p.rawMap["cells"]; ok {
+		var cells []models.Location
+		if err := json.Unmarshal(raw, &cells); err != nil {
+			return fmt.Errorf("failed to unmarshal cells: %w", err)
+		}
+		data.Cells = cells
+	}
+	return nil
+}
+
+func (p *ParallelProcessor) unmarshalMagic(data *models.ExtractedData) error {
+	if raw, ok := p.rawMap["magic"]; ok {
+		var magics []models.Magic
+		if err := json.Unmarshal(raw, &magics); err != nil {
+			return fmt.Errorf("failed to unmarshal magic: %w", err)
+		}
+		data.Magic = magics
+	}
+	return nil
+}
+
+func (p *ParallelProcessor) unmarshalSystem(data *models.ExtractedData) error {
+	if raw, ok := p.rawMap["system"]; ok {
+		var sys []models.SystemRecord
+		if err := json.Unmarshal(raw, &sys); err != nil {
+			return fmt.Errorf("failed to unmarshal system: %w", err)
+		}
+		data.System = sys
+	}
+	return nil
+}
+
+func (p *ParallelProcessor) unmarshalMessages(data *models.ExtractedData) error {
+	if raw, ok := p.rawMap["messages"]; ok {
+		var msgs []models.Message
+		if err := json.Unmarshal(raw, &msgs); err != nil {
+			return fmt.Errorf("failed to unmarshal messages: %w", err)
+		}
+		data.Messages = msgs
+	}
+	return nil
+}
+
+func (p *ParallelProcessor) unmarshalLoadScreens(data *models.ExtractedData) error {
+	if raw, ok := p.rawMap["load_screens"]; ok {
+		var ls []models.LoadScreen
+		if err := json.Unmarshal(raw, &ls); err != nil {
+			return fmt.Errorf("failed to unmarshal load_screens: %w", err)
+		}
+		data.LoadScreens = ls
+	}
+	return nil
+}
+
+// --- Normalization ---
+
 func normalizeData(data *models.ExtractedData) {
-	// Example normalization: Check ID consistency or other simple checks.
-	// For Phase 1, strictly map the fields.
-	// Future: Parallel loop over data.NPCs to methods like extractEditorID(n.Name)
+	slog.Debug("ENTER normalizeData")
+
 	var wg sync.WaitGroup
 
-	// Normalize NPCs efficiently
 	if len(data.NPCs) > 0 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			for k, npc := range data.NPCs {
-				// Example: If Name contains brackets, it might need parsing.
-				// Based on extractData.pas, EditorID is already a separate field.
-				// But we might want to trim spaces.
-				npc.Name = strings.TrimSpace(npc.Name)
-				data.NPCs[k] = npc
-			}
+			normalizeNPCNames(data)
 		}()
 	}
 
 	wg.Wait()
+}
+
+// normalizeNPCNames trims whitespace from NPC names.
+func normalizeNPCNames(data *models.ExtractedData) {
+	slog.Debug("ENTER normalizeNPCNames")
+
+	for k, npc := range data.NPCs {
+		npc.Name = strings.TrimSpace(npc.Name)
+		data.NPCs[k] = npc
+	}
 }

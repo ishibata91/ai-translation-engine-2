@@ -3,6 +3,7 @@ package database
 import (
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -16,16 +17,37 @@ var ProviderSet = wire.NewSet(NewSQLiteDB)
 // NewSQLiteDB creates a new SQLite database connection.
 // It resolves the data directory based on the OS.
 func NewSQLiteDB() (*sql.DB, func(), error) {
+	slog.Debug("ENTER NewSQLiteDB")
+	defer slog.Debug("EXIT NewSQLiteDB")
+
+	dbPath, err := resolveDBPath()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return openAndConfigureDB(dbPath)
+}
+
+// resolveDBPath determines the database file path based on the OS.
+func resolveDBPath() (string, error) {
+	slog.Debug("ENTER resolveDBPath")
+
 	dbDir, err := getAppDataDir()
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get app data dir: %w", err)
+		return "", fmt.Errorf("failed to get app data dir: %w", err)
 	}
 
 	if err := os.MkdirAll(dbDir, 0755); err != nil {
-		return nil, nil, fmt.Errorf("failed to create app data dir: %w", err)
+		return "", fmt.Errorf("failed to create app data dir: %w", err)
 	}
 
-	dbPath := filepath.Join(dbDir, "config.db")
+	return filepath.Join(dbDir, "config.db"), nil
+}
+
+// openAndConfigureDB opens the SQLite database and configures the connection pool.
+func openAndConfigureDB(dbPath string) (*sql.DB, func(), error) {
+	slog.Debug("ENTER openAndConfigureDB", slog.String("dbPath", dbPath))
+
 	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to open database: %w", err)

@@ -3,6 +3,7 @@ package loader_slice
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"github.com/ishibata91/ai-translation-engine-2/pkg/config_store"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/domain/models"
@@ -23,6 +24,9 @@ func newJSONLoader(config config_store.ConfigStore) Loader {
 // 1. Decode file into map[string]json.RawMessage (Serial)
 // 2. Unmarshal and normalize each section in parallel (Parallel)
 func (l *jsonLoader) LoadExtractedJSON(ctx context.Context, path string) (*models.ExtractedData, error) {
+	slog.DebugContext(ctx, "ENTER jsonLoader.LoadExtractedJSON", slog.String("path", path))
+	defer slog.DebugContext(ctx, "EXIT jsonLoader.LoadExtractedJSON")
+
 	// Phase 1: Serial Decode
 	rawMap, err := DecodeFile(path)
 	if err != nil {

@@ -3,6 +3,7 @@ package loader_slice
 import (
 	"bufio"
 	"io"
+	"log/slog"
 	"unicode/utf8"
 
 	"golang.org/x/text/encoding/charmap"
@@ -13,44 +14,60 @@ import (
 // detectEncoding reads the beginning of the file to guess the encoding.
 // It returns a reader that converts the content to UTF-8.
 func detectEncoding(r io.Reader) (io.Reader, error) {
-	// Read a small chunk to detect encoding
-	// 4KB should be enough to detect BOM or common characters
+	slog.Debug("ENTER detectEncoding")
+
 	bufReader := bufio.NewReader(r)
 	peekBytes, err := bufReader.Peek(4096)
 	if err != nil && err != io.EOF && err != bufio.ErrBufferFull {
 		return nil, err
 	}
 
-	// 1. Check for BOM (Byte Order Mark)
-	if len(peekBytes) >= 3 && peekBytes[0] == 0xEF && peekBytes[1] == 0xBB && peekBytes[2] == 0xBF {
-		// UTF-8 with BOM: Discard BOM and read as UTF-8
-		bufReader.Discard(3)
+	if reader, ok := checkBOM(bufReader, peekBytes); ok {
+		return reader, nil
+	}
+
+	if checkUTF8(peekBytes) {
 		return bufReader, nil
 	}
 
-	// 2. Check if valid UTF-8
-	if utf8.Valid(peekBytes) {
-		return bufReader, nil
+	if reader, ok := tryShiftJIS(bufReader, peekBytes); ok {
+		return reader, nil
 	}
 
-	// 3. Check for specific Japanese characters (Shift_JIS)
-	// Simple heuristic: check for common kana ranges in SJIS
-	// This is not perfect but sufficient for Skyrim data context
-	if isShiftJIS(peekBytes) {
-		return transform.NewReader(bufReader, japanese.ShiftJIS.NewDecoder()), nil
-	}
-
-	// 4. Default fallback: Windows-1252 (CP1252) for European languages
+	// Default fallback: Windows-1252 (CP1252) for European languages
+	slog.Debug("detectEncoding: falling back to Windows-1252")
 	return transform.NewReader(bufReader, charmap.Windows1252.NewDecoder()), nil
+}
+
+// checkBOM checks for a UTF-8 BOM (Byte Order Mark) and discards it if found.
+func checkBOM(bufReader *bufio.Reader, peekBytes []byte) (io.Reader, bool) {
+	slog.Debug("ENTER checkBOM")
+
+	if len(peekBytes) >= 3 && peekBytes[0] == 0xEF && peekBytes[1] == 0xBB && peekBytes[2] == 0xBF {
+		bufReader.Discard(3)
+		return bufReader, true
+	}
+	return nil, false
+}
+
+// checkUTF8 returns true if the peeked bytes are valid UTF-8.
+func checkUTF8(peekBytes []byte) bool {
+	slog.Debug("ENTER checkUTF8")
+	return utf8.Valid(peekBytes)
+}
+
+// tryShiftJIS checks if the peeked bytes look like Shift_JIS and returns a decoding reader.
+func tryShiftJIS(bufReader *bufio.Reader, peekBytes []byte) (io.Reader, bool) {
+	slog.Debug("ENTER tryShiftJIS")
+
+	if isShiftJIS(peekBytes) {
+		return transform.NewReader(bufReader, japanese.ShiftJIS.NewDecoder()), true
+	}
+	return nil, false
 }
 
 // isShiftJIS attempts to detect Shift_JIS byte sequences.
 func isShiftJIS(b []byte) bool {
-	// Very basic check. Real implementation might need more robust analysis
-	// or use a detection library like `chunyun` or `saintfish/chardet` if needed.
-	// For now, we rely on the fact that if it's NOT UTF-8, and contains high bytes,
-	// and we are expecting Skyrim data (often SJIS for JP output), we try SJIS.
-
 	// Check for characteristic Shift_JIS byte ranges
 	// Lead byte: 0x81-0x9F, 0xE0-0xEF
 	for i := 0; i < len(b); i++ {

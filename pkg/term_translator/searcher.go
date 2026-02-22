@@ -26,6 +26,9 @@ func NewSQLiteTermDictionarySearcher(db *sql.DB, logger *slog.Logger, stemmer Ke
 
 // SearchExact searches for exact matches in the dictionary.
 func (s *SQLiteTermDictionarySearcher) SearchExact(ctx context.Context, text string) ([]ReferenceTerm, error) {
+	s.logger.DebugContext(ctx, "ENTER SQLiteTermDictionarySearcher.SearchExact", slog.String("text", text))
+	defer s.logger.DebugContext(ctx, "EXIT SQLiteTermDictionarySearcher.SearchExact")
+
 	if text == "" {
 		return nil, nil
 	}
@@ -40,39 +43,19 @@ func (s *SQLiteTermDictionarySearcher) SearchExact(ctx context.Context, text str
 	}
 	defer rows.Close()
 
-	var results []ReferenceTerm
-	for rows.Next() {
-		var term ReferenceTerm
-		if err := rows.Scan(&term.Source, &term.Translation); err != nil {
-			return nil, fmt.Errorf("failed to scan exact match row: %w", err)
-		}
-		results = append(results, term)
-	}
-
-	return results, nil
+	return s.scanReferenceTermRows(rows)
 }
 
 // SearchKeywords searches the dictionary using stemmed keywords.
 func (s *SQLiteTermDictionarySearcher) SearchKeywords(ctx context.Context, keywords []string) ([]ReferenceTerm, error) {
+	s.logger.DebugContext(ctx, "ENTER SQLiteTermDictionarySearcher.SearchKeywords", slog.Int("keywordCount", len(keywords)))
+	defer s.logger.DebugContext(ctx, "EXIT SQLiteTermDictionarySearcher.SearchKeywords")
+
 	if len(keywords) == 0 {
 		return nil, nil
 	}
 
-	// Apply stemming to keywords
-	var stemmedKeywords []string
-	for _, kw := range keywords {
-		if s.stemmer != nil {
-			stemmed, err := s.stemmer.Stem(kw)
-			if err == nil && stemmed != "" {
-				stemmedKeywords = append(stemmedKeywords, stemmed)
-				continue
-			}
-		}
-		// Fallback if no stemmer or error
-		stemmedKeywords = append(stemmedKeywords, kw)
-	}
-
-	// Use match query over FTS
+	stemmedKeywords := s.stemKeywords(keywords)
 	matchStr := strings.Join(stemmedKeywords, " OR ")
 
 	rows, err := s.db.QueryContext(ctx, `
@@ -83,7 +66,6 @@ func (s *SQLiteTermDictionarySearcher) SearchKeywords(ctx context.Context, keywo
 	`, matchStr)
 
 	if err != nil {
-		// Check if table doesn't exist (Dictionary Builder might not have created it)
 		if strings.Contains(err.Error(), "no such table") {
 			s.logger.WarnContext(ctx, "dictionary_terms_fts table not found, falling back to exact search", "error", err)
 			return nil, nil
@@ -92,44 +74,25 @@ func (s *SQLiteTermDictionarySearcher) SearchKeywords(ctx context.Context, keywo
 	}
 	defer rows.Close()
 
-	var results []ReferenceTerm
-	for rows.Next() {
-		var term ReferenceTerm
-		if err := rows.Scan(&term.Source, &term.Translation); err != nil {
-			return nil, fmt.Errorf("failed to scan keyword match row: %w", err)
-		}
-		results = append(results, term)
-	}
-
-	return results, nil
+	return s.scanReferenceTermRows(rows)
 }
 
 // SearchNPCPartial searches for NPC names using partial matches.
 func (s *SQLiteTermDictionarySearcher) SearchNPCPartial(ctx context.Context, keywords []string, consumedKeywords []string, isNPC bool) ([]ReferenceTerm, error) {
+	s.logger.DebugContext(ctx, "ENTER SQLiteTermDictionarySearcher.SearchNPCPartial", slog.Int("keywordCount", len(keywords)))
+	defer s.logger.DebugContext(ctx, "EXIT SQLiteTermDictionarySearcher.SearchNPCPartial")
+
 	if !isNPC || len(keywords) == 0 {
 		return nil, nil
 	}
 
-	// Find available keywords that are not consumed
-	consumedMap := make(map[string]bool)
-	for _, cw := range consumedKeywords {
-		consumedMap[strings.ToLower(cw)] = true
-	}
-
-	var availableKeywords []string
-	for _, kw := range keywords {
-		if !consumedMap[strings.ToLower(kw)] {
-			availableKeywords = append(availableKeywords, kw)
-		}
-	}
-
+	availableKeywords := s.filterConsumedKeywords(keywords, consumedKeywords)
 	if len(availableKeywords) == 0 {
 		return nil, nil
 	}
 
 	matchStr := strings.Join(availableKeywords, " OR ")
 
-	// Search specifically within NPC records
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT dt.original_en, dt.translated_ja 
 		FROM dictionary_terms_fts fts
@@ -146,26 +109,18 @@ func (s *SQLiteTermDictionarySearcher) SearchNPCPartial(ctx context.Context, key
 	}
 	defer rows.Close()
 
-	var results []ReferenceTerm
-	for rows.Next() {
-		var term ReferenceTerm
-		if err := rows.Scan(&term.Source, &term.Translation); err != nil {
-			return nil, fmt.Errorf("failed to scan npc partial match row: %w", err)
-		}
-		results = append(results, term)
-	}
-
-	return results, nil
+	return s.scanReferenceTermRows(rows)
 }
 
 // SearchBatch executes batched searches for efficiency, returning a map of terms.
 func (s *SQLiteTermDictionarySearcher) SearchBatch(ctx context.Context, texts []string) (map[string][]ReferenceTerm, error) {
+	s.logger.DebugContext(ctx, "ENTER SQLiteTermDictionarySearcher.SearchBatch", slog.Int("textCount", len(texts)))
+	defer s.logger.DebugContext(ctx, "EXIT SQLiteTermDictionarySearcher.SearchBatch")
+
 	if len(texts) == 0 {
 		return nil, nil
 	}
 
-	// Not implemented optimally for large batches here, would need an IN clause,
-	// but simplifies logic for demonstration.
 	resultMap := make(map[string][]ReferenceTerm)
 	for _, t := range texts {
 		res, err := s.SearchExact(ctx, t)
@@ -181,4 +136,55 @@ func (s *SQLiteTermDictionarySearcher) SearchBatch(ctx context.Context, texts []
 // Close closes the dictionary database connection.
 func (s *SQLiteTermDictionarySearcher) Close() error {
 	return s.db.Close()
+}
+
+// --- Private Helper Methods ---
+
+// stemKeywords applies stemming to each keyword, falling back to the original on error.
+func (s *SQLiteTermDictionarySearcher) stemKeywords(keywords []string) []string {
+	s.logger.Debug("ENTER SQLiteTermDictionarySearcher.stemKeywords")
+
+	var stemmedKeywords []string
+	for _, kw := range keywords {
+		if s.stemmer != nil {
+			stemmed, err := s.stemmer.Stem(kw)
+			if err == nil && stemmed != "" {
+				stemmedKeywords = append(stemmedKeywords, stemmed)
+				continue
+			}
+		}
+		stemmedKeywords = append(stemmedKeywords, kw)
+	}
+	return stemmedKeywords
+}
+
+// filterConsumedKeywords returns keywords that have not been consumed yet.
+func (s *SQLiteTermDictionarySearcher) filterConsumedKeywords(keywords []string, consumedKeywords []string) []string {
+	s.logger.Debug("ENTER SQLiteTermDictionarySearcher.filterConsumedKeywords")
+
+	consumedMap := make(map[string]bool)
+	for _, cw := range consumedKeywords {
+		consumedMap[strings.ToLower(cw)] = true
+	}
+
+	var availableKeywords []string
+	for _, kw := range keywords {
+		if !consumedMap[strings.ToLower(kw)] {
+			availableKeywords = append(availableKeywords, kw)
+		}
+	}
+	return availableKeywords
+}
+
+// scanReferenceTermRows scans rows of (source, translation) pairs into ReferenceTerm slice.
+func (s *SQLiteTermDictionarySearcher) scanReferenceTermRows(rows *sql.Rows) ([]ReferenceTerm, error) {
+	var results []ReferenceTerm
+	for rows.Next() {
+		var term ReferenceTerm
+		if err := rows.Scan(&term.Source, &term.Translation); err != nil {
+			return nil, fmt.Errorf("failed to scan reference term row: %w", err)
+		}
+		results = append(results, term)
+	}
+	return results, nil
 }
