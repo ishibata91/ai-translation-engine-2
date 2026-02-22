@@ -1,14 +1,59 @@
 package context_engine
 
-import (
-	"github.com/ishibata91/ai-translation-engine-2/pkg/domain/models"
-)
+// ContextEngineInput is the input data required for building translation requests.
+type ContextEngineInput struct {
+	NPCs      map[string]ContextNPC
+	Dialogues []ContextDialogue
+	Items     []ContextItem
+	Magic     []ContextMagic
+	Locations []ContextLocation
+}
 
-// ContextEngine builds structured TranslationRequests from ExtractedData.
+type ContextNPC struct {
+	ID       string
+	EditorID *string
+	Type     string
+	Name     string
+}
+
+type ContextDialogue struct {
+	ID               string
+	EditorID         *string
+	Type             string
+	SpeakerID        *string
+	Text             *string
+	QuestID          *string
+	IsServicesBranch bool
+	Order            int
+}
+
+type ContextItem struct {
+	ID       string
+	EditorID *string
+	Type     string
+	Name     *string
+	Text     *string
+}
+
+type ContextMagic struct {
+	ID       string
+	EditorID *string
+	Type     string
+	Name     *string
+}
+
+type ContextLocation struct {
+	ID       string
+	EditorID *string
+	Type     string
+	Name     *string
+}
+
+// ContextEngine builds structured TranslationRequests from ContextEngineInput.
 // It integrates dialogue tree analysis, speaker profiling, reference term lookup,
 // and summary lookup to produce context-rich translation requests for Pass 2.
 type ContextEngine interface {
-	BuildTranslationRequests(data *models.ExtractedData, config ContextEngineConfig) ([]TranslationRequest, error)
+	BuildTranslationRequests(data *ContextEngineInput, config ContextEngineConfig) ([]TranslationRequest, error)
 }
 
 // ToneResolver generates a tone instruction string from NPC attributes.

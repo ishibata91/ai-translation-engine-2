@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ishibata91/ai-translation-engine-2/pkg/domain/models"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/llm_client"
 	_ "modernc.org/sqlite"
 )
@@ -96,28 +95,31 @@ func TestTermTranslatorSlice(t *testing.T) {
 
 	tests := []struct {
 		name          string
-		input         models.ExtractedData
+		input         TermTranslatorInput
 		config        TermRecordConfig
 		mockResponses map[string]string
 		expectedTerms map[string]string
 	}{
 		{
 			name: "Translate Item and magic with exact dictionary match and LLM",
-			input: models.ExtractedData{
-				Items: []models.Item{
+			input: TermTranslatorInput{
+				Items: []TermItem{
 					{
-						BaseExtractedRecord: models.BaseExtractedRecord{ID: "001", Type: "WEAP"},
-						Name:                stringPtr("Iron Sword"),
+						ID:   "001",
+						Type: "WEAP",
+						Name: stringPtr("Iron Sword"),
 					},
 					{
-						BaseExtractedRecord: models.BaseExtractedRecord{ID: "002", Type: "ARMO"},
-						Name:                stringPtr("Steel Armor"),
+						ID:   "002",
+						Type: "ARMO",
+						Name: stringPtr("Steel Armor"),
 					},
 				},
-				Magic: []models.Magic{
+				Magic: []TermMagic{
 					{
-						BaseExtractedRecord: models.BaseExtractedRecord{ID: "003", Type: "SPEL"},
-						Name:                stringPtr("Fireball"),
+						ID:   "003",
+						Type: "SPEL",
+						Name: stringPtr("Fireball"),
 					},
 				},
 			},
@@ -136,15 +138,19 @@ func TestTermTranslatorSlice(t *testing.T) {
 		},
 		{
 			name: "Translate Paired NPCs",
-			input: models.ExtractedData{
-				NPCs: map[string]models.NPC{
+			input: TermTranslatorInput{
+				NPCs: map[string]TermNPC{
 					"npc1": {
-						BaseExtractedRecord: models.BaseExtractedRecord{ID: "101", EditorID: stringPtr("EditorID1"), Type: "NPC_:FULL"},
-						Name:                "Uthgerd the Unbroken",
+						ID:       "101",
+						EditorID: stringPtr("EditorID1"),
+						Type:     "NPC_:FULL",
+						Name:     "Uthgerd the Unbroken",
 					},
 					"npc2": {
-						BaseExtractedRecord: models.BaseExtractedRecord{ID: "102", EditorID: stringPtr("EditorID1"), Type: "NPC_:SHRT"},
-						Name:                "Uthgerd",
+						ID:       "102",
+						EditorID: stringPtr("EditorID1"),
+						Type:     "NPC_:SHRT",
+						Name:     "Uthgerd",
 					},
 				},
 			},
@@ -161,11 +167,12 @@ func TestTermTranslatorSlice(t *testing.T) {
 		},
 		{
 			name: "Filtered records are ignored",
-			input: models.ExtractedData{
-				Items: []models.Item{
+			input: TermTranslatorInput{
+				Items: []TermItem{
 					{
-						BaseExtractedRecord: models.BaseExtractedRecord{ID: "001", Type: "MISC"},
-						Name:                stringPtr("Gold Coin"),
+						ID:   "001",
+						Type: "MISC",
+						Name: stringPtr("Gold Coin"),
 					},
 				},
 			},

@@ -2,21 +2,56 @@ package term_translator
 
 import (
 	"context"
-
-	"github.com/ishibata91/ai-translation-engine-2/pkg/domain/models"
 )
+
+// TermTranslatorInput is the input data required for term translation.
+type TermTranslatorInput struct {
+	NPCs      map[string]TermNPC
+	Items     []TermItem
+	Magic     []TermMagic
+	Locations []TermLocation
+}
+
+type TermNPC struct {
+	ID       string
+	EditorID *string
+	Type     string
+	Name     string
+}
+
+type TermItem struct {
+	ID       string
+	EditorID *string
+	Type     string
+	Name     *string
+	Text     *string
+}
+
+type TermMagic struct {
+	ID       string
+	EditorID *string
+	Type     string
+	Name     *string
+}
+
+type TermLocation struct {
+	ID       string
+	EditorID *string
+	Type     string
+	Name     *string
+}
 
 // TermTranslator is the main entry point for term translation (Pass 1).
 // It orchestrates request building, dictionary search, LLM translation,
 // and persistence to the Mod term database.
 type TermTranslator interface {
-	TranslateTerms(ctx context.Context, data models.ExtractedData) ([]TermTranslationResult, error)
+	TranslateTerms(ctx context.Context, data TermTranslatorInput) ([]TermTranslationResult, error)
 }
 
-// TermRequestBuilder extracts term translation targets from ExtractedData
+// TermRequestBuilder extracts term translation targets from TermTranslatorInput
 // and constructs translation requests, including NPC FULL+SHRT pairing.
 type TermRequestBuilder interface {
-	BuildRequests(ctx context.Context, data models.ExtractedData) ([]TermTranslationRequest, error)
+	BuildRequests(ctx context.Context, data TermTranslatorInput) ([]TermTranslationRequest, error)
 }
 
 // TermDictionarySearcher searches the dictionary DB (built by Dictionary Builder Slice)

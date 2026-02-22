@@ -1,24 +1,22 @@
-package main_translator
+package pass2_translator
 
 import (
 	"context"
-
-	ce "github.com/ishibata91/ai-translation-engine-2/pkg/context_engine"
 )
 
-// BatchTranslator translates multiple TranslationRequests in parallel batches.
+// BatchTranslator translates multiple Pass2TranslationRequests in parallel batches.
 type BatchTranslator interface {
-	TranslateBatch(ctx context.Context, requests []ce.TranslationRequest, config BatchConfig) ([]TranslationResult, error)
+	TranslateBatch(ctx context.Context, requests []Pass2TranslationRequest, config BatchConfig) ([]TranslationResult, error)
 }
 
-// Translator translates a single TranslationRequest via LLM.
+// Translator translates a single Pass2TranslationRequest via LLM.
 type Translator interface {
-	Translate(ctx context.Context, request ce.TranslationRequest) (TranslationResult, error)
+	Translate(ctx context.Context, request Pass2TranslationRequest) (TranslationResult, error)
 }
 
-// PromptBuilder constructs system and user prompts from a TranslationRequest.
+// PromptBuilder constructs system and user prompts from a Pass2TranslationRequest.
 type PromptBuilder interface {
-	Build(request ce.TranslationRequest) (systemPrompt string, userPrompt string, err error)
+	Build(request Pass2TranslationRequest) (systemPrompt string, userPrompt string, err error)
 }
 
 // TagProcessor handles HTML tag abstraction before translation

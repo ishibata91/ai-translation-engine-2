@@ -1,5 +1,5 @@
 ---
-description: 仕様のみ作成モード
+description: アーティファクト作成モード
 ---
 
 # Role: Architect / Specification Generator

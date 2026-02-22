@@ -26,6 +26,14 @@ AIDDにおける決定的なコード再生成の確実性を担保するため�
 
 ## 要件
 
+### 独立性: ペルソナ生成データの受け取りと独自DTO定義
+**Reason**: スライスの完全独立性を確保するAnti-Corruption Layerパターンを適用し、他スライス(LoaderSlice等)のDTOへの依存を排除するため。
+**Migration**: 外部のデータ構造を直接参照する方式から、本スライス独自のパッケージ内に入力用DTO（例: `PersonaGenInput`）を定義し、それを受け取るインターフェースへ移行する。マッピングは呼び出し元（オーケストレーター層）の責務とする。
+
+#### Scenario: 独自定義DTOによる初期化と生成処理の開始
+- **WHEN** オーケストレーター層から本スライス専用の入力DTO（`PersonaGenInput`）が提供された場合
+- **THEN** 外部パッケージのDTOに一切依存することなく、提供された内部データ構造のみを用いてペルソナ生成処理を完結できること
+
 ### 1. NPC会話データの収集
 
 本Sliceは、`ExtractedData` に含まれる `DialogueGroup` / `DialogueResponse` から、NPCごとの会話データを収集する。
@@ -153,21 +161,21 @@ type TokenEstimator interface {
 ### 5. ペルソナDBスキーマ
 
 #### テーブル: `npc_personas`
-| カラム | 型 | 説明 |
-| :--- | :--- | :--- |
-| `id` | INTEGER PRIMARY KEY AUTOINCREMENT | 自動採番ID |
-| `speaker_id` | TEXT NOT NULL UNIQUE | NPC識別子（SpeakerID） |
-| `editor_id` | TEXT | NPCのEditor ID |
-| `npc_name` | TEXT | NPC名（`NPC_:FULL` のテキスト） |
-| `race` | TEXT | 種族 |
-| `sex` | TEXT | 性別 |
-| `voice_type` | TEXT | 声の種類 |
-| `persona_text` | TEXT NOT NULL | 生成されたペルソナテキスト |
-| `dialogue_count` | INTEGER NOT NULL | ペルソナ生成に使用した会話件数 |
-| `estimated_tokens` | INTEGER | 推定トークン利用量 |
-| `source_plugin` | TEXT | ソースプラグイン名 |
-| `created_at` | DATETIME | 作成日時 |
-| `updated_at` | DATETIME | 更新日時 |
+| カラム             | 型                                | 説明                            |
+| :----------------- | :-------------------------------- | :------------------------------ |
+| `id`               | INTEGER PRIMARY KEY AUTOINCREMENT | 自動採番ID                      |
+| `speaker_id`       | TEXT NOT NULL UNIQUE              | NPC識別子（SpeakerID）          |
+| `editor_id`        | TEXT                              | NPCのEditor ID                  |
+| `npc_name`         | TEXT                              | NPC名（`NPC_:FULL` のテキスト） |
+| `race`             | TEXT                              | 種族                            |
+| `sex`              | TEXT                              | 性別                            |
+| `voice_type`       | TEXT                              | 声の種類                        |
+| `persona_text`     | TEXT NOT NULL                     | 生成されたペルソナテキスト      |
+| `dialogue_count`   | INTEGER NOT NULL                  | ペルソナ生成に使用した会話件数  |
+| `estimated_tokens` | INTEGER                           | 推定トークン利用量              |
+| `source_plugin`    | TEXT                              | ソースプラグイン名              |
+| `created_at`       | DATETIME                          | 作成日時                        |
+| `updated_at`       | DATETIME                          | 更新日時                        |
 
 ### 6. Pass 2での参照
 

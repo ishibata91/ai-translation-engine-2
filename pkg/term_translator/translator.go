@@ -7,7 +7,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/ishibata91/ai-translation-engine-2/pkg/domain/models"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/llm_client"
 )
 
@@ -48,7 +47,7 @@ func NewTermTranslator(
 }
 
 // TranslateTerms orchestrates the term translation process.
-func (t *TermTranslatorImpl) TranslateTerms(ctx context.Context, data models.ExtractedData) ([]TermTranslationResult, error) {
+func (t *TermTranslatorImpl) TranslateTerms(ctx context.Context, data TermTranslatorInput) ([]TermTranslationResult, error) {
 	t.logger.InfoContext(ctx, "ENTER TermTranslatorImpl.TranslateTerms")
 	defer t.logger.InfoContext(ctx, "EXIT TermTranslatorImpl.TranslateTerms")
 
@@ -66,7 +65,7 @@ func (t *TermTranslatorImpl) TranslateTerms(ctx context.Context, data models.Ext
 }
 
 // initializeTranslation builds requests and ensures DB schema is ready.
-func (t *TermTranslatorImpl) initializeTranslation(ctx context.Context, data models.ExtractedData) ([]TermTranslationRequest, error) {
+func (t *TermTranslatorImpl) initializeTranslation(ctx context.Context, data TermTranslatorInput) ([]TermTranslationRequest, error) {
 	t.logger.DebugContext(ctx, "ENTER TermTranslatorImpl.initializeTranslation")
 
 	requests, err := t.builder.BuildRequests(ctx, data)

@@ -6,7 +6,6 @@ import (
 	"log/slog"
 
 	"github.com/ishibata91/ai-translation-engine-2/pkg/config_store"
-	"github.com/ishibata91/ai-translation-engine-2/pkg/domain/models"
 )
 
 // jsonLoader implements contract.Loader interface.
@@ -23,7 +22,7 @@ func newJSONLoader(config config_store.ConfigStore) Loader {
 // It follows the Two-Phase Load strategy:
 // 1. Decode file into map[string]json.RawMessage (Serial)
 // 2. Unmarshal and normalize each section in parallel (Parallel)
-func (l *jsonLoader) LoadExtractedJSON(ctx context.Context, path string) (*models.ExtractedData, error) {
+func (l *jsonLoader) LoadExtractedJSON(ctx context.Context, path string) (*LoaderOutput, error) {
 	slog.DebugContext(ctx, "ENTER jsonLoader.LoadExtractedJSON", slog.String("path", path))
 	defer slog.DebugContext(ctx, "EXIT jsonLoader.LoadExtractedJSON")
 

@@ -7,8 +7,6 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
-
-	"github.com/ishibata91/ai-translation-engine-2/pkg/domain/models"
 )
 
 // ParallelProcessor handles the parallel unmarshaling and normalization of ExtractedData.
@@ -21,13 +19,13 @@ func NewParallelProcessor(rawMap map[string]json.RawMessage) *ParallelProcessor 
 	return &ParallelProcessor{rawMap: rawMap}
 }
 
-// Process executes the parallel unmarshaling and returns the constructed ExtractedData.
-func (p *ParallelProcessor) Process(ctx context.Context) (*models.ExtractedData, error) {
+// Process executes the parallel unmarshaling and returns the constructed LoaderOutput.
+func (p *ParallelProcessor) Process(ctx context.Context) (*LoaderOutput, error) {
 	slog.DebugContext(ctx, "ENTER ParallelProcessor.Process")
 	defer slog.DebugContext(ctx, "EXIT ParallelProcessor.Process")
 
-	data := &models.ExtractedData{
-		NPCs: make(map[string]models.NPC),
+	data := &LoaderOutput{
+		NPCs: make(map[string]NPC),
 	}
 
 	errChan := p.launchUnmarshalWorkers(ctx, data)
@@ -43,7 +41,7 @@ func (p *ParallelProcessor) Process(ctx context.Context) (*models.ExtractedData,
 }
 
 // launchUnmarshalWorkers starts goroutines for each data section and returns the error channel.
-func (p *ParallelProcessor) launchUnmarshalWorkers(ctx context.Context, data *models.ExtractedData) chan error {
+func (p *ParallelProcessor) launchUnmarshalWorkers(ctx context.Context, data *LoaderOutput) chan error {
 	slog.DebugContext(ctx, "ENTER ParallelProcessor.launchUnmarshalWorkers")
 
 	var g sync.WaitGroup
@@ -101,16 +99,16 @@ func (p *ParallelProcessor) waitAndCollectErrors(ctx context.Context, errChan ch
 }
 
 // postProcess applies normalization to the loaded data.
-func (p *ParallelProcessor) postProcess(data *models.ExtractedData) {
+func (p *ParallelProcessor) postProcess(data *LoaderOutput) {
 	slog.Debug("ENTER ParallelProcessor.postProcess")
 	normalizeData(data)
 }
 
 // --- Section Unmarshalers ---
 
-func (p *ParallelProcessor) unmarshalQuests(data *models.ExtractedData) error {
+func (p *ParallelProcessor) unmarshalQuests(data *LoaderOutput) error {
 	if raw, ok := p.rawMap["quests"]; ok {
-		var quests []models.Quest
+		var quests []Quest
 		if err := json.Unmarshal(raw, &quests); err != nil {
 			return fmt.Errorf("failed to unmarshal quests: %w", err)
 		}
@@ -119,9 +117,9 @@ func (p *ParallelProcessor) unmarshalQuests(data *models.ExtractedData) error {
 	return nil
 }
 
-func (p *ParallelProcessor) unmarshalDialogueGroups(data *models.ExtractedData) error {
+func (p *ParallelProcessor) unmarshalDialogueGroups(data *LoaderOutput) error {
 	if raw, ok := p.rawMap["dialogue_groups"]; ok {
-		var dgs []models.DialogueGroup
+		var dgs []DialogueGroup
 		if err := json.Unmarshal(raw, &dgs); err != nil {
 			return fmt.Errorf("failed to unmarshal dialogue_groups: %w", err)
 		}
@@ -130,9 +128,9 @@ func (p *ParallelProcessor) unmarshalDialogueGroups(data *models.ExtractedData) 
 	return nil
 }
 
-func (p *ParallelProcessor) unmarshalItems(data *models.ExtractedData) error {
+func (p *ParallelProcessor) unmarshalItems(data *LoaderOutput) error {
 	if raw, ok := p.rawMap["items"]; ok {
-		var items []models.Item
+		var items []Item
 		if err := json.Unmarshal(raw, &items); err != nil {
 			return fmt.Errorf("failed to unmarshal items: %w", err)
 		}
@@ -141,9 +139,9 @@ func (p *ParallelProcessor) unmarshalItems(data *models.ExtractedData) error {
 	return nil
 }
 
-func (p *ParallelProcessor) unmarshalNPCs(data *models.ExtractedData) error {
+func (p *ParallelProcessor) unmarshalNPCs(data *LoaderOutput) error {
 	if raw, ok := p.rawMap["npcs"]; ok {
-		var npcs map[string]models.NPC
+		var npcs map[string]NPC
 		if err := json.Unmarshal(raw, &npcs); err != nil {
 			return fmt.Errorf("failed to unmarshal npcs: %w", err)
 		}
@@ -152,9 +150,9 @@ func (p *ParallelProcessor) unmarshalNPCs(data *models.ExtractedData) error {
 	return nil
 }
 
-func (p *ParallelProcessor) unmarshalLocations(data *models.ExtractedData) error {
+func (p *ParallelProcessor) unmarshalLocations(data *LoaderOutput) error {
 	if raw, ok := p.rawMap["locations"]; ok {
-		var locs []models.Location
+		var locs []Location
 		if err := json.Unmarshal(raw, &locs); err != nil {
 			return fmt.Errorf("failed to unmarshal locations: %w", err)
 		}
@@ -163,9 +161,9 @@ func (p *ParallelProcessor) unmarshalLocations(data *models.ExtractedData) error
 	return nil
 }
 
-func (p *ParallelProcessor) unmarshalCells(data *models.ExtractedData) error {
+func (p *ParallelProcessor) unmarshalCells(data *LoaderOutput) error {
 	if raw, ok := p.rawMap["cells"]; ok {
-		var cells []models.Location
+		var cells []Location
 		if err := json.Unmarshal(raw, &cells); err != nil {
 			return fmt.Errorf("failed to unmarshal cells: %w", err)
 		}
@@ -174,9 +172,9 @@ func (p *ParallelProcessor) unmarshalCells(data *models.ExtractedData) error {
 	return nil
 }
 
-func (p *ParallelProcessor) unmarshalMagic(data *models.ExtractedData) error {
+func (p *ParallelProcessor) unmarshalMagic(data *LoaderOutput) error {
 	if raw, ok := p.rawMap["magic"]; ok {
-		var magics []models.Magic
+		var magics []Magic
 		if err := json.Unmarshal(raw, &magics); err != nil {
 			return fmt.Errorf("failed to unmarshal magic: %w", err)
 		}
@@ -185,9 +183,9 @@ func (p *ParallelProcessor) unmarshalMagic(data *models.ExtractedData) error {
 	return nil
 }
 
-func (p *ParallelProcessor) unmarshalSystem(data *models.ExtractedData) error {
+func (p *ParallelProcessor) unmarshalSystem(data *LoaderOutput) error {
 	if raw, ok := p.rawMap["system"]; ok {
-		var sys []models.SystemRecord
+		var sys []SystemRecord
 		if err := json.Unmarshal(raw, &sys); err != nil {
 			return fmt.Errorf("failed to unmarshal system: %w", err)
 		}
@@ -196,9 +194,9 @@ func (p *ParallelProcessor) unmarshalSystem(data *models.ExtractedData) error {
 	return nil
 }
 
-func (p *ParallelProcessor) unmarshalMessages(data *models.ExtractedData) error {
+func (p *ParallelProcessor) unmarshalMessages(data *LoaderOutput) error {
 	if raw, ok := p.rawMap["messages"]; ok {
-		var msgs []models.Message
+		var msgs []Message
 		if err := json.Unmarshal(raw, &msgs); err != nil {
 			return fmt.Errorf("failed to unmarshal messages: %w", err)
 		}
@@ -207,9 +205,9 @@ func (p *ParallelProcessor) unmarshalMessages(data *models.ExtractedData) error 
 	return nil
 }
 
-func (p *ParallelProcessor) unmarshalLoadScreens(data *models.ExtractedData) error {
+func (p *ParallelProcessor) unmarshalLoadScreens(data *LoaderOutput) error {
 	if raw, ok := p.rawMap["load_screens"]; ok {
-		var ls []models.LoadScreen
+		var ls []LoadScreen
 		if err := json.Unmarshal(raw, &ls); err != nil {
 			return fmt.Errorf("failed to unmarshal load_screens: %w", err)
 		}
@@ -220,7 +218,7 @@ func (p *ParallelProcessor) unmarshalLoadScreens(data *models.ExtractedData) err
 
 // --- Normalization ---
 
-func normalizeData(data *models.ExtractedData) {
+func normalizeData(data *LoaderOutput) {
 	slog.Debug("ENTER normalizeData")
 
 	var wg sync.WaitGroup
@@ -237,7 +235,7 @@ func normalizeData(data *models.ExtractedData) {
 }
 
 // normalizeNPCNames trims whitespace from NPC names.
-func normalizeNPCNames(data *models.ExtractedData) {
+func normalizeNPCNames(data *LoaderOutput) {
 	slog.Debug("ENTER normalizeNPCNames")
 
 	for k, npc := range data.NPCs {

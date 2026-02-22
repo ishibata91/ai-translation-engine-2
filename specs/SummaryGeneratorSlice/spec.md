@@ -28,6 +28,14 @@ AIDDにおける決定的なコード再生成の確実性を担保するため�
 
 ## 要件
 
+### 独立性: サマリ生成向けデータの受け取りと独自DTO定義
+**Reason**: スライスの完全独立性を確保するAnti-Corruption Layerパターンを適用し、他スライスのDTOへの依存を排除するため。
+**Migration**: 外部のデータ構造を直接参照する方式から、本スライス独自のパッケージ内に入力用DTOを定義し、それを受け取るインターフェースへ移行する。マッピングは呼び出し元（オーケストレーター層）の責務とする。
+
+#### Scenario: 独自定義DTOによる初期化とサマリ生成
+- **WHEN** オーケストレーター層から本スライス専用の入力DTOが提供された場合
+- **THEN** 外部パッケージのDTOに一切依存することなく、提供された内部データ構造のみを用いてサマリ生成処理を完結できること
+
 ### 1. 会話要約の生成
 
 本Sliceは、`ExtractedData` に含まれる `DialogueGroup` / `DialogueResponse` から会話の流れを収集し、LLMで要約する。
@@ -131,17 +139,17 @@ Summarize the overall quest based on the descriptions of these quest stages:
 各ソースファイルのSQLiteファイル内に以下のテーブルを作成する。
 
 #### テーブル: `summaries`
-| カラム | 型 | 説明 |
-| :--- | :--- | :--- |
-| `id` | INTEGER PRIMARY KEY AUTOINCREMENT | 自動採番ID |
-| `record_id` | TEXT NOT NULL | 対象レコードID（DialogueGroup.ID または Quest.ID） |
-| `summary_type` | TEXT NOT NULL | 要約種別（`"dialogue"` または `"quest"`） |
-| `cache_key` | TEXT NOT NULL UNIQUE | キャッシュキー（`{record_id}\|{sha256_hash}`） |
-| `input_hash` | TEXT NOT NULL | 入力テキストのSHA-256ハッシュ |
-| `summary_text` | TEXT NOT NULL | 生成された要約テキスト |
-| `input_line_count` | INTEGER NOT NULL | 要約対象の入力行数 |
-| `created_at` | DATETIME | 作成日時 |
-| `updated_at` | DATETIME | 更新日時 |
+| カラム             | 型                                | 説明                                               |
+| :----------------- | :-------------------------------- | :------------------------------------------------- |
+| `id`               | INTEGER PRIMARY KEY AUTOINCREMENT | 自動採番ID                                         |
+| `record_id`        | TEXT NOT NULL                     | 対象レコードID（DialogueGroup.ID または Quest.ID） |
+| `summary_type`     | TEXT NOT NULL                     | 要約種別（`"dialogue"` または `"quest"`）          |
+| `cache_key`        | TEXT NOT NULL UNIQUE              | キャッシュキー（`{record_id}\|{sha256_hash}`）     |
+| `input_hash`       | TEXT NOT NULL                     | 入力テキストのSHA-256ハッシュ                      |
+| `summary_text`     | TEXT NOT NULL                     | 生成された要約テキスト                             |
+| `input_line_count` | INTEGER NOT NULL                  | 要約対象の入力行数                                 |
+| `created_at`       | DATETIME                          | 作成日時                                           |
+| `updated_at`       | DATETIME                          | 更新日時                                           |
 
 > **注**: `source_plugin` カラムは不要。DBファイル自体がソースファイルに対応するため、テーブル内に冗長な情報を持たない。
 

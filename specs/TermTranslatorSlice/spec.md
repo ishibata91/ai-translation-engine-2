@@ -26,17 +26,25 @@ AIDDにおける決定的なコード再生成の確実性を担保するため�
 
 ## 要件
 
+### 独立性: 用語翻訳対象データの受け取りと独自DTO定義
+**Reason**: スライスの完全独立性を確保するAnti-Corruption Layerパターンを適用し、他スライス(LoaderSlice等)のDTOへの依存を排除するため。
+**Migration**: 外部の `ExtractedData` などを直接参照する方式から、本スライス独自のパッケージ内に入力用DTO（例: `TermTranslatorInput`）を定義し、それを受け取るインターフェースへ移行する。マッピングは呼び出し元（オーケストレーター層）の責務とする。
+
+#### Scenario: 独自定義DTOによる初期化と翻訳処理の開始
+- **WHEN** オーケストレーター層から本スライス専用の入力DTO（`TermTranslatorInput`）が提供された場合
+- **THEN** 外部パッケージのDTOに一切依存することなく、提供された内部データ構造のみを用いて用語翻訳リクエストを生成できること
+
 ### 1. 用語翻訳対象レコードの定義
 本Sliceは、`ExtractedData` に含まれる以下のドメインモデルから用語翻訳リクエストを生成する。
 
-| ドメインモデル | 対象レコードタイプ | 説明 |
-| :--- | :--- | :--- |
-| `NPC` | `NPC_:FULL`, `NPC_:SHRT` | NPC名、NPCの短い名前 |
-| `Item` | `WEAP:FULL`, `ARMO:FULL`, `AMMO:FULL`, `MISC:FULL`, `KEYM:FULL`, `ALCH:FULL`, `BOOK:FULL`, `INGR:FULL` | 武器・防具・弾薬・雑貨・鍵・錬金術品・本・素材の名称 |
-| `Magic` | `SPEL:FULL`, `MGEF:FULL`, `ENCH:FULL` | 魔法・魔法効果・エンチャントの名称 |
-| `Message` | `MESG:FULL` | メッセージ名 |
-| `Location` | `LCTN:FULL`, `CELL:FULL`, `WRLD:FULL` | ロケーション・セル・ワールドスペース名 |
-| `Quest` | `QUST:FULL` | クエスト名 |
+| ドメインモデル | 対象レコードタイプ                                                                                     | 説明                                                 |
+| :------------- | :----------------------------------------------------------------------------------------------------- | :--------------------------------------------------- |
+| `NPC`          | `NPC_:FULL`, `NPC_:SHRT`                                                                               | NPC名、NPCの短い名前                                 |
+| `Item`         | `WEAP:FULL`, `ARMO:FULL`, `AMMO:FULL`, `MISC:FULL`, `KEYM:FULL`, `ALCH:FULL`, `BOOK:FULL`, `INGR:FULL` | 武器・防具・弾薬・雑貨・鍵・錬金術品・本・素材の名称 |
+| `Magic`        | `SPEL:FULL`, `MGEF:FULL`, `ENCH:FULL`                                                                  | 魔法・魔法効果・エンチャントの名称                   |
+| `Message`      | `MESG:FULL`                                                                                            | メッセージ名                                         |
+| `Location`     | `LCTN:FULL`, `CELL:FULL`, `WRLD:FULL`                                                                  | ロケーション・セル・ワールドスペース名               |
+| `Quest`        | `QUST:FULL`                                                                                            | クエスト名                                           |
 
 **共通設定（Config）化による再利用**: 上記の「用語翻訳対象のレコードタイプ定義」は、本Sliceの内部にハードコードするのではなく、**システム共通のConfig（設定情報定義）として切り出して定義し、DI等で注入**する。これにより、Dictionary Builder Sliceの抽出対象REC定義と同一の設計思想を共有し、将来的な対象拡張を容易にする。
 
@@ -101,11 +109,11 @@ NPC名（`NPC_:FULL`, `NPC_:SHRT`）は、他のレコードタイプと異な�
 - 強制翻訳（§6）の判定には**ステム化を適用しない**（原文全文の厳密な完全一致のみ）。
 
 **具体例**:
-| ソーステキスト | キーワード | ステム | 辞書エントリ | マッチ |
-| :--- | :--- | :--- | :--- | :--- |
-| `"Daedric Swords"` | `Swords` | `sword` | `Sword` → stem: `sword` | ✓ |
-| `"Auriel's Bow"` | `Auriel's` → `Auriel` | `auriel` | `Auriel` → stem: `auriel` | ✓ |
-| `"Dragon Priests"` | `Priests` | `priest` | `Priest` → stem: `priest` | ✓ |
+| ソーステキスト     | キーワード            | ステム   | 辞書エントリ              | マッチ |
+| :----------------- | :-------------------- | :------- | :------------------------ | :----- |
+| `"Daedric Swords"` | `Swords`              | `sword`  | `Sword` → stem: `sword`   | ✓      |
+| `"Auriel's Bow"`   | `Auriel's` → `Auriel` | `auriel` | `Auriel` → stem: `auriel` | ✓      |
+| `"Dragon Priests"` | `Priests`             | `priest` | `Priest` → stem: `priest` | ✓      |
 
 ### 3. LLM翻訳の実行
 - 用語翻訳リクエストごとに、レコードタイプに応じた最適なシステムプロンプトを動的に生成する。
@@ -122,21 +130,21 @@ NPC名（`NPC_:FULL`, `NPC_:SHRT`）は、他のレコードタイプと異な�
 ### 5. Mod用語DBスキーマ
 
 #### テーブル: `mod_terms`
-| カラム | 型 | 説明 |
-| :--- | :--- | :--- |
-| `id` | INTEGER PRIMARY KEY AUTOINCREMENT | 自動採番ID |
-| `original_en` | TEXT NOT NULL | 原文（英語、小文字正規化） |
-| `translated_ja` | TEXT NOT NULL | 翻訳結果（日本語） |
-| `record_type` | TEXT NOT NULL | レコードタイプ（例: `NPC_ FULL`） |
-| `editor_id` | TEXT | Editor ID（例: `DLC1AurielsBow`） |
-| `source_plugin` | TEXT | ソースプラグイン名 |
-| `created_at` | DATETIME | 作成日時 |
-| UNIQUE | | `(original_en, record_type)` |
+| カラム          | 型                                | 説明                              |
+| :-------------- | :-------------------------------- | :-------------------------------- |
+| `id`            | INTEGER PRIMARY KEY AUTOINCREMENT | 自動採番ID                        |
+| `original_en`   | TEXT NOT NULL                     | 原文（英語、小文字正規化）        |
+| `translated_ja` | TEXT NOT NULL                     | 翻訳結果（日本語）                |
+| `record_type`   | TEXT NOT NULL                     | レコードタイプ（例: `NPC_ FULL`） |
+| `editor_id`     | TEXT                              | Editor ID（例: `DLC1AurielsBow`） |
+| `source_plugin` | TEXT                              | ソースプラグイン名                |
+| `created_at`    | DATETIME                          | 作成日時                          |
+| UNIQUE          |                                   | `(original_en, record_type)`      |
 
 #### 仮想テーブル: `mod_terms_fts` (FTS5)
-| カラム | 説明 |
-| :--- | :--- |
-| `original_en` | 原文（全文検索用） |
+| カラム          | 説明                   |
+| :-------------- | :--------------------- |
+| `original_en`   | 原文（全文検索用）     |
 | `translated_ja` | 翻訳結果（全文検索用） |
 
 - `content='mod_terms'`, `content_rowid='id'`, `tokenize='unicode61'`
