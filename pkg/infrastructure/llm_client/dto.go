@@ -8,14 +8,16 @@ type Request struct {
 	Temperature    float32                `json:"temperature"`
 	ResponseSchema map[string]interface{} `json:"response_schema,omitempty"`
 	StopSequences  []string               `json:"stop_sequences,omitempty"`
+	Metadata       map[string]interface{} `json:"metadata,omitempty"`
 }
 
 // Response represents a response from an LLM provider.
 type Response struct {
-	Content string     `json:"content"`
-	Success bool       `json:"success"`
-	Error   string     `json:"error,omitempty"`
-	Usage   TokenUsage `json:"usage"`
+	Content  string                 `json:"content"`
+	Success  bool                   `json:"success"`
+	Error    string                 `json:"error,omitempty"`
+	Usage    TokenUsage             `json:"usage"`
+	Metadata map[string]interface{} `json:"metadata,omitempty"`
 }
 
 // TokenUsage represents token consumption for a request.

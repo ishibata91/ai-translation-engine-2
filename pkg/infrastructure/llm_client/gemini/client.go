@@ -65,6 +65,8 @@ func (c *client) Complete(ctx context.Context, req llm.Request) (llm.Response, e
 		return llm.Response{}, err
 	}
 
+	resp.Metadata = req.Metadata
+
 	c.logger.DebugContext(ctx, "EXIT Complete",
 		"content_len", len(resp.Content),
 		"prompt_tokens", resp.Usage.PromptTokens,

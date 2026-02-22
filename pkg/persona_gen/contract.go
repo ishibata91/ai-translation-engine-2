@@ -2,6 +2,8 @@ package persona_gen
 
 import (
 	"context"
+
+	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/llm_client"
 )
 
 // PersonaGenInput is the input data required for persona generation.
@@ -29,10 +31,11 @@ type PersonaDialogue struct {
 }
 
 // NPCPersonaGenerator is the main entry point for NPC persona generation.
-// It orchestrates dialogue collection, token estimation, LLM persona generation,
-// and persistence to the persona database.
+// It orchestrates dialogue collection, token estimation, and request generation
+// for the Job Queue (Phase 1), and persistence of LLM responses (Phase 2).
 type NPCPersonaGenerator interface {
-	GeneratePersonas(ctx context.Context, data PersonaGenInput) ([]PersonaResult, error)
+	PreparePrompts(ctx context.Context, input PersonaGenInput, config PersonaConfig) ([]llm_client.Request, error)
+	SaveResults(ctx context.Context, input PersonaGenInput, results []llm_client.Response) error
 }
 
 // DialogueCollector collects per-NPC dialogue data from PersonaGenInput,
