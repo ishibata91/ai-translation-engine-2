@@ -29,7 +29,7 @@
 
 ## 6. Dependency Injection
 
-- [ ] 6.1 `pkg/term_translator/provider.go` を作成し、Google Wire 用の Provider Set (`TermTranslatorSliceSet`) を定義する。
-- [ ] 6.2 プロジェクトルートの `wire.go` を更新して新規プロバイダを登録し、`wire` コマンドを実行して依存関係を生成する。
+- [x] 6.1 `pkg/term_translator/provider.go` を作成し、Google Wire 用の Provider Set (`TermTranslatorSet`) を定義する。
+- [x] 6.2 プロジェクトルートの `wire.go` を更新して新規プロバイダを登録し、`wire` コマンドを実行して依存関係を生成する。
 
 </artifact>
