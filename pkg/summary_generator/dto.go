@@ -1,18 +1,50 @@
 package summary_generator
 
-import "time"
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
+	"strings"
+	"time"
 
-// DialogueGroupInput is the input for dialogue summary generation.
-type DialogueGroupInput struct {
+	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/llm_client"
+)
+
+// Record types
+const (
+	TypeDialogue = "Dialogue"
+	TypeQuest    = "Quest"
+)
+
+// SummaryGeneratorInput is the independent DTO for summary generation.
+type SummaryGeneratorInput struct {
+	DialogueItems []DialogueItem `json:"dialogue_items"`
+	QuestItems    []QuestItem    `json:"quest_items"`
+}
+
+// DialogueItem represents a dialogue group to be summarized.
+type DialogueItem struct {
 	GroupID    string   `json:"group_id"`
 	PlayerText *string  `json:"player_text,omitempty"`
 	Lines      []string `json:"lines"`
 }
 
-// QuestInput is the input for quest summary generation.
-type QuestInput struct {
-	QuestID    string   `json:"quest_id"`
-	StageTexts []string `json:"stage_texts"`
+// QuestItem represents a quest with its stages to be summarized.
+type QuestItem struct {
+	QuestID    string       `json:"quest_id"`
+	StageTexts []QuestStage `json:"stage_texts"`
+}
+
+// QuestStage represents a single stage text of a quest.
+type QuestStage struct {
+	Index int    `json:"index"`
+	Text  string `json:"text"`
+}
+
+// ProposeOutput contains the results of ProposeJobs.
+type ProposeOutput struct {
+	Jobs                 []llm_client.Request `json:"jobs"`
+	PreCalculatedResults []SummaryResult      `json:"pre_calculated_results"`
 }
 
 // SummaryResult represents the result of a single summary generation.
@@ -27,7 +59,7 @@ type SummaryResult struct {
 type SummaryRecord struct {
 	ID             int64     `json:"id"`
 	RecordID       string    `json:"record_id"`
-	SummaryType    string    `json:"summary_type"`
+	SummaryType    string    `json:"summary_type"` // Dialogue or Quest
 	CacheKey       string    `json:"cache_key"`
 	InputHash      string    `json:"input_hash"`
 	SummaryText    string    `json:"summary_text"`
@@ -40,8 +72,10 @@ type SummaryRecord struct {
 type CacheKeyHasher struct{}
 
 // BuildCacheKey generates a cache key from the record ID and input lines.
-func (h *CacheKeyHasher) BuildCacheKey(recordID string, lines []string) string {
-	_ = recordID
-	_ = lines
-	panic("not implemented")
+// Format: {record_id}|{sha256_hash}
+func (h *CacheKeyHasher) BuildCacheKey(recordID string, lines []string) (string, string) {
+	joined := strings.Join(lines, "\n")
+	hash := sha256.Sum256([]byte(joined))
+	hashStr := hex.EncodeToString(hash[:])
+	return fmt.Sprintf("%s|%s", recordID, hashStr), hashStr
 }

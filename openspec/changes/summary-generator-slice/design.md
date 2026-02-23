@@ -32,11 +32,10 @@ Go v2移行に伴い、永続化先をSQLiteへ変更し、完全自律Vertical 
 4. **カプセル化された永続化層（`SummaryStore`）**
    - **Rationale**: 外部からは `*sql.DB` のみを受け取り、`summaries` テーブルのDDL・UPSERT・SELECTはスライス内に閉じ込める。さらに `Init()` 内で `PRAGMA journal_mode=WAL` と `PRAGMA busy_timeout=5000` を自己発行することで、並行書き込みロック耐性をスライスが自律的に確保する。上位コンポーネント（ProcessManager等）にSQLite設定の責務を持たせない。
 
-5. **バルクリクエスト方式（まとめて渡す）**
-   - **Rationale**: 1件ずつ `Generate` を呼ぶ逐次/Goroutine並列方式では、バッチAPIモード時に「N個の独立したバッチジョブ」が走り効率が最悪になる。そのため本スライスは以下の2ステップで処理する。
-     1. **収集フェーズ**: 全対象レコードをキャッシュチェック → HITはスキップ、MISSのプロンプトを全件リスト化する（Goroutineで並列チェック可）
-     2. **一括送信フェーズ**: MISSプロンプトリストを `LLMClient.GenerateBulk(ctx, []GenerateRequest)` で一括送信し、全結果をまとめて受け取る
-   - **LLMClient側の責務**: sync モードでは内部ループで逐次実行、batch モードでは全件を1バッチジョブとして送信しポーリング後に全結果を返す。スライスはモードを知らなくてよい。
+5. **2フェーズモデル（Propose/Save）の採用**
+   - **Rationale**: バッチAPI等の長時間待機を伴うLLM通信に対応するため、スライスの責務を「プロンプト生成（ProposeJobs）」と「結果保存（SaveResults）」の2段階に分離する。スライス自身はLLM Clientを直接呼び出さず、通信制御はインフラ層（JobQueue/ProcessManager）へ委譲することで、ネットワーク分断やバッチAPI待機に対する堅牢性を確保する。
+   - **Phase 1 (Propose)**: 入力データを解析し、キャッシュヒット判定を行う。既訳がない場合はLLMプロンプトを生成してリクエスト群として返す。既訳がある場合は即時結果として返す。
+   - **Phase 2 (Save)**: JobQueue等を通じて取得されたLLMのレスポンス群を受け取り、パースしてSQLiteキャッシュに永続化する。
 
 6. **構造化ログ基盤への適合（slog-otel）**
    - **Rationale**: `refactoring_strategy.md` セクション6「テスト戦略」・セクション7「構造化ログ基盤」に準拠し、全Contractメソッドの入口・出口で `slog.DebugContext(ctx, ...)` を出力。TraceIDを全ログに自動付与する。
@@ -53,7 +52,7 @@ Go v2移行に伴い、永続化先をSQLiteへ変更し、完全自律Vertical 
 
 - **バッチAIモードでの非効率（1件ずつ発行問題）**
   - **Risk**: 1件ずつ `Generate` を呼ぶ設計では、バッチAPIモード時に「N個の独立したバッチジョブ」が個別に作成・ポーリングされ、バッチの意味がなくなる。
-  - **Mitigation**: Decision 5 のバルクリクエスト方式で解決。スライスはMISSプロンプトを全件まとめて `GenerateBulk` に渡す。`LLMClient` の Batch実装が全件を1ジョブにまとめて送信・完了後に全結果を返す。スライスはモード差異を知らなくてよい。
+  - **Mitigation**: 2フェーズモデルによる一括提案で解決。スライスはMISSプロンプトを全件まとめて `ProposeJobs` の戻り値として返し、上位の `ProcessManager` が `LLMClient.GenerateBulk` に渡す。これによりバッチジョブの集約が自然に行われる。
 
 - **クエスト要約の累積処理の順序依存**
   - **Risk**: ステージを昇順に処理する必要があり、並列化と順序保証が競合する。

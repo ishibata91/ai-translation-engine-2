@@ -10,44 +10,42 @@
 - [ ] 2.1 `{record_id}|{sha256_hash}` 形式のキャッシュキーを生成するロジックを実装する（Go標準 `crypto/sha256`）
 - [ ] 2.2 SQLiteに対してキャッシュキーで検索し、ヒット時はLLM呼び出しをスキップするキャッシュヒット判定を実装する
 
-## 3. データベースと SummaryStore
+## 3. 永続化層（SummaryStore）の実装
 
-- [ ] 3.1 `*sql.DB` をDIで受け取る `SummaryStore` を実装する。`Init()` 内で `PRAGMA journal_mode=WAL` と `PRAGMA busy_timeout=5000` を自己発行し、上位コンポーネントへの依存なしにロック耐性を確保する
-- [ ] 3.2 `summaries` テーブルのDDL（`CREATE TABLE IF NOT EXISTS`）をスライス内にカプセル化し、初期化時に自動作成する
-- [ ] 3.3 `idx_summaries_cache_key`・`idx_summaries_record_type` インデックスを作成する
-- [ ] 3.4 `UpsertSummary` メソッドを実装する（同一 `cache_key` の場合は上書き）
-- [ ] 3.5 `GetSummary(cacheKey string)` メソッドを実装する
+- [ ] 3.1 `*sql.DB` をDIで受け取る `SummaryStore` を実装する
+- [ ] 3.2 `Init()` 内で `PRAGMA` 設定（WAL/busy_timeout）を行い、自律的にロック耐性を確保する
+- [ ] 3.3 `summaries` テーブルのDDLカプセル化と初期化時の自動作成を実装する
+- [ ] 3.4 検索用インデックス（`cache_key`, `record_type`）を作成する
+- [ ] 3.5 低レベルなデータ操作メソッド（`Get`, `Upsert`, `GetByRecordID`）を実装する
 
-## 4. 会話要約の生成
+## 4. プロンプト構築ロジック
 
 - [ ] 4.1 `DialogueGroup` 単位で `PreviousID` チェーンを辿り会話フローを構築するロジックを実装する
-- [ ] 4.2 システムプロンプト・ユーザープロンプトを構築し、`LLMClient` へリクエストするメソッドを実装する
-- [ ] 4.3 入力行が0件の場合はスキップする条件分岐を追加する
+- [ ] 4.2 会話要約用のシステムプロンプト・ユーザープロンプトを構築するロジックを実装する
+- [ ] 4.3 クエストの `StageTexts` を `Index` 昇順でソートし、累積的なプロンプトを構築するロジックを実装する
+- [ ] 4.4 入力行が0件の場合はジョブ提案から除外する条件分岐を追加する
 
-## 5. クエスト要約の累積生成
+## 5. 2フェーズモデル・コントラクト実装
 
-- [ ] 5.1 `Quest.Stages` を `Index` 昇順でソートするロジックを実装する
-- [ ] 5.2 ステージを逐次処理し、過去ステージ記述を累積してLLMへ送信する累積要約ロジックを実装する
-- [ ] 5.3 ステージ記述が0件の場合はスキップする条件分岐を追加する
+- [ ] 5.1 `ProposeJobs` メソッドを実装する
+  - [ ] `SummaryStore.Get` を用いてキャッシュ判定を並列実行し、HIT/MISSを仕分ける
+  - [ ] MISS分についてプロンプトを構築し、`[]llm_client.Request` を生成する
+  - [ ] HIT分を `PreCalculatedResults` としてまとめ、`ProposeOutput` を返す
+- [ ] 5.2 `SaveResults` メソッドを実装する
+  - [ ] `[]llm_client.Response` から要約を抽出し、`SummaryStore.Upsert` で永続化する
+- [ ] 5.3 `GetSummary` メソッドを実装し、`SummaryStore.GetByRecordID` を呼び出して Pass 2 へ要約を返す
+- [ ] 5.4 `context.Context` のキャンセルを内部の並列処理に伝播させる
 
-## 6. バルクリクエスト処理
+## 6. 構造化ログと OpenTelemetry
 
-- [ ] 6.1 全対象レコードのキャッシュチェックをGoroutineで並列実行し、HITリストとMISSリストに仕分けるロジックを実装する
-- [ ] 6.2 MISSプロンプトを `[]GenerateRequest` としてまとめ、`LLMClient.GenerateBulk(ctx, reqs)` を一括呼び出しするロジックを実装する
-- [ ] 6.3 クエスト要約の累積処理は同一クエスト内でステージ逐次・クエスト間は並列でキャッシュチェックを行い、各クエストのMISSプロンプトをバルクリストに集約する
-- [ ] 6.4 `context.Context` のキャンセルを全Goroutineに伝播させる
+- [ ] 6.1 `ProposeJobs`・`SaveResults`・`GetSummary` の入口・出口に `slog.DebugContext(ctx, ...)` を追加する
+- [ ] 6.2 `trace_id`・処理件数・経過時間をログフィールドに含める
 
-## 7. 構造化ログ
+## 7. テスト
 
-- [ ] 7.1 全 Contract メソッドの入口・出口に `slog.DebugContext(ctx, ...)` による Entry/Exit ログを追加する
-- [ ] 7.2 `trace_id`・`span_id`・処理件数・経過時間をログフィールドに含める
-
-## 8. テスト
-
-- [ ] 8.1 インメモリSQLite（`:memory:`）を利用したスライスレベルのパラメタライズドテスト（`generator_test.go`）を作成する
-- [ ] 8.2 `GenerateBulk` をモック化し、実際のAPI呼び出しなしにパイプライン全体を検証する
-- [ ] 8.3 キャッシュヒット時のLLMスキップ動作（MISSリストに含まれないこと）を検証する
-- [ ] 8.4 バルクリクエストで渡されるプロンプト件数がキャッシュMISS件数と一致することを検証する
-- [ ] 8.5 クエスト要約の累積処理（ステージ逐次）の動作を検証する
-- [ ] 8.6 入力行0件時のスキップ動作を検証する
+- [ ] 7.1 インメモリSQLite（`:memory:`）を利用したスライスレベルのパラメタライズドテスト（`generator_test.go`）を作成する
+- [ ] 7.2 `ProposeJobs` のテスト: キャッシュMISS時に正しいプロンプトが生成されること、HIT時にDBから値が引かれることを検証する
+- [ ] 7.3 `SaveResults` のテスト: レスポンスが正しくDBに保存されること、バリデーション失敗時にスキップされることを検証する
+- [ ] 7.4 クエスト要約の累積プロンプト構築ロジックを検証する
+- [ ] 7.5 入力行0件時のスキップ動作を検証する
 

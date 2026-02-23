@@ -1,20 +1,38 @@
 package summary_generator
 
-import "context"
+import (
+	"context"
+
+	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/llm_client"
+)
 
 // SummaryGenerator is the main entry point for dialogue and quest summary generation.
-// It orchestrates LLM-based summarization and caching to SQLite.
+// It follows a 2-phase model: ProposeJobs and SaveResults.
 type SummaryGenerator interface {
-	GenerateDialogueSummaries(ctx context.Context, groups []DialogueGroupInput, progress func(done, total int)) ([]SummaryResult, error)
-	GenerateQuestSummaries(ctx context.Context, quests []QuestInput, progress func(done, total int)) ([]SummaryResult, error)
+	// ProposeJobs analyzes inputs, checks cache, and returns LLM jobs for missing entries.
+	ProposeJobs(ctx context.Context, input SummaryGeneratorInput) (*ProposeOutput, error)
+
+	// SaveResults persists LLM responses to the SQLite cache.
+	SaveResults(ctx context.Context, responses []llm_client.Response) error
+
+	// GetSummary retrieves a single summary by record ID. Used by Pass 2.
+	GetSummary(ctx context.Context, recordID string, summaryType string) (*SummaryResult, error)
 }
 
-// SummaryStore manages all operations on the per-source-file summaries SQLite table,
-// including schema creation, cache lookup, and UPSERT.
+// SummaryStore manages all operations on the per-source-file summaries SQLite table.
 type SummaryStore interface {
-	InitTable(ctx context.Context) error
+	// Init initializes the store, creating tables and setting PRAGMAs.
+	Init(ctx context.Context) error
+
+	// Get retrieves a record by its unique cache key.
 	Get(ctx context.Context, cacheKey string) (*SummaryRecord, error)
-	Upsert(ctx context.Context, record SummaryRecord) error
+
+	// GetByRecordID retrieves the latest record for a given record ID and type.
 	GetByRecordID(ctx context.Context, recordID string, summaryType string) (*SummaryRecord, error)
+
+	// Upsert inserts or updates a summary record.
+	Upsert(ctx context.Context, record SummaryRecord) error
+
+	// Close closes the underlying database connection.
 	Close() error
 }
