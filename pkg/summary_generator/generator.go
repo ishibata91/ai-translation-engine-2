@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/sync/errgroup"
+
 	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/llm_client"
 )
 
@@ -26,128 +28,240 @@ This summary will be used as context for translating quest-related texts.`
 )
 
 type summaryGenerator struct {
-	store SummaryStore
+	store  SummaryStore
+	config SummaryGeneratorConfig
 }
 
-func NewSummaryGenerator(store SummaryStore) SummaryGenerator {
+func NewSummaryGenerator(store SummaryStore, config SummaryGeneratorConfig) SummaryGenerator {
 	return &summaryGenerator{
-		store: store,
+		store:  store,
+		config: config,
 	}
 }
 
+// dialogueCacheResult holds the outcome of a single parallel cache lookup.
+type dialogueCacheResult struct {
+	index  int // preserves original order
+	job    *llm_client.Request
+	result *SummaryResult
+}
+
 func (g *summaryGenerator) ProposeJobs(ctx context.Context, input SummaryGeneratorInput) (*ProposeOutput, error) {
+	start := time.Now()
 	slog.DebugContext(ctx, "ENTER SummaryGenerator.ProposeJobs",
 		slog.Int("dialogue_items", len(input.DialogueItems)),
 		slog.Int("quest_items", len(input.QuestItems)),
 	)
-	defer slog.DebugContext(ctx, "EXIT SummaryGenerator.ProposeJobs")
+	defer func() {
+		slog.DebugContext(ctx, "EXIT SummaryGenerator.ProposeJobs",
+			slog.Duration("elapsed", time.Since(start)),
+		)
+	}()
 
 	output := &ProposeOutput{
 		Jobs:                 []llm_client.Request{},
 		PreCalculatedResults: []SummaryResult{},
 	}
 
-	hasher := &CacheKeyHasher{}
-
-	// Process Dialogue Items
-	for _, item := range input.DialogueItems {
-		if len(item.Lines) == 0 {
-			continue
-		}
-
-		cacheKey, inputHash := hasher.BuildCacheKey(item.GroupID, item.Lines)
-		record, err := g.store.Get(ctx, cacheKey)
-		if err != nil {
-			return nil, fmt.Errorf("failed to check cache for dialogue %s: %w", item.GroupID, err)
-		}
-
-		if record != nil {
-			output.PreCalculatedResults = append(output.PreCalculatedResults, SummaryResult{
-				RecordID:    item.GroupID,
-				SummaryType: TypeDialogue,
-				SummaryText: record.SummaryText,
-				CacheHit:    true,
-			})
-			continue
-		}
-
-		// Cache MISS: Create LLM Job
-		prompt := g.buildDialoguePrompt(item)
-		output.Jobs = append(output.Jobs, llm_client.Request{
-			SystemPrompt: DialogueSystemPrompt,
-			UserPrompt:   prompt,
-			Temperature:  0.3,
-			Metadata: map[string]interface{}{
-				"record_id":    item.GroupID,
-				"summary_type": TypeDialogue,
-				"cache_key":    cacheKey,
-				"input_hash":   inputHash,
-				"line_count":   len(item.Lines),
-			},
-		})
+	// ── Phase 1: Dialogue – parallel cache lookup ──────────────────────────
+	if err := g.proposeDialogueJobs(ctx, input.DialogueItems, output); err != nil {
+		return nil, err
 	}
 
-	// Process Quest Items
-	for _, item := range input.QuestItems {
-		if len(item.StageTexts) == 0 {
-			continue
-		}
-
-		// Sort stages by index
-		sort.Slice(item.StageTexts, func(i, j int) bool {
-			return item.StageTexts[i].Index < item.StageTexts[j].Index
-		})
-
-		// Cumulative processing: each stage gets a summary of all stages up to it
-		currentLines := []string{}
-		for _, stage := range item.StageTexts {
-			if strings.TrimSpace(stage.Text) == "" {
-				continue
-			}
-			currentLines = append(currentLines, stage.Text)
-
-			// Unique ID for each stage summary
-			stageRecordID := fmt.Sprintf("%s_stage_%d", item.QuestID, stage.Index)
-			cacheKey, inputHash := hasher.BuildCacheKey(stageRecordID, currentLines)
-
-			record, err := g.store.Get(ctx, cacheKey)
-			if err != nil {
-				return nil, fmt.Errorf("failed to check cache for quest stage %s: %w", stageRecordID, err)
-			}
-
-			if record != nil {
-				output.PreCalculatedResults = append(output.PreCalculatedResults, SummaryResult{
-					RecordID:    stageRecordID,
-					SummaryType: TypeQuest,
-					SummaryText: record.SummaryText,
-					CacheHit:    true,
-				})
-				continue
-			}
-
-			// Cache MISS: Create LLM Job
-			prompt := g.buildQuestPrompt(currentLines)
-			output.Jobs = append(output.Jobs, llm_client.Request{
-				SystemPrompt: QuestSystemPrompt,
-				UserPrompt:   prompt,
-				Temperature:  0.3,
-				Metadata: map[string]interface{}{
-					"record_id":    stageRecordID,
-					"summary_type": TypeQuest,
-					"cache_key":    cacheKey,
-					"input_hash":   inputHash,
-					"line_count":   len(currentLines),
-				},
-			})
-		}
+	// ── Phase 2: Quest – sequential (stage order must be preserved) ─────────
+	if err := g.proposeQuestJobs(ctx, input.QuestItems, output); err != nil {
+		return nil, err
 	}
 
+	slog.DebugContext(ctx, "ProposeJobs result",
+		slog.Int("jobs", len(output.Jobs)),
+		slog.Int("cache_hits", len(output.PreCalculatedResults)),
+	)
 	return output, nil
 }
 
+// proposeDialogueJobs runs cache lookups in parallel (bounded by config.Concurrency),
+// then appends Jobs/PreCalculatedResults in original order.
+func (g *summaryGenerator) proposeDialogueJobs(ctx context.Context, items []DialogueItem, output *ProposeOutput) error {
+	if len(items) == 0 {
+		return nil
+	}
+
+	concurrency := g.config.Effective()
+	sem := make(chan struct{}, concurrency)
+
+	results := make([]dialogueCacheResult, len(items))
+	hasher := &CacheKeyHasher{}
+
+	eg, egCtx := errgroup.WithContext(ctx)
+
+	for i, item := range items {
+		i, item := i, item // capture loop vars
+		if len(item.Lines) == 0 {
+			// mark as skip (both job and result are nil)
+			results[i] = dialogueCacheResult{index: i}
+			continue
+		}
+
+		eg.Go(func() error {
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			cacheKey, inputHash := hasher.BuildCacheKey(item.GroupID, item.Lines)
+			record, err := g.store.Get(egCtx, cacheKey)
+			if err != nil {
+				return fmt.Errorf("failed to check cache for dialogue %s: %w", item.GroupID, err)
+			}
+
+			r := dialogueCacheResult{index: i}
+			if record != nil {
+				r.result = &SummaryResult{
+					RecordID:    item.GroupID,
+					SummaryType: TypeDialogue,
+					SummaryText: record.SummaryText,
+					CacheHit:    true,
+				}
+			} else {
+				prompt := buildDialoguePrompt(item)
+				req := llm_client.Request{
+					SystemPrompt: DialogueSystemPrompt,
+					UserPrompt:   prompt,
+					Temperature:  0.3,
+					Metadata: map[string]interface{}{
+						"record_id":    item.GroupID,
+						"summary_type": TypeDialogue,
+						"cache_key":    cacheKey,
+						"input_hash":   inputHash,
+						"line_count":   len(item.Lines),
+					},
+				}
+				r.job = &req
+			}
+			results[i] = r
+			return nil
+		})
+	}
+
+	if err := eg.Wait(); err != nil {
+		return err
+	}
+
+	// Collect results in original order
+	for _, r := range results {
+		if r.result != nil {
+			output.PreCalculatedResults = append(output.PreCalculatedResults, *r.result)
+		} else if r.job != nil {
+			output.Jobs = append(output.Jobs, *r.job)
+		}
+		// nil both = empty lines, skip
+	}
+	return nil
+}
+
+// proposeQuestJobs processes quest items sequentially (cumulative stage order).
+// Different quests are processed in parallel; stages within a quest are sequential.
+func (g *summaryGenerator) proposeQuestJobs(ctx context.Context, items []QuestItem, output *ProposeOutput) error {
+	if len(items) == 0 {
+		return nil
+	}
+
+	type questResult struct {
+		jobs    []llm_client.Request
+		results []SummaryResult
+	}
+
+	concurrency := g.config.Effective()
+	sem := make(chan struct{}, concurrency)
+	questResults := make([]questResult, len(items))
+	hasher := &CacheKeyHasher{}
+
+	eg, egCtx := errgroup.WithContext(ctx)
+
+	for i, item := range items {
+		i, item := i, item
+		if len(item.StageTexts) == 0 {
+			questResults[i] = questResult{}
+			continue
+		}
+
+		eg.Go(func() error {
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			// Sort stages by index (must be sequential within a quest)
+			stages := make([]QuestStage, len(item.StageTexts))
+			copy(stages, item.StageTexts)
+			sort.Slice(stages, func(a, b int) bool {
+				return stages[a].Index < stages[b].Index
+			})
+
+			var qr questResult
+			currentLines := []string{}
+
+			for _, stage := range stages {
+				if strings.TrimSpace(stage.Text) == "" {
+					continue
+				}
+				currentLines = append(currentLines, stage.Text)
+
+				stageRecordID := fmt.Sprintf("%s_stage_%d", item.QuestID, stage.Index)
+				cacheKey, inputHash := hasher.BuildCacheKey(stageRecordID, currentLines)
+
+				record, err := g.store.Get(egCtx, cacheKey)
+				if err != nil {
+					return fmt.Errorf("failed to check cache for quest stage %s: %w", stageRecordID, err)
+				}
+
+				if record != nil {
+					qr.results = append(qr.results, SummaryResult{
+						RecordID:    stageRecordID,
+						SummaryType: TypeQuest,
+						SummaryText: record.SummaryText,
+						CacheHit:    true,
+					})
+					continue
+				}
+
+				prompt := buildQuestPrompt(currentLines)
+				qr.jobs = append(qr.jobs, llm_client.Request{
+					SystemPrompt: QuestSystemPrompt,
+					UserPrompt:   prompt,
+					Temperature:  0.3,
+					Metadata: map[string]interface{}{
+						"record_id":    stageRecordID,
+						"summary_type": TypeQuest,
+						"cache_key":    cacheKey,
+						"input_hash":   inputHash,
+						"line_count":   len(currentLines),
+					},
+				})
+			}
+
+			questResults[i] = qr
+			return nil
+		})
+	}
+
+	if err := eg.Wait(); err != nil {
+		return err
+	}
+
+	// Collect in original order
+	for _, qr := range questResults {
+		output.Jobs = append(output.Jobs, qr.jobs...)
+		output.PreCalculatedResults = append(output.PreCalculatedResults, qr.results...)
+	}
+	return nil
+}
+
 func (g *summaryGenerator) SaveResults(ctx context.Context, responses []llm_client.Response) error {
+	start := time.Now()
 	slog.DebugContext(ctx, "ENTER SummaryGenerator.SaveResults", slog.Int("responses", len(responses)))
-	defer slog.DebugContext(ctx, "EXIT SummaryGenerator.SaveResults")
+	defer func() {
+		slog.DebugContext(ctx, "EXIT SummaryGenerator.SaveResults",
+			slog.Duration("elapsed", time.Since(start)),
+		)
+	}()
 
 	for _, resp := range responses {
 		if !resp.Success {
@@ -184,15 +298,21 @@ func (g *summaryGenerator) SaveResults(ctx context.Context, responses []llm_clie
 		}
 	}
 
+	slog.DebugContext(ctx, "SaveResults complete", slog.Int("saved", len(responses)))
 	return nil
 }
 
 func (g *summaryGenerator) GetSummary(ctx context.Context, recordID string, summaryType string) (*SummaryResult, error) {
+	start := time.Now()
 	slog.DebugContext(ctx, "ENTER SummaryGenerator.GetSummary",
 		slog.String("record_id", recordID),
 		slog.String("type", summaryType),
 	)
-	defer slog.DebugContext(ctx, "EXIT SummaryGenerator.GetSummary")
+	defer func() {
+		slog.DebugContext(ctx, "EXIT SummaryGenerator.GetSummary",
+			slog.Duration("elapsed", time.Since(start)),
+		)
+	}()
 
 	record, err := g.store.GetByRecordID(ctx, recordID, summaryType)
 	if err != nil {
@@ -210,7 +330,9 @@ func (g *summaryGenerator) GetSummary(ctx context.Context, recordID string, summ
 	}, nil
 }
 
-func (g *summaryGenerator) buildDialoguePrompt(item DialogueItem) string {
+// ── Private prompt builders ──────────────────────────────────────────────────
+
+func buildDialoguePrompt(item DialogueItem) string {
 	var sb strings.Builder
 	if item.PlayerText != nil && *item.PlayerText != "" {
 		sb.WriteString(fmt.Sprintf("Context (Player's choice/action): %s\n\n", *item.PlayerText))
@@ -224,9 +346,11 @@ func (g *summaryGenerator) buildDialoguePrompt(item DialogueItem) string {
 	return sb.String()
 }
 
-func (g *summaryGenerator) buildQuestPrompt(lines []string) string {
+func buildQuestPrompt(lines []string) string {
 	return "Cumulative Quest Stages:\n" + strings.Join(lines, "\n")
 }
+
+// ── SummaryStore implementation ──────────────────────────────────────────────
 
 type summaryStore struct {
 	db *sql.DB

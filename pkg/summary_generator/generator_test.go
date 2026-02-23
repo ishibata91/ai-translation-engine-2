@@ -21,7 +21,8 @@ func TestSummaryGenerator_Slice(t *testing.T) {
 	err = store.Init(ctx)
 	require.NoError(t, err)
 
-	gen := NewSummaryGenerator(store)
+	cfg := SummaryGeneratorConfig{Concurrency: 4}
+	gen := NewSummaryGenerator(store, cfg)
 
 	t.Run("ProposeJobs - Dialogue Cache MISS", func(t *testing.T) {
 		input := SummaryGeneratorInput{
@@ -116,7 +117,7 @@ func TestSummaryGenerator_Slice(t *testing.T) {
 		assert.Equal(t, "A friendly greeting.", result.SummaryText)
 	})
 
-	t.Run("Skip empty lines", func(t *testing.T) {
+	t.Run("Skip empty Dialogue lines", func(t *testing.T) {
 		input := SummaryGeneratorInput{
 			DialogueItems: []DialogueItem{
 				{GroupID: "EMPTY", Lines: []string{}},
@@ -125,5 +126,36 @@ func TestSummaryGenerator_Slice(t *testing.T) {
 		output, err := gen.ProposeJobs(ctx, input)
 		require.NoError(t, err)
 		assert.Len(t, output.Jobs, 0)
+		assert.Len(t, output.PreCalculatedResults, 0)
+	})
+
+	t.Run("Skip empty Quest StageTexts", func(t *testing.T) {
+		input := SummaryGeneratorInput{
+			QuestItems: []QuestItem{
+				{QuestID: "QST_EMPTY", StageTexts: []QuestStage{}},
+			},
+		}
+		output, err := gen.ProposeJobs(ctx, input)
+		require.NoError(t, err)
+		assert.Len(t, output.Jobs, 0)
+		assert.Len(t, output.PreCalculatedResults, 0)
+	})
+
+	t.Run("Skip Quest with only blank stage texts", func(t *testing.T) {
+		input := SummaryGeneratorInput{
+			QuestItems: []QuestItem{
+				{
+					QuestID: "QST_BLANK",
+					StageTexts: []QuestStage{
+						{Index: 1, Text: "   "},
+						{Index: 2, Text: ""},
+					},
+				},
+			},
+		}
+		output, err := gen.ProposeJobs(ctx, input)
+		require.NoError(t, err)
+		assert.Len(t, output.Jobs, 0)
+		assert.Len(t, output.PreCalculatedResults, 0)
 	})
 }

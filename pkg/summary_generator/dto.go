@@ -16,6 +16,24 @@ const (
 	TypeQuest    = "Quest"
 )
 
+// SummaryGeneratorConfig holds configuration for the SummaryGenerator.
+type SummaryGeneratorConfig struct {
+	// Concurrency controls the number of parallel goroutines for cache lookups in ProposeJobs.
+	// Defaults to 10 if not set or set to 0.
+	Concurrency int
+}
+
+// DefaultConcurrency is the default number of parallel goroutines.
+const DefaultConcurrency = 10
+
+// Effective returns the concurrency value, applying the default if needed.
+func (c SummaryGeneratorConfig) Effective() int {
+	if c.Concurrency <= 0 {
+		return DefaultConcurrency
+	}
+	return c.Concurrency
+}
+
 // SummaryGeneratorInput is the independent DTO for summary generation.
 type SummaryGeneratorInput struct {
 	DialogueItems []DialogueItem `json:"dialogue_items"`

@@ -16,7 +16,7 @@ var ProviderSet = wire.NewSet(
 )
 
 // To be used by the main wire.go if needed, or by testing.
-func InitializeGenerator(db *sql.DB) (SummaryGenerator, error) {
+func InitializeGenerator(db *sql.DB, config SummaryGeneratorConfig) (SummaryGenerator, error) {
 	wire.Build(ProviderSet)
 	return nil, nil
 }

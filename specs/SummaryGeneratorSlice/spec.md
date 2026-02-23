@@ -47,13 +47,13 @@ AIDDにおける決定的なコード再生成の確実性を担保するため�
 - **THEN** 各レスポンスから要約テキストを抽出し、SQLiteキャッシュに UPSERT する
 - **AND** `specs/refactoring_strategy.md` に従い、関数の開始・終了ログを TraceID 付きで出力する
 
-### 2. 独立性: サマリ生成向けデータの受け取りと独自DTO定義
+### 2. 独立性: SummaryGeneratorSliceの独立した初期化
 **Reason**: スライスの完全独立性を確保するAnti-Corruption Layerパターンを適用し、他スライスのDTOへの依存を排除するため。
-**Migration**: 外部のデータ構造を直接参照する方式から、本スライス独自のパッケージ内に入力用DTOを定義し、それを受け取るインターフェースへ移行する。マッピングは呼び出し元（オーケストレーター層）の責務とする。
+本スライスは独自の入力DTO（`SummaryGeneratorInput`）を `contract.go` 内に定義し、他スライスのデータ構造に依存してはならない。
 
-#### Scenario: 独自定義DTOによる初期化とサマリ生成
-- **WHEN** オーケストレーター層から本スライス専用の入力DTOが提供された場合
-- **THEN** 外部パッケージのDTOに一切依存することなく、提供された内部データ構造のみを用いてサマリ生成処理を完結できること
+#### Scenario: オーケストレーターが入力DTOをSummaryGeneratorSliceに渡す
+- **WHEN** オーケストレーターが LoaderSlice / ContextEngineSlice の出力から会話・クエストデータを抽出し、`SummaryGeneratorInput` にマッピングして渡す
+- **THEN** SummaryGeneratorSlice が外部パッケージの型に依存することなく初期化され、要約生成の準備が整う
 
 ### 3. 会話要約の生成
 
@@ -68,15 +68,13 @@ AIDDにおける決定的なコード再生成の確実性を担保するため�
 2. 要約は「誰が誰に何について話しているか」を明確にする。
 
 **システムプロンプト**:
-```
-You are a Skyrim translation assistant providing effective contextual information.
-Summarize the conversation flow in a single English sentence (under 500 characters) that maintains the context.
-Clearly identify the subject and concisely describe who is speaking to whom and about what.
+#### Scenario: 会話フローを収集してLLMで要約を生成する
+- **WHEN** `DialogueGroup` 内に1件以上の会話行があり、LLMが正常に応答する
+- **THEN** 「誰が誰に何について話しているか」を明確にした500文字以内の英語1文要約が返却される
 
-Output Example:
-- Ulfric is ordering his subordinate to march on Whiterun.
-- The innkeeper is telling the player about recent rumors.
-```
+#### Scenario: 会話行が0件の場合はスキップする
+- **WHEN** `DialogueGroup` 内の会話行が0件である
+- **THEN** LLMは呼び出されず、空のサマリとして処理がスキップされる
 
 ### 4. クエスト要約の生成
 
@@ -91,24 +89,25 @@ Output Example:
 2. 要約はクエストの核心的なプロットと翻訳に必要な背景知識に焦点を当てる。
 
 **システムプロンプト**:
-```
-You are a Skyrim translation assistant providing contextual information.
-Summarize the overall quest story based on the provided stage descriptions in one concise English sentence (under 500 characters).
-Focus on the core plot and background knowledge necessary for translation.
+#### Scenario: 複数ステージのクエスト要約を累積生成する
+- **WHEN** `Quest` が2件以上のステージを持ち、LLMが正常に応答する
+- **THEN** 各ステージの処理で過去すべてのステージ記述が入力として使われ、累積的なあらすじが生成される
 
-Example Output:
-- Retrieve the Dragonstone and report the secrets of Bleak Falls Barrow to the Jarl.
-- Return the Golden Claw to Lucan and help Camille.
-```
+#### Scenario: ステージ記述が0件の場合はスキップする
+- **WHEN** `Quest.Stages` が空である
+- **THEN** LLMは呼び出されず、処理がスキップされる
 
 ### 5. キャッシュキー生成とヒット判定
 
 要約の再生成を回避するため、入力テキストに基づくキャッシュキーを生成し、SQLiteに保存する。
 
-**キャッシュキー生成方式**:
-1. 要約対象のレコードID（`record_id`）と、要約対象テキストの連結文字列のSHA-256ハッシュを組み合わせる。
-2. キャッシュキー形式: `{record_id}|{sha256_hash}`
-3. 入力テキストが変更された場合（ハッシュ不一致）、キャッシュは無効とし再生成する。
+#### Scenario: キャッシュヒット時にLLM呼び出しをスキップする
+- **WHEN** 同一の `record_id` と入力テキストに対して要約生成が再度リクエストされる
+- **THEN** SQLiteのキャッシュから要約テキストが返却され、LLMへのリクエストは生成されない
+
+#### Scenario: キャッシュミス時に要約を生成してキャッシュに保存する
+- **WHEN** 該当するキャッシュキーがSQLiteに存在しない
+- **THEN** LLMによって要約が生成され、`summaries` テーブルにUPSERTされる
 
 ### 6. 要約の永続化（ソースファイル単位キャッシュ）
 
@@ -119,20 +118,28 @@ Example Output:
 - ファイル命名規則: `{source_plugin_name}_summary_cache.db`
 - 本Slice内の `SummaryStore` が要約テーブルに対するすべての操作を単独で完結させる。
 
+#### Scenario: 初回起動時にsummariesテーブルを自動作成する
+- **WHEN** `SummaryStore` が初期化される
+- **THEN** 接続先SQLiteに `summaries` テーブルが存在しない場合、`CREATE TABLE IF NOT EXISTS` により自動作成される
+
+#### Scenario: 要約をUPSERTで保存する
+- **WHEN** 要約生成が成功した後にストアへの保存が呼ばれる
+- **THEN** `summaries` テーブルに対して UPSERT（同一 `cache_key` の場合は上書き）が実行される
+
 ### 7. 要約DBスキーマ
 
 各ソースファイルのSQLiteファイル内に以下のテーブルを作成する。
 
 #### テーブル: `summaries`
-| カラム             | 型                                | 説明                                               |
-| :----------------- | :-------------------------------- | :------------------------------------------------- |
-| `id`               | INTEGER PRIMARY KEY AUTOINCREMENT | 自動採番ID                                         |
-| `record_id`        | TEXT NOT NULL                     | 対象レコードID（DialogueGroup.ID または Quest.ID） |
-| `summary_type`     | TEXT NOT NULL                     | 要約種別（`"dialogue"` または `"quest"`）          |
-| `cache_key`        | TEXT NOT NULL UNIQUE              | キャッシュキー（`{record_id}\|{sha256_hash}`）     |
-| `input_hash`       | TEXT NOT NULL                     | 入力テキストのSHA-256ハッシュ                      |
-| `summary_text`     | TEXT NOT NULL                     | 生成された要約テキスト                             |
-| `input_line_count` | INTEGER NOT NULL                  | 要約対象の入力行数                                 |
+| カラム             | 型                                 | 説明                                               |
+| :----------------- | :--------------------------------- | :------------------------------------------------- |
+| `id`               | INTEGER PRIMARY KEY AUTOINCREMENT  | 自動採番ID                                         |
+| `record_id`        | TEXT NOT NULL                      | 対象レコードID（DialogueGroup.ID または Quest.ID） |
+| `summary_type`     | TEXT NOT NULL                      | 要約種別（`"dialogue"` または `"quest"`）          |
+| `cache_key`        | TEXT NOT NULL UNIQUE               | キャッシュキー（`{record_id}\|{sha256_hash}`）     |
+| `input_hash`       | TEXT NOT NULL                      | 入力テキストのSHA-256ハッシュ                      |
+| `summary_text`     | TEXT NOT NULL                      | 生成された要約テキスト                             |
+| `input_line_count` | INTEGER NOT NULL                   | 要約対象の入力行数                                 |
 | `created_at`       | DATETIME DEFAULT CURRENT_TIMESTAMP | 作成日時                                           |
 | `updated_at`       | DATETIME DEFAULT CURRENT_TIMESTAMP | 更新日時                                           |
 
@@ -144,11 +151,24 @@ Pass 2（本文翻訳）において、翻訳対象レコードに対応する�
 1. **会話翻訳時**: `record_id` をキーとして、該当ソースファイルの `summaries` テーブルから要約を検索する。
 2. **クエスト関連翻訳時**: `record_id` をキーとして要約を検索し、「これまでのあらすじ」として含める。
 
-### 9. ライブラリの選定
+### 9. 並列要約生成
+**Reason**: 多数の要約対象を効率的に処理し、実行時間を短縮するため。
+本スライスは複数の `DialogueGroup` および `Quest` の要約を Goroutine で並列処理しなければならない。並列度は Config で設定可能（デフォルト: 10）とする。ただし、同一クエスト内のステージは逐次処理（Index昇順）を維持する。
+
+#### Scenario: 複数DialogueGroupを並列処理する
+- **WHEN** 複数の `DialogueGroup` が入力として渡される
+- **THEN** 設定された並列度でGoroutineが起動し、各グループの要約が並列に生成される
+
+#### Scenario: クエストのステージはIndex昇順に逐次処理する
+- **WHEN** 同一 `Quest` の複数ステージを処理する
+- **THEN** ステージは `Index` 昇順に逐次処理され、要約が累積的にビルドされる
+
+### 10. ライブラリの選定
 - LLMクライアント: `infrastructure/llm_client` インターフェース（プロジェクト共通）
 - DBアクセス: `github.com/mattn/go-sqlite3` または `modernc.org/sqlite`
 - 依存性注入: `github.com/google/wire`
 - ハッシュ: Go標準 `crypto/sha256`
+- 並行処理制御: `golang.org/x/sync/errgroup`
 
 ## 関連ドキュメント
 - [クラス図](./summary_generator_class_diagram.md)
@@ -169,6 +189,15 @@ Pass 2（本文翻訳）において、翻訳対象レコードに対応する�
 
 1.  **パラメタライズドテスト**: テストは Table-Driven Test で網羅的に行い、細粒度のユニットテストは作成しない（セクション 6.1）。
 2.  **Entry/Exit ログ**: 全 Contract メソッドおよび主要内部関数で `slog.DebugContext(ctx, ...)` による入口・出口ログを出力する（セクション 6.2 ①）。
+
+#### Scenario: 要約生成開始時のEntryログ出力
+- **WHEN** 要約生成処理が開始される
+- **THEN** `trace_id`・`span_id`・入力件数を含む DEBUG レベルの Entry ログが JSON 形式で出力される
+
+#### Scenario: 要約生成完了時のExitログ出力
+- **WHEN** 要約生成処理が完了する
+- **THEN** 生成件数・スキップ件数・経過時間を含む DEBUG レベルの Exit ログが JSON 形式で出力される
+
 3.  **TraceID 伝播**: 公開メソッドは第一引数に `ctx context.Context` を受け取り、OpenTelemetry TraceID を全ログに自動付与する（セクション 7.3）。
 4.  **ログファイル出力**: 実行単位ごとに `logs/{timestamp}_{slice_name}.jsonl` へ debug 全量を記録する（セクション 6.2 ③）。
 5.  **AI デバッグプロンプト**: 障害時は定型プロンプト（セクション 6.2 ④）でログと仕様書をAIに渡し修正させる。
