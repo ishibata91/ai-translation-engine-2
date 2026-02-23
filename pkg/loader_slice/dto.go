@@ -87,18 +87,23 @@ type Magic struct {
 
 // QuestStage represents a quest stage description.
 type QuestStage struct {
-	Index  int     `json:"index"`
-	Type   string  `json:"type"`
-	Text   string  `json:"text"`
-	Source *string `json:"source,omitempty"`
+	StageIndex     int     `json:"stage_index"`
+	LogIndex       int     `json:"log_index"`
+	Type           string  `json:"type"`
+	Text           string  `json:"text"`
+	ParentID       string  `json:"parent_id"`
+	ParentEditorID string  `json:"parent_editor_id"`
+	Source         *string `json:"source,omitempty"`
 }
 
 // QuestObjective represents a quest objective text.
 type QuestObjective struct {
-	Index  int     `json:"index"`
-	Type   string  `json:"type"`
-	Text   string  `json:"text"`
-	Source *string `json:"source,omitempty"`
+	Index          string  `json:"index"`
+	Type           string  `json:"type"`
+	Text           string  `json:"text"`
+	ParentID       string  `json:"parent_id"`
+	ParentEditorID string  `json:"parent_editor_id"`
+	Source         *string `json:"source,omitempty"`
 }
 
 // Quest represents a quest record with its stages and objectives.

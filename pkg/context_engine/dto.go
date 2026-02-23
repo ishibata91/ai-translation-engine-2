@@ -9,6 +9,8 @@ type TranslationRequest struct {
 	Index             *int               `json:"index,omitempty"`
 	ReferenceTerms    []ReferenceTerm    `json:"reference_terms,omitempty"`
 	EditorID          *string            `json:"editor_id,omitempty"`
+	ParentID          *string            `json:"parent_id,omitempty"`
+	ParentEditorID    *string            `json:"parent_editor_id,omitempty"`
 	ForcedTranslation *string            `json:"forced_translation,omitempty"`
 	SourcePlugin      string             `json:"source_plugin"`
 	SourceFile        string             `json:"source_file"`

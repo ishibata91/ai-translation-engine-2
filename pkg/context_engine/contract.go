@@ -4,6 +4,7 @@ package context_engine
 type ContextEngineInput struct {
 	NPCs      map[string]ContextNPC
 	Dialogues []ContextDialogue
+	Quests    []ContextQuest
 	Items     []ContextItem
 	Magic     []ContextMagic
 	Locations []ContextLocation
@@ -25,6 +26,32 @@ type ContextDialogue struct {
 	QuestID          *string
 	IsServicesBranch bool
 	Order            int
+}
+
+type ContextQuest struct {
+	ID         string
+	EditorID   *string
+	Type       string
+	Name       *string
+	Stages     []ContextQuestStage
+	Objectives []ContextQuestObjective
+}
+
+type ContextQuestStage struct {
+	StageIndex     int
+	LogIndex       int
+	Type           string
+	Text           string
+	ParentID       string
+	ParentEditorID string
+}
+
+type ContextQuestObjective struct {
+	Index          string
+	Type           string
+	Text           string
+	ParentID       string
+	ParentEditorID string
 }
 
 type ContextItem struct {

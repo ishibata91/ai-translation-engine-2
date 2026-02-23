@@ -231,7 +231,49 @@ func normalizeData(data *LoaderOutput) {
 		}()
 	}
 
+	if len(data.Quests) > 0 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			normalizeQuestMetadata(data)
+		}()
+	}
+
 	wg.Wait()
+}
+
+// normalizeQuestMetadata ensures parent ID and EditorID are propagated to stages and objectives.
+func normalizeQuestMetadata(data *LoaderOutput) {
+	slog.Debug("ENTER normalizeQuestMetadata")
+
+	for i := range data.Quests {
+		q := &data.Quests[i]
+		parentID := q.ID
+		parentEditorID := ""
+		if q.EditorID != nil {
+			parentEditorID = *q.EditorID
+		}
+
+		for j := range q.Stages {
+			s := &q.Stages[j]
+			if s.ParentID == "" {
+				s.ParentID = parentID
+			}
+			if s.ParentEditorID == "" {
+				s.ParentEditorID = parentEditorID
+			}
+		}
+
+		for j := range q.Objectives {
+			o := &q.Objectives[j]
+			if o.ParentID == "" {
+				o.ParentID = parentID
+			}
+			if o.ParentEditorID == "" {
+				o.ParentEditorID = parentEditorID
+			}
+		}
+	}
 }
 
 // normalizeNPCNames trims whitespace from NPC names.

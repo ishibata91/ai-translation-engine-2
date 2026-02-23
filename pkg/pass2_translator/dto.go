@@ -3,7 +3,7 @@ package pass2_translator
 // TranslationResult represents the result of translating a single record.
 type TranslationResult struct {
 	ID             string  `json:"id"`
-	RecordType     string  `json:"record_type"`
+	RecordType     string  `json:"type"`
 	SourceText     string  `json:"source_text"`
 	TranslatedText *string `json:"translated_text,omitempty"`
 	Index          *int    `json:"index,omitempty"`
@@ -12,6 +12,8 @@ type TranslationResult struct {
 	SourcePlugin   string  `json:"source_plugin"`
 	SourceFile     string  `json:"source_file"`
 	EditorID       *string `json:"editor_id,omitempty"`
+	ParentID       *string `json:"parent_id,omitempty"`
+	ParentEditorID *string `json:"parent_editor_id,omitempty"`
 }
 
 // Pass2TranslationRequest represents a single translation unit for Pass 2.
@@ -23,6 +25,8 @@ type Pass2TranslationRequest struct {
 	Index             *int                 `json:"index,omitempty"`
 	ReferenceTerms    []Pass2ReferenceTerm `json:"reference_terms,omitempty"`
 	EditorID          *string              `json:"editor_id,omitempty"`
+	ParentID          *string              `json:"parent_id,omitempty"`
+	ParentEditorID    *string              `json:"parent_editor_id,omitempty"`
 	ForcedTranslation *string              `json:"forced_translation,omitempty"`
 	SourcePlugin      string               `json:"source_plugin"`
 	SourceFile        string               `json:"source_file"`

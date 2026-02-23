@@ -639,6 +639,7 @@ begin
                           '      "id": ' + JsonString(infoID) + ',' + #13#10 +
                           '      "editor_id": ' + JsonString(GetElementEditValues(MasterOrSelf(info), 'EDID')) + ',' + #13#10 +
                           '      "type": "INFO NAM1",' + #13#10 +
+                          '      "order": ' + IntToStr(i) + ',' + #13#10 +
                           '      "source": ' + JsonString(GetMasterFileName(info)) + ',' + #13#10 +
                           '      "text": ' + JsonString(infoText) + ',' + #13#10 +
                           '      "prompt": ' + JsonString(infoPrompt) + ',' + #13#10 +
@@ -670,6 +671,7 @@ begin
                      '      "id": ' + JsonString(infoID) + ',' + #13#10 +
                      '      "editor_id": ' + JsonString(GetElementEditValues(MasterOrSelf(info), 'EDID')) + ',' + #13#10 +
                      '      "type": "INFO NAM1",' + #13#10 +
+                     '      "order": 0,' + #13#10 +
                      '      "source": ' + JsonString(GetMasterFileName(info)) + ',' + #13#10 +
                      '      "text": ' + JsonString(infoText) + ',' + #13#10 +
                      '      "prompt": ' + JsonString(infoPrompt) + ',' + #13#10 +
@@ -727,8 +729,11 @@ begin
              if stageLog <> '' then
              begin
                   sEntry := '    {' + #13#10 +
-                            '      "index": ' + IntToStr(StrToIntDef(stageIdx, 0) + j) + ',' + #13#10 +
+                            '      "stage_index": ' + stageIdx + ',' + #13#10 +
+                            '      "log_index": ' + IntToStr(j) + ',' + #13#10 +
                             '      "type": "QUST CNAM",' + #13#10 +
+                            '      "parent_id": ' + JsonString(questID) + ',' + #13#10 +
+                            '      "parent_editor_id": ' + JsonString(GetElementEditValues(MasterOrSelf(quest), 'EDID')) + ',' + #13#10 +
                             '      "text": ' + JsonString(stageLog) + #13#10 +
                             '    }';
                   if stagesJson <> '' then stagesJson := stagesJson + ',' + #13#10;
@@ -754,6 +759,8 @@ begin
               oEntry := '    {' + #13#10 +
                         '      "index": ' + JsonString(objIdx) + ',' + #13#10 +
                         '      "type": "QUST NNAM",' + #13#10 +
+                        '      "parent_id": ' + JsonString(questID) + ',' + #13#10 +
+                        '      "parent_editor_id": ' + JsonString(GetElementEditValues(MasterOrSelf(quest), 'EDID')) + ',' + #13#10 +
                         '      "text": ' + JsonString(objText) + #13#10 +
                         '    }';
               if objectivesJson <> '' then objectivesJson := objectivesJson + ',' + #13#10;
@@ -769,7 +776,7 @@ begin
                   JsonField('editor_id', JsonString(GetElementEditValues(MasterOrSelf(quest), 'EDID'))) + ',' + #13#10 +
                   JsonField('source', JsonString(GetMasterFileName(quest))) + ',' + #13#10 +
                   JsonField('name', JsonString(questName)) + ',' + #13#10 +
-                  JsonField('type', JsonString('QUST'));
+                  JsonField('type', JsonString('QUST FULL'));
 
     if stagesJson <> '' then
       questEntry := questEntry + ',' + #13#10 +
