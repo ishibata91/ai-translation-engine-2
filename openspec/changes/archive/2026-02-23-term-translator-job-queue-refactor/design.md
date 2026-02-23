@@ -16,12 +16,18 @@
 ## Decisions
 
 1. **フェーズの完全分離 (Two-Phase Function Contract)**:
+   - **[Principle] 既存実装の破棄**: リクエスト生成（プロンプト構築）ロジックを除き、以前の同期実行型関数（`GenerateTranslations` 等）はすべて破棄します。中途半端な修正ではなく、新しい VSA コントラクトに基づいた再実装を行います。
    - `PreparePrompts(ctx, input TermTranslatorInput) ([]llm_client.Request, error)`: 辞書引き等のコンテキスト構築を行い、純粋なプロンプトだけを返す。
    - `SaveResults(ctx, input TermTranslatorInput, results []llm_client.Response) error`: 返ってきた結果をパース（`TL: |にほんご|` のパイプ抽出等）し、自身のSQLiteへ保存する。
    （※元のInput情報が必要な場合、ProcessManagerが仲介して保持・再注入する設計とする）
 
 2. **Errorハンドリングの単純化**:
    - `SaveResults` は、渡されたレスポンスのうち `Success == false` なものを単にスキップ（またはエラーログを残す）するだけでよくなり、通信エラー起因のリトライ制御などは一切記述しなくて済むようになります。
+
+3. **リファクタリング戦略の適用 (Compliance with Refactoring Strategy)**:
+   - **Interface-First AIDD**: `pkg/term_translator/contract.go` でインターフェースと独自の DTO（`TermTranslatorInput` 等）を定義し、スライス間の疎結合を維持する。
+   - **Method-Level SRP**: 巨大な `PreparePrompts` ロジックは、同一ファイル内のプライベートメソッド（`buildSinglePrompt`, `lookupDictionary` 等）に分割し、認知負荷を下げる。
+   - **構造化ログ基盤**: `slog` を使用し、Entry/Exit ログに TraceID を含めることで、JobQueue と ProcessManager を跨いだ追跡を可能にする。
 
 ## Risks / Trade-offs
 

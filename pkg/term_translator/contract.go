@@ -2,6 +2,8 @@ package term_translator
 
 import (
 	"context"
+
+	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/llm_client"
 )
 
 // TermTranslatorInput is the input data required for term translation.
@@ -42,10 +44,14 @@ type TermLocation struct {
 }
 
 // TermTranslator is the main entry point for term translation (Pass 1).
-// It orchestrates request building, dictionary search, LLM translation,
-// and persistence to the Mod term database.
+// It orchestrates request building, dictionary search, and persistence.
+// It is now split into two phases to support job queue infrastructure.
 type TermTranslator interface {
-	TranslateTerms(ctx context.Context, data TermTranslatorInput) ([]TermTranslationResult, error)
+	// PreparePrompts builds LLM requests (Phase 1).
+	PreparePrompts(ctx context.Context, data TermTranslatorInput) ([]llm_client.Request, error)
+
+	// SaveResults parses LLM responses and persists to the mod term database (Phase 2).
+	SaveResults(ctx context.Context, data TermTranslatorInput, results []llm_client.Response) error
 }
 
 // TermRequestBuilder extracts term translation targets from TermTranslatorInput

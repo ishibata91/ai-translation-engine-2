@@ -2,6 +2,20 @@
 
 ```mermaid
 classDiagram
+    class TermTranslatorInput {
+        +[]NPC NPCs
+        +[]Item Items
+        +[]Magic Magics
+        +[]Message Messages
+        +[]Location Locations
+        +[]Quest Quests
+    }
+
+    class ProposeOutput {
+        +[]llm_client.Request Requests
+        +[]TermTranslationResult PreCalculatedResults
+    }
+
     class TermTranslationRequest {
         +String FormID
         +String EditorID
@@ -32,18 +46,13 @@ classDiagram
 
     class TermTranslator {
         <<Interface>>
-        +TranslateTerms(ctx context.Context, data ExtractedData) ([]TermTranslationResult, error)
+        +ProposeJobs(ctx context.Context, input TermTranslatorInput) (ProposeOutput, error)
+        +SaveResults(ctx context.Context, responses []llm_client.Response) error
     }
 
     class TermRequestBuilder {
         <<Interface>>
-        +BuildRequests(ctx context.Context, data ExtractedData) ([]TermTranslationRequest, error)
-        -pairNPCRecords(npcs []NPC) []NPCPair
-    }
-
-    class NPCPair {
-        +NPC Full
-        +NPC Short
+        +BuildRequests(ctx context.Context, input TermTranslatorInput) ([]TermTranslationRequest, error)
     }
 
     class TermDictionarySearcher {
@@ -59,22 +68,20 @@ classDiagram
         +InitSchema(ctx context.Context) error
         +SaveTerms(ctx context.Context, results []TermTranslationResult) error
         +GetTerm(ctx context.Context, originalEN string) (string, error)
-        +Clear(ctx context.Context) error
     }
 
     class TermTranslatorImpl {
         -TermRequestBuilder requestBuilder
         -TermDictionarySearcher dictSearcher
-        -LLMClient llmClient
         -ModTermStore modTermStore
-        -ProgressNotifier notifier
-        -int maxWorkers
-        +TranslateTerms(ctx context.Context, data ExtractedData) ([]TermTranslationResult, error)
+        -TermPromptBuilder promptBuilder
+        +ProposeJobs(ctx context.Context, input TermTranslatorInput) (ProposeOutput, error)
+        +SaveResults(ctx context.Context, responses []llm_client.Response) error
     }
 
     class TermRequestBuilderImpl {
         -TermRecordConfig config
-        +BuildRequests(ctx context.Context, data ExtractedData) ([]TermTranslationRequest, error)
+        +BuildRequests(ctx context.Context, input TermTranslatorInput) ([]TermTranslationRequest, error)
     }
 
     class TermRecordConfig {
@@ -85,28 +92,18 @@ classDiagram
     class SQLiteTermDictionarySearcher {
         -db *sql.DB
         -[]string additionalDBPaths
-        +SearchExact(ctx context.Context, text string) ([]ReferenceTerm, error)
-        +SearchKeywords(ctx context.Context, keywords []string) ([]ReferenceTerm, error)
-        +SearchNPCPartial(ctx context.Context, keywords []string, consumedKeywords []string, isNPC bool) ([]ReferenceTerm, error)
         +SearchBatch(ctx context.Context, texts []string) (map[string][]ReferenceTerm, error)
-    }
-
-    class GreedyLongestMatcher {
-        +Filter(sourceText string, candidates map[string]string) map[string]string
     }
 
     class KeywordStemmer {
         +Stem(word string) string
         +StripPossessive(word string) string
-        +StemKeywords(keywords []string) map[string]string
     }
 
     class SQLiteModTermStore {
         -db *sql.DB
         +InitSchema(ctx context.Context) error
         +SaveTerms(ctx context.Context, results []TermTranslationResult) error
-        +GetTerm(ctx context.Context, originalEN string) (string, error)
-        +Clear(ctx context.Context) error
     }
 
     class TermPromptBuilder {
@@ -114,13 +111,9 @@ classDiagram
         +BuildUserPrompt(request TermTranslationRequest) string
     }
 
-    class ProgressNotifier {
-        <<Interface>>
-        +OnProgress(completed int, total int)
-    }
-
     class ProcessManager {
         -TermTranslator termTranslator
+        -JobQueue jobQueue
         +HandleTermTranslation(w http.ResponseWriter, r *http.Request)
     }
 
@@ -130,12 +123,9 @@ classDiagram
     TermTranslatorImpl --> TermDictionarySearcher : uses
     TermTranslatorImpl --> ModTermStore : uses
     TermTranslatorImpl --> TermPromptBuilder : uses
-    TermTranslatorImpl --> ProgressNotifier : notifies
-    TermTranslatorImpl --> LLMClient : uses
     TermRequestBuilder <|.. TermRequestBuilderImpl : implements
     TermRequestBuilderImpl --> TermRecordConfig : uses
     TermDictionarySearcher <|.. SQLiteTermDictionarySearcher : implements
-    TermTranslatorImpl --> GreedyLongestMatcher : uses
     SQLiteTermDictionarySearcher --> KeywordStemmer : uses
     ModTermStore <|.. SQLiteModTermStore : implements
     TermTranslatorImpl ..> TermTranslationRequest : creates
@@ -143,18 +133,9 @@ classDiagram
     ModTermStore ..> TermTranslationResult : stores
 ```
 
-## アーキテクチャの補足：基本インフラの注入による純粋な Vertical Slicing
-本コンテキスト（Term Translator Slice）は、**「用語翻訳リクエスト生成」から「辞書検索」「LLM翻訳実行」「Mod用語DBスキーマ(DTO)定義」「SQL永続化」までの全責務をこのスライス単体で負う**。
-AIDDにおいてAIが変更範囲を迷わず限定・自己完結させて決定的にコードを生成できるよう、あえて全体での「DRY」は捨て、他のコンテキスト（例：Dictionary Builder Sliceの辞書テーブル定義や、Pass 2翻訳時のデータモデル等）とはStoreやモデルを共有しない。
-外部（プロセスマネージャー等）からは、以下のインフラモジュールのみをDIで注入する形とする：
-- `*sql.DB` コネクションプール（辞書DB参照用・Mod用語DB書き込み用）
-- `LLMClient` インターフェース（翻訳実行用）
-- `TermRecordConfig`（用語翻訳対象レコードタイプ定義、Config Store経由）
+## アーキテクチャの補足：2フェーズモデル (Propose/Save)
+本スライスはバッチAPIや長時間実行ジョブに対応するため、**「プロンプト生成(ProposeJobs)」**と**「結果保存(SaveResults)」**の2フェーズに分割されている。
+- **Phase 1 (Propose)**: 入力データを解析し、辞書検索の結果に基づいたコンテキストを含むLLMリクエストを生成する。既訳がある場合はLLMを介さず即時結果として返す。
+- **Phase 2 (Save)**: JobQueue等を通じて取得されたLLMのレスポンス群を受け取り、パースしてMod用語DBに永続化する。
 
-## 推奨ライブラリ (Go Backend)
-*   **LLM クライアント**: `infrastructure/llm_client` インターフェース（プロジェクト共通）
-*   **DB アクセス**: `github.com/mattn/go-sqlite3` または `modernc.org/sqlite`
-*   **依存性注入**: `github.com/google/wire` (プロジェクト標準)
-*   **並行処理**: Go標準 `sync`, `context`, `golang.org/x/sync/errgroup`
-*   **ステミング**: `github.com/kljensen/snowball` (Snowball English Stemmer)
-*   **ルーティング**: 標準 `net/http`
+スライス自身はLLM Clientを直接呼び出さず、呼び出し元のオーケストレーター（ProcessManager）がリクエストの実行順序や並列度を制御する。

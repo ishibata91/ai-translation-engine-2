@@ -3,49 +3,14 @@ package term_translator
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"log/slog"
 	"os"
-	"strings"
 	"testing"
 	"time"
 
 	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/llm_client"
 	_ "modernc.org/sqlite"
 )
-
-// mockLLMClient implements llm_client.LLMClient for testing
-type mockLLMClient struct {
-	responses map[string]string
-}
-
-func (m *mockLLMClient) Complete(ctx context.Context, req llm_client.Request) (llm_client.Response, error) {
-	// Find the source text in the prompt to return a mocked translation
-	for source, trans := range m.responses {
-		if strings.Contains(req.SystemPrompt, source) {
-			return llm_client.Response{
-				Content: fmt.Sprintf("TL: |%s|", trans),
-				Success: true,
-			}, nil
-		}
-	}
-	return llm_client.Response{
-		Content: "TL: |Mocked Translation|",
-		Success: true,
-	}, nil
-}
-
-func (m *mockLLMClient) StreamComplete(ctx context.Context, req llm_client.Request) (llm_client.StreamResponse, error) {
-	return nil, fmt.Errorf("not implemented")
-}
-
-func (m *mockLLMClient) GetEmbedding(ctx context.Context, text string) ([]float32, error) {
-	return nil, fmt.Errorf("not implemented")
-}
-
-func (m *mockLLMClient) HealthCheck(ctx context.Context) error {
-	return nil
-}
 
 // setupTestDB creates in-memory SQLite DBs for testing
 func setupTestDB(t *testing.T) (*sql.DB, *sql.DB, func()) {
@@ -87,7 +52,6 @@ func setupTestDB(t *testing.T) (*sql.DB, *sql.DB, func()) {
 }
 
 func TestTermTranslatorSlice(t *testing.T) {
-	// 5.2 Require OpenTelemetry Context (Simulated with standard context here, ideally with otel SDK)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -97,11 +61,11 @@ func TestTermTranslatorSlice(t *testing.T) {
 		name          string
 		input         TermTranslatorInput
 		config        TermRecordConfig
-		mockResponses map[string]string
+		mockLLMOutput []string // Resulting LLM content for each request
 		expectedTerms map[string]string
 	}{
 		{
-			name: "Translate Item and magic with exact dictionary match and LLM",
+			name: "Two-Phase Translation: Item and magic",
 			input: TermTranslatorInput{
 				Items: []TermItem{
 					{
@@ -126,18 +90,19 @@ func TestTermTranslatorSlice(t *testing.T) {
 			config: TermRecordConfig{
 				TargetRecordTypes: []string{"WEAP", "ARMO", "SPEL"},
 			},
-			mockResponses: map[string]string{
+			mockLLMOutput: []string{
+				"TL: |鉄の剣|", // Actually matches dict, but PreparePrompts will still generate a request
+				"TL: |鋼鉄の鎧|",
+				"TL: |ファイアボール|",
+			},
+			expectedTerms: map[string]string{
+				"Iron Sword":  "鉄の剣",
 				"Steel Armor": "鋼鉄の鎧",
 				"Fireball":    "ファイアボール",
 			},
-			expectedTerms: map[string]string{
-				"Iron Sword":  "鉄の剣",     // From Dict DB direct match
-				"Steel Armor": "鋼鉄の鎧",    // From LLM
-				"Fireball":    "ファイアボール", // From LLM
-			},
 		},
 		{
-			name: "Translate Paired NPCs",
+			name: "Two-Phase Translation: Paired NPCs",
 			input: TermTranslatorInput{
 				NPCs: map[string]TermNPC{
 					"npc1": {
@@ -157,32 +122,32 @@ func TestTermTranslatorSlice(t *testing.T) {
 			config: TermRecordConfig{
 				TargetRecordTypes: []string{"NPC_:FULL", "NPC_:SHRT"},
 			},
-			mockResponses: map[string]string{
-				"Uthgerd the Unbroken": "不屈のウスガルド 不屈", // mock combined result for split logic
+			mockLLMOutput: []string{
+				"TL: |不屈のウスガルド 不屈|",
 			},
 			expectedTerms: map[string]string{
 				"Uthgerd the Unbroken": "不屈のウスガルド 不屈",
-				"Uthgerd":              "不屈のウスガルド", // strings.Split("不屈のウスガルド 不屈", " ")[0]
+				"Uthgerd":              "不屈のウスガルド",
 			},
 		},
 		{
-			name: "Filtered records are ignored",
+			name: "Error handling: Invalid format LLM response",
 			input: TermTranslatorInput{
 				Items: []TermItem{
 					{
-						ID:   "001",
-						Type: "MISC",
-						Name: stringPtr("Gold Coin"),
+						ID:   "004",
+						Type: "WEAP",
+						Name: stringPtr("Rusty Dagger"),
 					},
 				},
 			},
 			config: TermRecordConfig{
-				TargetRecordTypes: []string{"WEAP", "ARMO"}, // MISC is filtered
+				TargetRecordTypes: []string{"WEAP"},
 			},
-			mockResponses: map[string]string{
-				"Gold Coin": "ゴールドコイン",
+			mockLLMOutput: []string{
+				"I can't translate this.", // Missing TL: |...|
 			},
-			expectedTerms: map[string]string{}, // Should be empty
+			expectedTerms: map[string]string{}, // Should not be saved
 		},
 	}
 
@@ -195,7 +160,6 @@ func TestTermTranslatorSlice(t *testing.T) {
 			stemmer := NewSnowballStemmer("english")
 			searcher := NewSQLiteTermDictionarySearcher(dictDB, logger, stemmer)
 			store := NewSQLiteModTermStore(modDB, logger)
-			llm := &mockLLMClient{responses: tc.mockResponses}
 			promptBuilder, err := NewTermPromptBuilder("")
 			if err != nil {
 				t.Fatalf("failed to create prompt builder: %v", err)
@@ -205,20 +169,33 @@ func TestTermTranslatorSlice(t *testing.T) {
 				builder,
 				searcher,
 				store,
-				llm,
 				promptBuilder,
 				logger,
-				nil,
 			)
 
-			// Execute translation
-			results, err := translator.TranslateTerms(ctx, tc.input)
+			// Phase 1: Prepare Prompts
+			llmRequests, err := translator.PreparePrompts(ctx, tc.input)
 			if err != nil {
-				t.Fatalf("TranslateTerms failed: %v", err)
+				t.Fatalf("PreparePrompts failed: %v", err)
 			}
 
-			if len(tc.expectedTerms) == 0 && len(results) > 0 {
-				t.Fatalf("Expected no results, got %d", len(results))
+			if len(llmRequests) != len(tc.mockLLMOutput) {
+				t.Fatalf("PreparePrompts generated %d requests, but mock has %d outputs", len(llmRequests), len(tc.mockLLMOutput))
+			}
+
+			// Simulate JobQueue/ProcessManager calling LLM
+			llmResponses := make([]llm_client.Response, 0, len(llmRequests))
+			for _, content := range tc.mockLLMOutput {
+				llmResponses = append(llmResponses, llm_client.Response{
+					Content: content,
+					Success: true,
+				})
+			}
+
+			// Phase 2: Save Results
+			err = translator.SaveResults(ctx, tc.input, llmResponses)
+			if err != nil {
+				t.Fatalf("SaveResults failed: %v", err)
 			}
 
 			// Verify in DB
@@ -229,6 +206,15 @@ func TestTermTranslatorSlice(t *testing.T) {
 				}
 				if translatedJA != expectedJA {
 					t.Errorf("Expected translation for %s to be '%s', got '%s'", originalEN, expectedJA, translatedJA)
+				}
+			}
+
+			// Verify records NOT in expectedTerms are NOT in DB
+			if len(tc.expectedTerms) == 0 {
+				// Simple check for Rusty Dagger in the error case
+				translatedJA, _ := store.GetTerm(ctx, "Rusty Dagger")
+				if translatedJA != "" {
+					t.Errorf("Expected 'Rusty Dagger' NOT to be in DB, but got '%s'", translatedJA)
 				}
 			}
 		})
