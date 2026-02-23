@@ -2,8 +2,11 @@
 
 ## 1. 全体フロー（BuildTranslationRequests）
 
+JobQueue連携モデルでは、ContextEngineは入力データを解析し、コンテキスト情報を付与した `TranslationRequest` 群を構築して返す。実際の翻訳実行は Pass 2 Translator Slice が担当する。
+
 ```mermaid
 sequenceDiagram
+    autonumber
     participant PM as ProcessManager
     participant CE as ContextEngineImpl
     participant TR as ToneResolver
@@ -11,136 +14,54 @@ sequenceDiagram
     participant TL as TermLookup
     participant SL as SummaryLookup
 
-    PM->>CE: BuildTranslationRequests(data, config)
-    CE->>CE: buildDialogueRequests(groups, npcs, config)
-    CE->>CE: buildQuestRequests(quests, config)
-    CE->>CE: buildItemRequests(items, config)
-    CE->>CE: buildMagicRequests(magics, config)
-    CE->>CE: buildMessageRequests(messages, config)
+    PM->>CE: BuildTranslationRequests(ctx, input, config)
+
+    Note over CE: Step 1: 会話リクエスト構築 & ツリー解析
+    loop 各DialogueGroup
+        CE->>SL: FindDialogueSummary(groupID)
+        CE->>CE: resolveSpeaker(npcs)
+        CE->>TR: Resolve(race, class, voice, sex)
+        CE->>PL: FindBySpeakerID(speakerID)
+        CE->>TL: Search(text)
+        Note over CE: → TranslationRequest (PreviousLineトラッキング含む)
+    end
+
+    Note over CE: Step 2: クエストリクエスト構築
+    loop 各Quest
+        CE->>SL: FindQuestSummary(questID)
+        CE->>TL: Search(text)
+        Note over CE: → TranslationRequest (QUST CNAM/NNAM)
+    end
+
+    Note over CE: Step 3: アイテム・書籍・魔法・メッセージ構築
+    loop 各Item/Magic/Message
+        CE->>TL: Search(text)
+        Note over CE: → TranslationRequest (書籍チャンク分割含む)
+    end
+
     CE-->>PM: []TranslationRequest
 ```
 
-## 2. 会話リクエスト構築フロー（buildDialogueRequests）
+## 2. 参照用語検索と強制翻訳判定（TermLookup）
 
 ```mermaid
 sequenceDiagram
-    participant CE as ContextEngineImpl
-    participant SL as SummaryLookup
-    participant TR as ToneResolver
-    participant PL as PersonaLookup
-    participant TL as TermLookup
-
-    loop for each DialogueGroup
-        CE->>SL: FindDialogueSummary(groupID)
-        SL-->>CE: *string / nil
-
-        Note over CE: last_line = group.PlayerText
-
-        opt PlayerText exists: DIAL FULL request
-            CE->>TL: Search(playerText)
-            TL-->>CE: []ReferenceTerm, *forcedTranslation
-            Note over CE: → TranslationRequest (DIAL FULL)
-        end
-
-        loop for each DialogueResponse (Order昇順)
-            CE->>CE: resolveSpeaker(speakerID, npcs)
-            CE->>TR: Resolve(race, voiceType, sex)
-            TR-->>CE: toneInstruction
-            CE->>PL: FindBySpeakerID(speakerID)
-            PL-->>CE: *personaText / nil
-            Note over CE: → SpeakerProfile
-            CE->>CE: getTopicName(response, group)
-
-            opt INFO RNAM: prompt/選択肢
-                CE->>TL: Search(promptText)
-                TL-->>CE: []ReferenceTerm, *forcedTranslation
-                Note over CE: → TranslationRequest (INFO RNAM, previousLine=last_line)
-                Note over CE: last_line = menuDisplayText or prompt
-            end
-
-            opt INFO NAM1: NPCセリフ
-                CE->>TL: Search(responseText)
-                TL-->>CE: []ReferenceTerm, *forcedTranslation
-                Note over CE: → TranslationRequest (INFO NAM1, speaker, previousLine=last_line)
-                Note over CE: last_line = response.Text
-            end
-        end
-    end
-```
-
-## 3. クエストリクエスト構築フロー（buildQuestRequests）
-
-```mermaid
-sequenceDiagram
-    participant CE as ContextEngineImpl
-    participant SL as SummaryLookup
-    participant TL as TermLookup
-
-    loop for each Quest
-        CE->>SL: FindQuestSummary(questID)
-        SL-->>CE: *string / nil
-
-        opt Quest.Name exists: QUST FULL
-            CE->>TL: Search(questName)
-            TL-->>CE: []ReferenceTerm, *forcedTranslation
-            Note over CE: → TranslationRequest (QUST FULL)
-        end
-
-        loop for each Stage (Index昇順)
-            CE->>TL: Search(stageText)
-            TL-->>CE: []ReferenceTerm, *forcedTranslation
-            Note over CE: → TranslationRequest (QUST CNAM, questSummary, index)
-        end
-
-        loop for each Objective
-            CE->>TL: Search(objectiveText)
-            TL-->>CE: []ReferenceTerm, *forcedTranslation
-            Note over CE: → TranslationRequest (QUST NNAM, questSummary, index)
-        end
-    end
-```
-
-## 4. アイテム・書籍リクエスト構築フロー（buildItemRequests）
-
-```mermaid
-sequenceDiagram
+    autonumber
     participant CE as ContextEngineImpl
     participant TL as TermLookup
+    participant DB as Infrastructure<br/>(Shared *sql.DB)
 
-    loop for each Item
-        opt Item.Description exists: {Type} DESC
-            CE->>TL: Search(description)
-            TL-->>CE: []ReferenceTerm, *forcedTranslation
-            Note over CE: → TranslationRequest ({Type} DESC)
-        end
+    CE->>TL: Search(sourceText)
 
-        opt Item.Text exists (BOOK): BOOK DESC
-            CE->>TL: Search(bookText)
-            TL-->>CE: []ReferenceTerm, *forcedTranslation
-            Note over CE: → TranslationRequest (BOOK DESC, maxTokens)
-        end
-    end
-```
-
-## 5. 話者解決フロー（resolveSpeaker）
-
-```mermaid
-sequenceDiagram
-    participant CE as ContextEngineImpl
-    participant TR as ToneResolver
-    participant PL as PersonaLookup
-
-    Note over CE: resolveSpeaker(speakerID, npcs)
-
-    alt speakerID == nil
-        CE-->>CE: return nil
-    else NPC found in npcs map
-        CE->>TR: Resolve(npc.Race, npc.Voice, npc.Sex)
-        TR-->>CE: toneInstruction
-        CE->>PL: FindBySpeakerID(speakerID)
-        PL-->>CE: *personaText / nil
-        Note over CE: → SpeakerProfile {Name, Gender, Race, VoiceType, ToneInstruction, PersonaText}
-    else NPC not found
-        CE-->>CE: return nil
+    Note over TL: Step 1: 完全一致チェック
+    TL->>DB: SELECT translated_ja FROM dictionaries/mod_terms WHERE source = ?
+    alt 完全一致あり
+        DB-->>TL: 既訳
+        TL-->>CE: ReferenceTerms, *forcedTranslation
+    else 一致なし
+        Note over TL: Step 2: キーワード貪欲部分一致検索
+        TL->>DB: キーワード抽出・ステミング・検索
+        DB-->>TL: ヒット用語群
+        TL-->>CE: []ReferenceTerm, nil
     end
 ```

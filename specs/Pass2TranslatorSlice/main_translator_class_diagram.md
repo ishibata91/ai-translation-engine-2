@@ -6,47 +6,30 @@
 classDiagram
     class BatchTranslator {
         <<interface>>
-        +TranslateBatch(ctx context.Context, requests []TranslationRequest, config BatchConfig) ([]TranslationResult, error)
+        +ProposeJobs(ctx context.Context, requests []TranslationRequest, config BatchConfig) (ProposeOutput, error)
+        +SaveResults(ctx context.Context, responses []llm_client.Response) error
+    }
+
+    class ProposeOutput {
+        +[]llm_client.Request Requests
+        +[]TranslationResult PreCalculatedResults
     }
 
     class BatchTranslatorImpl {
-        -translator Translator
         -writer ResultWriter
         -resumeLoader ResumeLoader
-        +TranslateBatch(ctx, requests, config)
-        -loadCachedResults(config BatchConfig) map~string~TranslationResult
-        -buildRequestKey(req TranslationRequest) string
-    }
-
-    class Translator {
-        <<interface>>
-        +Translate(ctx context.Context, request TranslationRequest) (TranslationResult, error)
+        -tagProcessor TagProcessor
+        -promptBuilder PromptBuilder
+        -bookChunker BookChunker
+        -verifier TranslationVerifier
+        +ProposeJobs(...)
+        +SaveResults(...)
     }
 
     class ResultWriter {
         <<interface>>
         +Write(result TranslationResult) error
         +Flush() error
-    }
-
-    class TranslatorImpl {
-        -promptBuilder PromptBuilder
-        -tagProcessor TagProcessor
-        -llmClient LLMClient
-        -verifier TranslationVerifier
-        -retryConfig RetryConfig
-        +Translate(ctx, request) (TranslationResult, error)
-        -translateWithRetry(ctx, req) (string, error)
-        -translateBook(ctx, req) (string, error)
-    }
-
-    class JSONResultWriter {
-        -outputDir string
-        -mu sync.Mutex
-        -buffers map~string~[]TranslationResult
-        +Write(result) error
-        +Flush() error
-        -writeToFile(plugin string) error
     }
 
     class PromptBuilder {
@@ -71,6 +54,12 @@ classDiagram
         +Chunk(text string, maxTokensPerChunk int) []string
     }
 
+    class JSONResultWriter {
+        -outputDir string
+        +Write(result) error
+        +Flush() error
+    }
+
     class DefaultPromptBuilder {
         -configStore ConfigStore
         +Build(request) (string, string, error)
@@ -82,31 +71,20 @@ classDiagram
         +Validate(translatedText, tagMap) error
     }
 
-    class DefaultTranslationVerifier {
-        +Verify(source, translated, tagMap) error
-    }
-
-    class HTMLBookChunker {
-        -tokenCounter func(string) int
-        +Chunk(text, maxTokens) []string
-        -splitByParagraph(text) []string
-        -splitBySentence(text) []string
+    class ResumeLoader {
+        +LoadCachedResults(config BatchConfig) map~string~TranslationResult
     }
 
     BatchTranslator <|.. BatchTranslatorImpl : implements
-    BatchTranslatorImpl --> Translator : uses
     BatchTranslatorImpl --> ResultWriter : uses
-    Translator <|.. TranslatorImpl : implements
+    BatchTranslatorImpl --> ResumeLoader : uses
+    BatchTranslatorImpl --> TagProcessor : uses
+    BatchTranslatorImpl --> PromptBuilder : uses
+    BatchTranslatorImpl --> BookChunker : uses
+    BatchTranslatorImpl --> TranslationVerifier : uses
     ResultWriter <|.. JSONResultWriter : implements
-    TranslatorImpl --> PromptBuilder : uses
-    TranslatorImpl --> TagProcessor : uses
-    TranslatorImpl --> LLMClient : uses
-    TranslatorImpl --> TranslationVerifier : uses
-    TranslatorImpl --> BookChunker : uses
     PromptBuilder <|.. DefaultPromptBuilder : implements
     TagProcessor <|.. HTMLTagProcessor : implements
-    TranslationVerifier <|.. DefaultTranslationVerifier : implements
-    BookChunker <|.. HTMLBookChunker : implements
 ```
 
 ## DTO定義
@@ -129,34 +107,14 @@ classDiagram
     class BatchConfig {
         +MaxWorkers int
         +TimeoutSeconds float64
-        +MaxTokens int
         +OutputBaseDir string
         +PluginName string
     }
-
-    class RetryConfig {
-        +MaxRetries int
-        +BaseDelaySeconds float64
-        +MaxDelaySeconds float64
-        +ExponentialBase float64
-    }
-
-    class TagHallucinationError {
-        +Message string
-        +Error() string
-    }
 ```
 
-## 依存関係
+## アーキテクチャの補足：2フェーズモデル (Propose/Save)
+本文翻訳（Pass 2）は膨大なレコードを扱うため、JobQueueおよびバッチAPIに最適化した2フェーズモデルを採用している。
+- **Phase 1 (Propose)**: `TranslationRequest` を受け取り、差分更新チェック・タグ保護・プロンプト構築を行い、LLMジョブ（リクエスト群）を生成する。既訳やスキップ対象は即時結果として返す。
+- **Phase 2 (Save)**: 外部で実行されたLLMのレスポンス群を受け取り、タグ復元・パース・バリデーションを行い、JSONファイルに逐次保存する。
 
-- `BatchTranslatorImpl` → `Translator`: 単一リクエストの翻訳実行
-- `BatchTranslatorImpl` → `ResultWriter`: 翻訳結果の逐次保存
-- `BatchTranslatorImpl` → `ResumeLoader`: 既存翻訳結果の読み込み（差分更新）
-- `TranslatorImpl` → `PromptBuilder`: プロンプト構築
-- `TranslatorImpl` → `TagProcessor`: HTMLタグ前処理/後処理
-- `TranslatorImpl` → `LLMClient` (共通インフラ): LLM呼び出し
-- `TranslatorImpl` → `TranslationVerifier`: 翻訳結果の品質検証
-- `TranslatorImpl` → `BookChunker`: 書籍長文分割
-- `DefaultPromptBuilder` → Config Store: プロンプトテンプレートの取得
-- `JSONResultWriter` → ファイルシステム: JSON出力
-- Process Manager → `BatchTranslator`: バッチ翻訳の起動
+スライス自身は並列通信を管理せず、リクエスト構築と結果の整合性担保（タグ復元等）および永続化に専念する。
