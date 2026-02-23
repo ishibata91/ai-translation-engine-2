@@ -68,6 +68,8 @@ type TranslationResult struct {
     SourcePlugin   string  // ソースプラグイン名
     SourceFile     string  // リクエスト発生元のファイル名
     EditorID       *string // Editor ID
+    ParentID       *string // 親のFormID
+    ParentEditorID *string // 親のEditorID
 }
 ```
 
@@ -88,6 +90,10 @@ type TranslationResult struct {
 
 ### 8. 翻訳結果の逐次保存
 翻訳が完了（またはレスポンスをバッチパース）するごとに、ソースプラグイン単位のJSONファイルに結果を書き込む。
+
+### 9. レコードシグネチャの完全保持 (Preservation of Full Signature)
+**Reason**: XML出力の `<REC>` タグ生成において正確なシグネチャ情報が必要となるため。
+**Requirement**: 翻訳結果の保存時、レコードの `type` (RecordType) を丸めず（例: `INFO` への短縮などを行わず） `INFO NAM1` のようにフル形式で保持しなければならない。
 
 ### 9. ライブラリの選定
 - LLMクライアント: `infrastructure/llm_client` インターフェース（プロジェクト共通）

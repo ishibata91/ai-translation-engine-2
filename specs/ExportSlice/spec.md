@@ -86,12 +86,12 @@ Pass 1（Term Translator）と Pass 2（Pass 2 Translator）は、処理対象�
 **翻訳データ (`<Content>` / `<String>`)**:
 各レコードは `<Content>` 配下に `<String>` 要素として列挙する。
 - 属性 `List="0"` (固定)
-- 属性 `sID="[連番]"` (000001からの6桁ゼロ埋め連番)
+- 属性 `sID`: 元データの ID (例: `0x001234|Skyrim.esm`) から **8桁の16進数** 部分 (例: `00001234`) を抽出し、大文字で設定する
 - 属性 `Partial="1"` (固定)
-- 子要素 `<EDID>`: `ExportRecord.EditorID`
-- 子要素 `<REC>`: `ExportRecord.RecordType` (例: `WEAP:FULL`、もし `NPC_ FULL` などのスペース区切りが入ってきた場合は、`:`コロン区切りに正規化するなどの対応が必要な場合は行う。基本は入力通り)
-- 子要素 `<Source>`: `ExportRecord.SourceText` (XMLエスケープ処理を施す)
-- 子要素 `<Dest>`: `ExportRecord.TranslatedText` (XMLエスケープ処理を施す)
+- 子要素 `<EDID>`: `ExportRecord.EditorID` (タグマッピングルール)
+- 子要素 `<REC>`: `ExportRecord.RecordType` を正規化して設定 (例: `INFO NAM1` -> `INFO:NAM1`)
+- 子要素 `<Source>`: `ExportRecord.SourceText` (XMLエスケープ処理)
+- 子要素 `<Dest>`: `ExportRecord.TranslatedText` (XMLエスケープ処理)
 
 ### 5. XMLエスケープ処理
 - 抽出テキストには `<` `>` `&` `"` `'` などの予約文字が含まれる。

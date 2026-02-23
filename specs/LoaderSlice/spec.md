@@ -1,32 +1,48 @@
-# Loader Slice Architecture
-> Interface-First AIDD: Loader Vertical Slice
+# Loader Slice アーキテクチャ
+> Interface-First AIDD: Loader 垂直スライス
 
-## Purpose
-TBD: Provision of dependency injection for the loader module and encapsulation of internal data handling.
+## 目的
+TBD: ローダーモジュールに対する依存性注入の提供、および内部データ処理の隠蔽（カプセル化）。
 
-## Requirements
+## 要件
 
-### Requirement: Loader出力の独自DTO定義とグローバルドメイン依存の排除
-**Reason**: VSA（Vertical Slice Architecture）の原則に従い、システム全体で共有するデータモデル（`pkg/domain` 等）を排除し、各スライスが自身の入出力構造を独自定義する設計（Anti-Corruption Layer）へ移行するため。
-**Migration**: これまでパース結果を格納するために利用していた `pkg/domain` などの外部依存モデルを破棄し、本スライスの `contract.go` パッケージ内に独自定義した出力専用DTOを返すようにインターフェースおよび内部実装を修正する。
+### 要件: Loader出力の独自DTO定義とグローバルドメイン依存の排除
+**理由**: VSA（Vertical Slice Architecture）の原則に従い、システム全体で共有するデータモデル（`pkg/domain` 等）を排除し、各スライスが自身の入出力構造を独自定義する設計（Anti-Corruption Layer）へ移行するため。
+**移行**: これまでパース結果を格納するために利用していた `pkg/domain` などの外部依存モデルを破棄し、本スライスの `contract.go` パッケージ内に独自定義した出力専用DTOを返すようにインターフェースおよび内部実装を修正する。
 
-#### Scenario: 独自定義DTOによるパース結果の返却
+#### シナリオ: 独自定義DTOによるパース結果の返却
 - **WHEN** Modファイル群のロードおよびパース処理が完了した場合
 - **THEN** 外部パッケージのモデルに一切依存することなく、本スライス内部で定義された独自DTOに全データを格納して返却できること
 
-### Requirement: Loader slice DI Provider
-The `pkg/loader` module MUST provide a dependency injection provider function via Google Wire, hiding its internal implementation details.
+### 要件: Loader スライス DI プロバイダー
+`pkg/loader` モジュールは、Google Wire を介して依存性注入プロバイダー関数を提供し、その内部実装の詳細を隠蔽しなければならない。
 
-#### Scenario: DI Initialization
-- **WHEN** the application starts and initializes its components
-- **THEN** it resolves `contract.Loader` through the module's Wire provider without directly instantiating internal structs.
+#### シナリオ: DI 初期化
+- **WHEN** アプリケーションが起動し、コンポーネントを初期化する場合
+- **THEN** 内部構造体を直接インスタンス化することなく、モジュールの Wire プロバイダーを通じて `contract.Loader` を解決する。
 
-### Requirement: Internal process encapsulation
-The sequential load and parallel decoding steps MUST be encapsulated within the `contract.Loader` implementation and not exposed to the Process Manager.
+### 要件: 内部プロセスのカプセル化
+順次ロードと並列デコードの手順は、`contract.Loader` の実装内にカプセル化され、Process Manager に公開されてはならない。
 
-#### Scenario: Orchestrating the load process
-- **WHEN** the Process Manager invokes `LoadExtractedJSON`
-- **THEN** the slice internally coordinates file reading, decoding, and structuring, returning only the final `ExtractedData` or an error.
+#### シナリオ: ロードプロセスのオーケストレーション
+- **WHEN** Process Manager が `LoadExtractedJSON` を呼び出す場合
+- **THEN** スライス内部でファイルの読み込み、デコード、構造化を調整し、最終的な `ExtractedData` またはエラーのみを返す。
+
+### 要件: 階層的コンテキストのための Loader DTO 拡張
+Loader スライスは、完全な翻訳コンテキストと将来のエクスポート処理に必要な階層的データ関係をキャプチャする、堅牢なデータ転送オブジェクト（DTO）を定義・入力しなければならない。
+
+#### シナリオ: 階層的なクエスト項目の DTO への入力
+- **WHEN** 抽出スクリプトから DTO にデータをロードする場合
+- **THEN** Loader スライスは、`QuestStage` と `QuestObjective` の構造を拡張し、親クエストの `ID` と `EditorID` を保存できるようにする
+- **AND** データロードプロセス中にこれらのフィールドに値を入力する
+
+### 要件: データ抽出の前提条件と厳密なパース
+Loader スライスは、入力される JSON ペイロード（`extractData.pas` によって生成される）に、インデックスの衝突とレスポンスの順序に関する修正が含まれていることを前提としなければならない。
+
+#### シナリオ: 抽出された JSON の正しいパース
+- **WHEN** Pascal 抽出スクリプトから JSON ペイロードをロードする場合
+- **THEN** Loader スライスは、衝突を防ぐために `stage_index` と `log_index` を別のフィールドとしてパースする
+- **AND** 正確なツリー探索と順序を保証するために、会話レスポンスの明示的な `order`（または `index`）フィールドをパースする
 
 ---
 
