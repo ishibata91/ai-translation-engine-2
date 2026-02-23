@@ -44,14 +44,15 @@ type TermLocation struct {
 }
 
 // Terminology is the main entry point for term translation (Pass 1).
-// It orchestrates request building, dictionary search, and persistence.
-// It is now split into two phases to support job queue infrastructure.
 type Terminology interface {
-	// PreparePrompts builds LLM requests (Phase 1).
-	PreparePrompts(ctx context.Context, data TerminologyInput) ([]llm.Request, error)
+	// ID returns the unique identifier of the slice.
+	ID() string
 
-	// SaveResults parses LLM responses and persists to the mod term database (Phase 2).
-	SaveResults(ctx context.Context, data TerminologyInput, results []llm.Response) error
+	// PreparePrompts (Phase 1) generates LLM requests.
+	PreparePrompts(ctx context.Context, input any) ([]llm.Request, error)
+
+	// SaveResults (Phase 2) persists LLM responses.
+	SaveResults(ctx context.Context, responses []llm.Response) error
 }
 
 // TermRequestBuilder extracts term translation targets from TerminologyInput

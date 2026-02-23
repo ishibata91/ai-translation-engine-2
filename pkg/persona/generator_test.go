@@ -72,7 +72,7 @@ func TestPersonaGenSlice_TableDriven(t *testing.T) {
 		name                 string
 		input                persona.PersonaGenInput
 		config               persona.PersonaConfig
-		responses            []llm.Response
+		mockLLMOutput        []string
 		expectedRequestCount int
 		expectedDBCount      int
 	}{
@@ -92,14 +92,8 @@ func TestPersonaGenSlice_TableDriven(t *testing.T) {
 				ContextWindowLimit:   4000,
 				MaxOutputTokens:      500,
 			},
-			responses: []llm.Response{
-				{
-					Content: "TL: |Personality: Brave, habits: direct|",
-					Success: true,
-					Metadata: map[string]interface{}{
-						"speaker_id": "NPC001",
-					},
-				},
+			mockLLMOutput: []string{
+				"TL: |Personality: Brave, habits: direct|",
 			},
 			expectedRequestCount: 1,
 			expectedDBCount:      1,
@@ -110,17 +104,15 @@ func TestPersonaGenSlice_TableDriven(t *testing.T) {
 				NPCs: map[string]persona.PersonaNPC{
 					"NPC002": {ID: "NPC002", Name: "Farkas", Type: "Nord"},
 				},
-			},
-			responses: []llm.Response{
-				{
-					Content: "TL: Personality: Simple and loyal.",
-					Success: true,
-					Metadata: map[string]interface{}{
-						"speaker_id": "NPC002",
-					},
+				Dialogues: []persona.PersonaDialogue{
+					{ID: "D3", SpeakerID: strPtr("NPC002"), Text: strPtr("I am strong."), Order: 1},
 				},
 			},
-			expectedDBCount: 1,
+			mockLLMOutput: []string{
+				"TL: Personality: Simple and loyal.",
+			},
+			expectedRequestCount: 1,
+			expectedDBCount:      1,
 		},
 		{
 			name: "Phase 2: Fallback parsing - just pipes",
@@ -128,17 +120,15 @@ func TestPersonaGenSlice_TableDriven(t *testing.T) {
 				NPCs: map[string]persona.PersonaNPC{
 					"NPC003": {ID: "NPC003", Name: "Vilkas", Type: "Nord"},
 				},
-			},
-			responses: []llm.Response{
-				{
-					Content: "Here is the persona: |Personality: Smart and tactical|",
-					Success: true,
-					Metadata: map[string]interface{}{
-						"speaker_id": "NPC003",
-					},
+				Dialogues: []persona.PersonaDialogue{
+					{ID: "D4", SpeakerID: strPtr("NPC003"), Text: strPtr("I am smart."), Order: 1},
 				},
 			},
-			expectedDBCount: 1,
+			mockLLMOutput: []string{
+				"Here is the persona: |Personality: Smart and tactical|",
+			},
+			expectedRequestCount: 1,
+			expectedDBCount:      1,
 		},
 		{
 			name: "Phase 2: Failure - content too short",
@@ -146,17 +136,15 @@ func TestPersonaGenSlice_TableDriven(t *testing.T) {
 				NPCs: map[string]persona.PersonaNPC{
 					"NPC004": {ID: "NPC004", Name: "Kodlak", Type: "Nord"},
 				},
-			},
-			responses: []llm.Response{
-				{
-					Content: "TL: |Old|",
-					Success: true,
-					Metadata: map[string]interface{}{
-						"speaker_id": "NPC004",
-					},
+				Dialogues: []persona.PersonaDialogue{
+					{ID: "D5", SpeakerID: strPtr("NPC004"), Text: strPtr("Old age."), Order: 1},
 				},
 			},
-			expectedDBCount: 0,
+			mockLLMOutput: []string{
+				"TL: |Old|",
+			},
+			expectedRequestCount: 1,
+			expectedDBCount:      0,
 		},
 	}
 
@@ -181,7 +169,7 @@ func TestPersonaGenSlice_TableDriven(t *testing.T) {
 			generator := persona.NewPersonaGenerator(collector, evaluator, store, configStore, secretStore)
 
 			// Phase 1
-			requests, err := generator.PreparePrompts(ctx, tc.input, tc.config)
+			requests, err := generator.PreparePrompts(ctx, tc.input)
 			if err != nil {
 				t.Fatalf("PreparePrompts failed: %v", err)
 			}
@@ -189,8 +177,21 @@ func TestPersonaGenSlice_TableDriven(t *testing.T) {
 				t.Errorf("Expected %d requests, got %d", tc.expectedRequestCount, len(requests))
 			}
 
+			// Simulate JobQueue/Pipeline calling LLM
+			llmResponses := make([]llm.Response, 0, len(requests))
+			for i, content := range tc.mockLLMOutput {
+				if i >= len(requests) {
+					break
+				}
+				llmResponses = append(llmResponses, llm.Response{
+					Content:  content,
+					Success:  true,
+					Metadata: requests[i].Metadata,
+				})
+			}
+
 			// Phase 2
-			err = generator.SaveResults(ctx, tc.input, tc.responses)
+			err = generator.SaveResults(ctx, llmResponses)
 			if err != nil {
 				t.Fatalf("SaveResults failed: %v", err)
 			}

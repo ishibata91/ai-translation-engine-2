@@ -31,11 +31,15 @@ type PersonaDialogue struct {
 }
 
 // NPCPersonaGenerator is the main entry point for NPC persona generation.
-// It orchestrates dialogue collection, token estimation, and request generation
-// for the Job Queue (Phase 1), and persistence of LLM responses (Phase 2).
 type NPCPersonaGenerator interface {
-	PreparePrompts(ctx context.Context, input PersonaGenInput, config PersonaConfig) ([]llm.Request, error)
-	SaveResults(ctx context.Context, input PersonaGenInput, results []llm.Response) error
+	// ID returns the unique identifier of the slice.
+	ID() string
+
+	// PreparePrompts (Phase 1) generates LLM requests.
+	PreparePrompts(ctx context.Context, input any) ([]llm.Request, error)
+
+	// SaveResults (Phase 2) persists LLM responses.
+	SaveResults(ctx context.Context, responses []llm.Response) error
 }
 
 // DialogueCollector collects per-NPC dialogue data from PersonaGenInput,

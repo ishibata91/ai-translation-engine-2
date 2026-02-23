@@ -171,14 +171,11 @@ func TestJobQueue_BatchPolling(t *testing.T) {
 	}()
 
 	// Mock config to force batch
-	cfg := &mockConfigStore{} // Note: implementation above returns "sync", but we can use a custom one if needed.
-	// For simplicity in test, we just call processBatch directly or update mock.
+	cfg := &mockConfigStore{}
 
 	worker := NewWorker(q, manager, cfg, &mockSecretStore{}, progress.NewNoopNotifier(), logger)
 	worker.SetPollingInterval(50 * time.Millisecond)
 
-	// Inject strategy override in worker isn't easy without modifying worker,
-	// but we can trust the flow if we test the sub-method.
 	err := worker.processBatch(ctx, processID, llm.LLMConfig{})
 	if err != nil {
 		t.Errorf("processBatch failed: %v", err)

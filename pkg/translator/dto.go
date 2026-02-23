@@ -1,5 +1,19 @@
 package translator
 
+// TranslatorInput is the aggregated input for the Pass 2 Translator slice.
+type TranslatorInput struct {
+	Config       TranslatorConfig
+	GameData     ContextEngineInput
+	OutputConfig BatchConfig
+}
+
+// TranslatorConfig holds runtime configuration for the Translator.
+type TranslatorConfig struct {
+	ModDescription string
+	PlayerTone     string
+	SourceFile     string
+}
+
 // TranslationResult represents the result of translating a single record.
 type TranslationResult struct {
 	ID             string  `json:"id"`
@@ -16,7 +30,8 @@ type TranslationResult struct {
 	ParentEditorID *string `json:"parent_editor_id,omitempty"`
 }
 
-// Pass2TranslationRequest represents a single translation unit for Pass 2.
+// Pass2TranslationRequest is an internal DTO representing a single translation unit.
+// It is no longer exposed through the slice boundary but kept for internal processing.
 type Pass2TranslationRequest struct {
 	ID                string               `json:"id"`
 	RecordType        string               `json:"record_type"`
@@ -62,7 +77,7 @@ type Pass2ReferenceTerm struct {
 	OriginalJA string `json:"original_ja"`
 }
 
-// BatchConfig holds configuration for batch translation execution.
+// BatchConfig holds configuration for batch translation execution and file paths.
 type BatchConfig struct {
 	MaxWorkers     int     `json:"max_workers"`
 	TimeoutSeconds float64 `json:"timeout_seconds"`

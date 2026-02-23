@@ -46,6 +46,22 @@ type dialogueCacheResult struct {
 	result *SummaryResult
 }
 
+func (g *summaryGenerator) ID() string {
+	return "Summary"
+}
+
+func (g *summaryGenerator) PreparePrompts(ctx context.Context, input any) ([]llm.Request, error) {
+	typedInput, ok := input.(SummaryInput)
+	if !ok {
+		return nil, fmt.Errorf("invalid input type for Summary slice: %T", input)
+	}
+	output, err := g.ProposeJobs(ctx, typedInput)
+	if err != nil {
+		return nil, err
+	}
+	return output.Jobs, nil
+}
+
 func (g *summaryGenerator) ProposeJobs(ctx context.Context, input SummaryInput) (*ProposeOutput, error) {
 	start := time.Now()
 	slog.DebugContext(ctx, "ENTER Summary.ProposeJobs",

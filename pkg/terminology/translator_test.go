@@ -185,15 +185,16 @@ func TestTermTranslatorSlice(t *testing.T) {
 
 			// Simulate JobQueue/Pipeline calling LLM
 			llmResponses := make([]llm.Response, 0, len(llmRequests))
-			for _, content := range tc.mockLLMOutput {
+			for i, content := range tc.mockLLMOutput {
 				llmResponses = append(llmResponses, llm.Response{
-					Content: content,
-					Success: true,
+					Content:  content,
+					Success:  true,
+					Metadata: llmRequests[i].Metadata,
 				})
 			}
 
 			// Phase 2: Save Results
-			err = translator.SaveResults(ctx, tc.input, llmResponses)
+			err = translator.SaveResults(ctx, llmResponses)
 			if err != nil {
 				t.Fatalf("SaveResults failed: %v", err)
 			}

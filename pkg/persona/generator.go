@@ -29,7 +29,7 @@ type DefaultPersonaGenerator struct {
 	Collector   DialogueCollector
 	Evaluator   ContextEvaluator
 	Store       PersonaStore
-	Config config.Config
+	Config      config.Config
 	SecretStore config.SecretStore
 }
 
@@ -45,21 +45,37 @@ func NewPersonaGenerator(
 		Collector:   collector,
 		Evaluator:   evaluator,
 		Store:       store,
-		Config: configStore,
+		Config:      configStore,
 		SecretStore: secretStore,
 	}
+}
+
+// ID returns the unique identifier of the slice.
+func (g *DefaultPersonaGenerator) ID() string {
+	return "Persona"
 }
 
 // PreparePrompts processes input data and constructs LLM requests (Phase 1).
 func (g *DefaultPersonaGenerator) PreparePrompts(
 	ctx context.Context,
-	data PersonaGenInput,
-	config PersonaConfig,
+	input any,
 ) ([]llm.Request, error) {
+	data, ok := input.(PersonaGenInput)
+	if !ok {
+		return nil, fmt.Errorf("invalid input type for Persona slice: %T", input)
+	}
+
 	slog.DebugContext(ctx, "ENTER PreparePrompts",
 		slog.String("slice", "Persona"),
 		slog.Int("npc_count", len(data.NPCs)),
 	)
+
+	// Note: default config for now. In a real scenario, this might be injected or part of input.
+	config := PersonaConfig{
+		MinDialogueThreshold: 1,
+		ContextWindowLimit:   4000,
+		MaxOutputTokens:      500,
+	}
 
 	groupedData, err := g.Collector.CollectByNPC(ctx, data)
 	if err != nil {
@@ -105,6 +121,9 @@ func (g *DefaultPersonaGenerator) PreparePrompts(
 			Temperature:  0.3,
 			Metadata: map[string]interface{}{
 				"speaker_id": npcData.SpeakerID,
+				"npc_name":   npcData.NPCName,
+				"race":       npcData.Race,
+				"editor_id":  npcData.EditorID,
 			},
 		})
 	}
@@ -120,13 +139,17 @@ func (g *DefaultPersonaGenerator) PreparePrompts(
 // SaveResults parses LLM responses and persists them to the store (Phase 2).
 func (g *DefaultPersonaGenerator) SaveResults(
 	ctx context.Context,
-	data PersonaGenInput,
 	results []llm.Response,
 ) error {
 	slog.DebugContext(ctx, "ENTER SaveResults",
 		slog.String("slice", "Persona"),
 		slog.Int("response_count", len(results)),
 	)
+
+	// Note: This implementation is currently limited because it doesn't have access
+	// to the original PersonaGenInput.NPCs needed to create PersonaResult.
+	// We might need to store this in state or include it in metadata.
+	// For now, we'll try to extract as much as possible from metadata.
 
 	successCount := 0
 	failCount := 0
@@ -170,27 +193,17 @@ func (g *DefaultPersonaGenerator) SaveResults(
 			continue
 		}
 
-		// Prepare PersonaResult
-		npc, exists := data.NPCs[speakerID]
-		if !exists {
-			slog.WarnContext(ctx, "NPC not found in original input",
-				slog.String("slice", "Persona"),
-				slog.String("speaker_id", speakerID),
-			)
-			failCount++
-			continue
-		}
-
-		var editorID string
-		if npc.EditorID != nil {
-			editorID = *npc.EditorID
-		}
+		// Prepare PersonaResult from metadata if available
+		// (In a full implementation, we'd ensure all needed fields are in metadata)
+		npcName, _ := resp.Metadata["npc_name"].(string)
+		race, _ := resp.Metadata["race"].(string)
+		editorID, _ := resp.Metadata["editor_id"].(string)
 
 		result := PersonaResult{
 			SpeakerID:   speakerID,
 			EditorID:    editorID,
-			NPCName:     npc.Name,
-			Race:        npc.Type,
+			NPCName:     npcName,
+			Race:        race,
 			PersonaText: personaText,
 			Status:      "success",
 		}

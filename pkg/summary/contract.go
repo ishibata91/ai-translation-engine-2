@@ -9,10 +9,13 @@ import (
 // Summary is the main entry point for dialogue and quest summary generation.
 // It follows a 2-phase model: ProposeJobs and SaveResults.
 type Summary interface {
-	// ProposeJobs analyzes inputs, checks cache, and returns LLM jobs for missing entries.
-	ProposeJobs(ctx context.Context, input SummaryInput) (*ProposeOutput, error)
+	// ID returns the unique identifier of the slice.
+	ID() string
 
-	// SaveResults persists LLM responses to the SQLite cache.
+	// PreparePrompts (Phase 1) generates LLM requests.
+	PreparePrompts(ctx context.Context, input any) ([]llm.Request, error)
+
+	// SaveResults (Phase 2) persists LLM responses.
 	SaveResults(ctx context.Context, responses []llm.Response) error
 
 	// GetSummary retrieves a single summary by record ID. Used by Pass 2.

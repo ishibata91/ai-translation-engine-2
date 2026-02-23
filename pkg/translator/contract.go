@@ -2,48 +2,56 @@ package translator
 
 import (
 	"context"
+
+	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/llm"
 )
 
-// BatchTranslator translates multiple Pass2TranslationRequests in parallel batches.
-type BatchTranslator interface {
-	TranslateBatch(ctx context.Context, requests []Pass2TranslationRequest, config BatchConfig) ([]TranslationResult, error)
+// TranslatorSlice is the main interface for the Pass 2 Translator vertical slice.
+type TranslatorSlice interface {
+	// ID returns the unique identifier of the slice.
+	ID() string
+
+	// PreparePrompts (Phase 1) generates LLM requests.
+	PreparePrompts(ctx context.Context, input any) ([]llm.Request, error)
+
+	// SaveResults (Phase 2) persists LLM responses.
+	SaveResults(ctx context.Context, responses []llm.Response) error
+
+	// ProposeJobs analyzes input game data and proposes LLM translation jobs.
+	ProposeJobs(ctx context.Context, input TranslatorInput) ([]llm.Request, error)
 }
 
-// Translator translates a single Pass2TranslationRequest via LLM.
+// Internal components
+
+// Translator translates a single record via LLM.
 type Translator interface {
 	Translate(ctx context.Context, request Pass2TranslationRequest) (TranslationResult, error)
 }
 
-// PromptBuilder constructs system and user prompts from a Pass2TranslationRequest.
+// PromptBuilder constructs system and user prompts.
 type PromptBuilder interface {
-	Build(request Pass2TranslationRequest) (systemPrompt string, userPrompt string, err error)
+	Build(ctx context.Context, request Pass2TranslationRequest) (systemPrompt string, userPrompt string, err error)
 }
 
-// TagProcessor handles HTML tag abstraction before translation
-// and restoration after translation.
+// TagProcessor handles HTML tag abstraction and restoration.
 type TagProcessor interface {
 	Preprocess(text string) (processedText string, tagMap map[string]string)
 	Postprocess(text string, tagMap map[string]string) string
 	Validate(translatedText string, tagMap map[string]string) error
 }
 
-// TranslationVerifier validates the quality of a translation result.
-type TranslationVerifier interface {
-	Verify(sourceText string, translatedText string, tagMap map[string]string) error
-}
-
-// BookChunker splits long book text into chunks for individual translation.
+// BookChunker splits long book text into chunks.
 type BookChunker interface {
 	Chunk(text string, maxTokensPerChunk int) []string
 }
 
-// ResultWriter persists translation results incrementally to prevent data loss.
+// ResultWriter persists translation results.
 type ResultWriter interface {
 	Write(result TranslationResult) error
 	Flush() error
 }
 
-// ResumeLoader loads previously completed translation results for delta updates.
+// ResumeLoader loads previously completed translation results.
 type ResumeLoader interface {
-	LoadCachedResults(config BatchConfig) (map[string]TranslationResult, error)
+	LoadCachedResults(pluginName string, outputBaseDir string) (map[string]TranslationResult, error)
 }

@@ -24,7 +24,7 @@ func TestSummaryGenerator_Slice(t *testing.T) {
 	cfg := SummaryConfig{Concurrency: 4}
 	gen := NewSummaryGenerator(store, cfg)
 
-	t.Run("ProposeJobs - Dialogue Cache MISS", func(t *testing.T) {
+	t.Run("PreparePrompts - Dialogue Cache MISS", func(t *testing.T) {
 		input := SummaryInput{
 			DialogueItems: []DialogueItem{
 				{
@@ -34,14 +34,13 @@ func TestSummaryGenerator_Slice(t *testing.T) {
 			},
 		}
 
-		output, err := gen.ProposeJobs(ctx, input)
+		output, err := gen.PreparePrompts(ctx, input)
 		require.NoError(t, err)
-		assert.Len(t, output.Jobs, 1)
-		assert.Len(t, output.PreCalculatedResults, 0)
-		assert.Equal(t, "DLG_001", output.Jobs[0].Metadata["record_id"])
+		assert.Len(t, output, 1)
+		assert.Equal(t, "DLG_001", output[0].Metadata["record_id"])
 	})
 
-	t.Run("SaveResults and ProposeJobs - Dialogue Cache HIT", func(t *testing.T) {
+	t.Run("SaveResults and PreparePrompts - Dialogue Cache HIT", func(t *testing.T) {
 		// Mock LLM Response
 		responses := []llm.Response{
 			{
@@ -74,15 +73,12 @@ func TestSummaryGenerator_Slice(t *testing.T) {
 				},
 			},
 		}
-		output, err := gen.ProposeJobs(ctx, input)
+		output, err := gen.PreparePrompts(ctx, input)
 		require.NoError(t, err)
-		assert.Len(t, output.Jobs, 0)
-		assert.Len(t, output.PreCalculatedResults, 1)
-		assert.Equal(t, "A friendly greeting.", output.PreCalculatedResults[0].SummaryText)
-		assert.True(t, output.PreCalculatedResults[0].CacheHit)
+		assert.Len(t, output, 0)
 	})
 
-	t.Run("ProposeJobs - Quest Cumulative Processing", func(t *testing.T) {
+	t.Run("PreparePrompts - Quest Cumulative Processing", func(t *testing.T) {
 		input := SummaryInput{
 			QuestItems: []QuestItem{
 				{
@@ -95,19 +91,19 @@ func TestSummaryGenerator_Slice(t *testing.T) {
 			},
 		}
 
-		output, err := gen.ProposeJobs(ctx, input)
+		output, err := gen.PreparePrompts(ctx, input)
 		require.NoError(t, err)
 		// Should have 2 jobs (one for each stage)
-		assert.Len(t, output.Jobs, 2)
+		assert.Len(t, output, 2)
 
 		// Verify cumulative content
 		// Job 0 (Stage 10)
-		assert.Contains(t, output.Jobs[0].UserPrompt, "Stage 1 content")
-		assert.NotContains(t, output.Jobs[0].UserPrompt, "Stage 2 content")
+		assert.Contains(t, output[0].UserPrompt, "Stage 1 content")
+		assert.NotContains(t, output[0].UserPrompt, "Stage 2 content")
 
 		// Job 1 (Stage 20)
-		assert.Contains(t, output.Jobs[1].UserPrompt, "Stage 1 content")
-		assert.Contains(t, output.Jobs[1].UserPrompt, "Stage 2 content")
+		assert.Contains(t, output[1].UserPrompt, "Stage 1 content")
+		assert.Contains(t, output[1].UserPrompt, "Stage 2 content")
 	})
 
 	t.Run("GetSummary - Retrieve persisted result", func(t *testing.T) {
@@ -123,10 +119,9 @@ func TestSummaryGenerator_Slice(t *testing.T) {
 				{GroupID: "EMPTY", Lines: []string{}},
 			},
 		}
-		output, err := gen.ProposeJobs(ctx, input)
+		output, err := gen.PreparePrompts(ctx, input)
 		require.NoError(t, err)
-		assert.Len(t, output.Jobs, 0)
-		assert.Len(t, output.PreCalculatedResults, 0)
+		assert.Len(t, output, 0)
 	})
 
 	t.Run("Skip empty Quest StageTexts", func(t *testing.T) {
@@ -135,10 +130,9 @@ func TestSummaryGenerator_Slice(t *testing.T) {
 				{QuestID: "QST_EMPTY", StageTexts: []QuestStage{}},
 			},
 		}
-		output, err := gen.ProposeJobs(ctx, input)
+		output, err := gen.PreparePrompts(ctx, input)
 		require.NoError(t, err)
-		assert.Len(t, output.Jobs, 0)
-		assert.Len(t, output.PreCalculatedResults, 0)
+		assert.Len(t, output, 0)
 	})
 
 	t.Run("Skip Quest with only blank stage texts", func(t *testing.T) {
@@ -153,9 +147,8 @@ func TestSummaryGenerator_Slice(t *testing.T) {
 				},
 			},
 		}
-		output, err := gen.ProposeJobs(ctx, input)
+		output, err := gen.PreparePrompts(ctx, input)
 		require.NoError(t, err)
-		assert.Len(t, output.Jobs, 0)
-		assert.Len(t, output.PreCalculatedResults, 0)
+		assert.Len(t, output, 0)
 	})
 }

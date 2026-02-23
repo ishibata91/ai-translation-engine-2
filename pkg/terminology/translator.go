@@ -35,8 +35,22 @@ func NewTermTranslator(
 	}
 }
 
-// PreparePrompts builds LLM requests (Phase 1).
-func (t *TermTranslatorImpl) PreparePrompts(ctx context.Context, data TerminologyInput) ([]llm.Request, error) {
+// ID returns the unique identifier of the slice.
+func (t *TermTranslatorImpl) ID() string {
+	return "Terminology"
+}
+
+// PreparePrompts implementation for Slice interface.
+func (t *TermTranslatorImpl) PreparePrompts(ctx context.Context, input any) ([]llm.Request, error) {
+	typedInput, ok := input.(TerminologyInput)
+	if !ok {
+		return nil, fmt.Errorf("invalid input type for Terminology slice: %T", input)
+	}
+	return t.preparePrompts(ctx, typedInput)
+}
+
+// preparePrompts builds LLM requests (Phase 1).
+func (t *TermTranslatorImpl) preparePrompts(ctx context.Context, data TerminologyInput) ([]llm.Request, error) {
 	t.logger.InfoContext(ctx, "ENTER TermTranslatorImpl.PreparePrompts")
 	defer t.logger.InfoContext(ctx, "EXIT TermTranslatorImpl.PreparePrompts")
 
@@ -63,14 +77,94 @@ func (t *TermTranslatorImpl) PreparePrompts(ctx context.Context, data Terminolog
 		llmRequests = append(llmRequests, llm.Request{
 			SystemPrompt: prompt,
 			UserPrompt:   "Translate the provided term.",
+			Metadata: map[string]interface{}{
+				"source_text":   req.SourceText,
+				"form_id":       req.FormID,
+				"editor_id":     req.EditorID,
+				"record_type":   req.RecordType,
+				"source_plugin": req.SourcePlugin,
+				"source_file":   req.SourceFile,
+				"short_name":    req.ShortName,
+			},
 		})
 	}
 
 	return llmRequests, nil
 }
 
-// SaveResults parses LLM responses and persists to the mod term database (Phase 2).
-func (t *TermTranslatorImpl) SaveResults(ctx context.Context, data TerminologyInput, results []llm.Response) error {
+// SaveResults implementation for Slice interface.
+func (t *TermTranslatorImpl) SaveResults(ctx context.Context, responses []llm.Response) error {
+	t.logger.InfoContext(ctx, "ENTER TermTranslatorImpl.SaveResults")
+	defer t.logger.InfoContext(ctx, "EXIT TermTranslatorImpl.SaveResults")
+
+	// Ensure DB schema is ready.
+	if err := t.store.InitSchema(ctx); err != nil {
+		return fmt.Errorf("failed to init mod term schema: %w", err)
+	}
+
+	var finalResults []TermTranslationResult
+	for i, res := range responses {
+		// Identify Term from metadata
+		sourceText, _ := res.Metadata["source_text"].(string)
+		formID, _ := res.Metadata["form_id"].(string)
+		editorID, _ := res.Metadata["editor_id"].(string)
+		recordType, _ := res.Metadata["record_type"].(string)
+		sourcePlugin, _ := res.Metadata["source_plugin"].(string)
+		sourceFile, _ := res.Metadata["source_file"].(string)
+		shortName, _ := res.Metadata["short_name"].(string)
+
+		translationResult := TermTranslationResult{
+			FormID:       formID,
+			EditorID:     editorID,
+			RecordType:   recordType,
+			SourceText:   sourceText,
+			SourcePlugin: sourcePlugin,
+			SourceFile:   sourceFile,
+			Status:       "success",
+		}
+
+		if !res.Success {
+			t.logger.WarnContext(ctx, "LLM response failed",
+				"index", i,
+				"term", sourceText,
+				"error", res.Error)
+			translationResult.Status = "error"
+			translationResult.ErrorMessage = res.Error
+			continue
+		}
+
+		translatedText := t.extractTranslationFromLLMResponse(res.Content)
+		if translatedText == res.Content && !strings.Contains(res.Content, "TL: |") {
+			t.logger.WarnContext(ctx, "LLM response missing expected format",
+				"index", i,
+				"term", sourceText)
+			continue
+		}
+
+		translationResult.TranslatedText = translatedText
+
+		// Expand NPC if needed (FULL/SHRT)
+		// We need to re-construct a partial request for expandResult to work
+		dummyReq := TermTranslationRequest{
+			RecordType: recordType,
+			ShortName:  shortName,
+		}
+		expanded := t.expandResult(translationResult, dummyReq)
+		finalResults = append(finalResults, expanded...)
+	}
+
+	if len(finalResults) > 0 {
+		if err := t.store.SaveTerms(ctx, finalResults); err != nil {
+			return fmt.Errorf("failed to save terms: %w", err)
+		}
+		t.logger.InfoContext(ctx, "Saved term translations to mod DB", "count", len(finalResults))
+	}
+
+	return nil
+}
+
+// LegacySaveResults parses LLM responses and persists to the mod term database (Phase 2).
+func (t *TermTranslatorImpl) LegacySaveResults(ctx context.Context, data TerminologyInput, results []llm.Response) error {
 	t.logger.InfoContext(ctx, "ENTER TermTranslatorImpl.SaveResults")
 	defer t.logger.InfoContext(ctx, "EXIT TermTranslatorImpl.SaveResults")
 
