@@ -1,5 +1,18 @@
 schema: spec-driven
+specsPath: specs/
+context: |
+  # ドキュメントの参照先
+  - データベース構造を変更する場合は、必ず `specs/database_erd.md` を参照および更新すること。
+  - テストを設計する際は、必ず `specs/standard_test_spec.md` のテンプレートと規約に従うこと。
+  - システム全体のアーキテクチャについては `specs/refactoring_strategy.md` を参照すること。
 
+rules:
+  proposal:
+    - データベースのスキーマ変更を伴う場合は、ER図への影響範囲を必ず記載すること。
+  design:
+    - テスト仕様の設計は、`specs/standard_test_spec.md` のフォーマットに厳密に準拠して出力すること。
+  tasks:
+    - ER図や共通ドキュメントの更新タスクを必要に応じて含めること。
 # Project context (optional)
 # This is shown to AI when creating artifacts.
 # Add your tech stack, conventions, style guides, domain knowledge, etc.
