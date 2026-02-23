@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/llm_client"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/llm"
 	_ "modernc.org/sqlite"
 )
 
@@ -184,9 +184,9 @@ func TestTermTranslatorSlice(t *testing.T) {
 			}
 
 			// Simulate JobQueue/Pipeline calling LLM
-			llmResponses := make([]llm_client.Response, 0, len(llmRequests))
+			llmResponses := make([]llm.Response, 0, len(llmRequests))
 			for _, content := range tc.mockLLMOutput {
-				llmResponses = append(llmResponses, llm_client.Response{
+				llmResponses = append(llmResponses, llm.Response{
 					Content: content,
 					Success: true,
 				})

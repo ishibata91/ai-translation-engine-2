@@ -8,13 +8,13 @@ import (
 
 	"github.com/google/wire"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/dictionary"
-	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/logger"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/telemetry"
 )
 
 func initializeImporter(db *sql.DB) dictionary.DictionaryImporter {
 	wire.Build(
 		dictionary.DefaultProviderSet,
-		logger.ProviderSet,
+		telemetry.ProviderSet,
 	)
 	return nil
 }

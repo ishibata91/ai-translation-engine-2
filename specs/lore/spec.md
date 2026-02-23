@@ -9,8 +9,8 @@ AIDDにおける決定的なコード再生成の確実性を担保するため�
 
 ## 背景・動機
 - 現行Python版では `context_builder.py` が2,300行超の巨大モジュールとして、用語翻訳リクエスト生成（Pass 1）と本文翻訳リクエスト生成（Pass 2）の両方を担っている。
-- Go v2では責務を明確に分離し、用語翻訳リクエスト生成は Terminology Slice に、本文翻訳リクエスト生成は本 Lore Slice に分割する。
-- **JobQueue連携**: 本Sliceは `TranslationRequest` 群を構築するまでを担当し、実際のLLM通信は Pass 2 Translator Slice と JobQueue が担う。
+- Go v2では責務を明確に分離し、用語翻訳リクエスト生成は terminology に、本文翻訳リクエスト生成は本 lore に分割する。
+- **JobQueue連携**: 本Sliceは `TranslationRequest` 群を構築するまでを担当し、実際のLLM通信は translator と queue が担う。
 - 要件定義書 §3.2「コンテキスト構築」に基づき、会話ツリー解析・話者プロファイリング・クエスト要約参照・用語検索を統合した構造化コンテキストを構築する。
 
 ## スコープ
@@ -129,11 +129,11 @@ type Lore interface {
 - [シーケンス図](./lore_sequence_diagram.md) ✅
 - [テスト設計](./lore_test_spec.md) ✅
 - [要件定義書](../requirements.md)
-- [Terminology Slice 仕様書](../TermTranslatorSlice/spec.md)
-- [Persona Slice 仕様書](../PersonaGenSlice/spec.md)
-- [Summary Slice 仕様書](../SummaryGeneratorSlice/spec.md)
-- [LLMクライアントインターフェース](../LLMClient/llm_client_interface.md)
-- [Config 仕様書](../ConfigStoreSlice/spec.md)
+- [Terminology Slice 仕様書](../terminology/spec.md)
+- [Persona Slice 仕様書](../persona/spec.md)
+- [Summary Slice 仕様書](../summary/spec.md)
+- [LLMクライアントインターフェース](../llm/llm_interface.md)
+- [Config 仕様書](../config/spec.md)
 
 ---
 

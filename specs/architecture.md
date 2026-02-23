@@ -71,7 +71,7 @@
 ### Phase 3: 文脈エンジン (Lore)
 *   **Goal**: 会話ツリー解析とLLMプロンプト生成。
 *   **Contract**: `ContextBuilder` / `PromptGenerator` インターフェース。
-*   **Artifacts**: `Lore` / `LLM Client`
+*   **Artifacts**: `Lore` / `LLM`
 
 ### Phase 4: UI統合 (Web Interface)
 *   **Goal**: ブラウザからのジョブ制御と可視化。
@@ -113,9 +113,9 @@
 *   **オーケストレーターでのマッピング**: スライス間のデータの受け渡し（例: `LoaderOutput` から `TermTranslatorInput` への変換）は、各スライス内部ではなく、呼び出し元である統合層（`Pipeline` やオーケストレーター層）の責務として行う。これにより、真の腐敗防止層（Anti-Corruption Layer）を確立する。
 
 **LLM統合の原則 (LLM Integration Principle)**:
-*   **動的プロバイダ解決**: LLMを利用する全てのスライス（`ContextEngineSlice`, `DictionaryBuilderSlice` 等）は、特定プロバイダ（Gemini, Local等）の具体的な実装に直接依存してはならない。
-*   **ConfigStore経由の設定受信**: 各スライスは、`ConfigStoreSlice` によって管理される設定情報（`namespace: llm` 等の値）を引数またはDIなどで受け取らなければならない。
-*   **LLMClientファクトリの利用**: スライスは受信した設定情報を用いて `LLMManager`（または同等のファクトリクラス）から、その時点のユーザー設定に合致した `LLMClient` インターフェースのインスタンスを動的に取得し、使用するものとする。
+*   **動的プロバイダ解決**: LLMを利用する全てのスライス（`lore`, `terminology` 等）は、特定プロバイダ（Gemini, Local等）の具体的な実装に直接依存してはならない。
+*   **ConfigStore経由の設定受信**: 各スライスは、`config` によって管理される設定情報（`namespace: llm` 等の値）を引数またはDIなどで受け取らなければならない。
+*   **LLMファクトリの利用**: スライスは受信した設定情報を用いて `llm` パッケージ（旧 LLMManager）から、その時点のユーザー設定に合致した `LLMClient` インターフェースのインスタンスを動的に取得し、使用するものとする。
 *   **翻訳出力フォーマットの統一**: 全てのLLMベースの翻訳リクエストにおけるプロンプト要件として、出力フォーマットを `TL: |にほんご|` のパイプ区切り形式に強制する。LLMからのレスポンスはこの形式からパイプ間のテキストのみをプログラム的に抽出・抽出失敗時のフォールバック処理を実装すること。これにより、LLMが余計な説明文等を付加した場合でも安定して翻訳結果だけを取り出せるようにする。
 
 ---
@@ -277,7 +277,7 @@ graph TD
 
     subgraph "Phase 2: Main Execution"
         P2_S["Pass 2 Slice"]:::slice
-        Out_S["Export Slice"]:::slice
+        Out_S["Export"]:::slice
     end
 
     PM -->|"1. Request Load"| Load_S

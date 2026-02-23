@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"testing"
 
-	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/llm_client"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/llm"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	_ "modernc.org/sqlite"
@@ -43,7 +43,7 @@ func TestSummaryGenerator_Slice(t *testing.T) {
 
 	t.Run("SaveResults and ProposeJobs - Dialogue Cache HIT", func(t *testing.T) {
 		// Mock LLM Response
-		responses := []llm_client.Response{
+		responses := []llm.Response{
 			{
 				Success: true,
 				Content: "A friendly greeting.",

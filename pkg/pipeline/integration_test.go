@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/ishibata91/ai-translation-engine-2/pkg/config"
-	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/job_queue"
-	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/llm_client"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/queue"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/llm"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/progress"
 )
 
@@ -18,15 +18,15 @@ type mockSlice struct {
 	id           string
 	prepareCalls int
 	saveCalls    int
-	results      []llm_client.Response
+	results      []llm.Response
 }
 
 func (s *mockSlice) ID() string { return s.id }
-func (s *mockSlice) PreparePrompts(ctx context.Context, input any) ([]llm_client.Request, error) {
+func (s *mockSlice) PreparePrompts(ctx context.Context, input any) ([]llm.Request, error) {
 	s.prepareCalls++
-	return []llm_client.Request{{UserPrompt: "test prompt"}}, nil
+	return []llm.Request{{UserPrompt: "test prompt"}}, nil
 }
-func (s *mockSlice) SaveResults(ctx context.Context, results []llm_client.Response) error {
+func (s *mockSlice) SaveResults(ctx context.Context, results []llm.Response) error {
 	slog.Info("SaveResults called", slog.String("slice", s.id), slog.Int("results", len(results)))
 	s.saveCalls++
 	s.results = results
@@ -39,12 +39,12 @@ func TestProcessManager_Integration(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
 
 	// Setup Infrastructure
-	q, _ := job_queue.NewQueue(ctx, ":memory:", logger)
+	q, _ := queue.NewQueue(ctx, ":memory:", logger)
 	defer q.Close()
 
 	// Using mocks for other infra (Worker needs real queue but mocked LLM)
 	mockLLM := &mockLLMManagerForPM{}
-	worker := job_queue.NewWorker(q, mockLLM, &mockCfgForPM{}, &mockSecForPM{}, &mockNotifierForPM{}, logger)
+	worker := queue.NewWorker(q, mockLLM, &mockCfgForPM{}, &mockSecForPM{}, &mockNotifierForPM{}, logger)
 	worker.SetPollingInterval(10 * time.Millisecond)
 
 	// Setup Store and Manager
@@ -89,7 +89,7 @@ func TestProcessManager_Integration(t *testing.T) {
 		InputFile:    "recover.json",
 		CurrentPhase: PhaseDispatched,
 	})
-	q.SubmitJobs(ctx, recoverPID, []any{llm_client.Request{UserPrompt: "recover me"}})
+	q.SubmitJobs(ctx, recoverPID, []any{llm.Request{UserPrompt: "recover me"}})
 
 	// Trigger Recover
 	err = manager.Recover(ctx)
@@ -108,22 +108,22 @@ func TestProcessManager_Integration(t *testing.T) {
 // Mocks for PM Integration Test
 type mockLLMManagerForPM struct{}
 
-func (m *mockLLMManagerForPM) GetClient(ctx context.Context, config llm_client.LLMConfig) (llm_client.LLMClient, error) {
+func (m *mockLLMManagerForPM) GetClient(ctx context.Context, config llm.LLMConfig) (llm.LLMClient, error) {
 	return &mockClientForPM{}, nil
 }
-func (m *mockLLMManagerForPM) GetBatchClient(ctx context.Context, config llm_client.LLMConfig) (llm_client.BatchClient, error) {
+func (m *mockLLMManagerForPM) GetBatchClient(ctx context.Context, config llm.LLMConfig) (llm.BatchClient, error) {
 	return nil, nil
 }
-func (m *mockLLMManagerForPM) ResolveBulkStrategy(ctx context.Context, strategy llm_client.BulkStrategy, provider string) llm_client.BulkStrategy {
-	return llm_client.BulkStrategySync
+func (m *mockLLMManagerForPM) ResolveBulkStrategy(ctx context.Context, strategy llm.BulkStrategy, provider string) llm.BulkStrategy {
+	return llm.BulkStrategySync
 }
 
 type mockClientForPM struct{}
 
-func (c *mockClientForPM) Complete(ctx context.Context, req llm_client.Request) (llm_client.Response, error) {
-	return llm_client.Response{Success: true, Content: "done"}, nil
+func (c *mockClientForPM) Complete(ctx context.Context, req llm.Request) (llm.Response, error) {
+	return llm.Response{Success: true, Content: "done"}, nil
 }
-func (c *mockClientForPM) StreamComplete(ctx context.Context, req llm_client.Request) (llm_client.StreamResponse, error) {
+func (c *mockClientForPM) StreamComplete(ctx context.Context, req llm.Request) (llm.StreamResponse, error) {
 	return nil, nil
 }
 func (c *mockClientForPM) GetEmbedding(ctx context.Context, text string) ([]float32, error) {

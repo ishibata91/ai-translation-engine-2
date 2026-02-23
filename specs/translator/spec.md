@@ -37,12 +37,12 @@ AIDDにおける決定的なコード再生成の確実性を担保するため�
 #### Scenario: 翻訳ジョブの提案 (Phase 1: Propose)
 - **WHEN** プロセスマネージャーから `[]TranslationRequest` を受け取った
 - **THEN** 既存ファイルから成功済みレコードを検索（Resume）し、未処理分を特定する
-- **AND** 未処理分に対し、タグ保護とプロンプト構築を行い、`[]llm_client.Request` を返す
+- **AND** 未処理分に対し、タグ保護とプロンプト構築を行い、`[]llm.Request` を返す
 - **AND** 強制翻訳可能なレコードや `cached` 分は、即時結果として分離して返す
 - **AND** `specs/architecture.md` に従い、関数の開始・終了ログを TraceID 付きで出力する
 
 #### Scenario: 翻訳結果の保存 (Phase 2: Save)
-- **WHEN** プロセスマネージャーから、自身の生成したリクエストに対応する `[]llm_client.Response` が渡された
+- **WHEN** プロセスマネージャーから、自身の生成したリクエストに対応する `[]llm.Response` が渡された
 - **THEN** 各レスポンスから翻訳文を抽出し、タグ復元とバリデーションを行う
 - **AND** パースに成功した結果をソースプラグイン単位のJSONファイルに逐次保存する
 - **AND** タグ破損等の異常が検出された結果についてはエラーとして記録し、リトライが必要な場合はオーケストレーターに通知する
@@ -96,7 +96,7 @@ type TranslationResult struct {
 **Requirement**: 翻訳結果の保存時、レコードの `type` (RecordType) を丸めず（例: `INFO` への短縮などを行わず） `INFO NAM1` のようにフル形式で保持しなければならない。
 
 ### 9. ライブラリの選定
-- LLMクライアント: `infrastructure/llm_client` インターフェース（プロジェクト共通）
+- LLMクライアント: `infrastructure/llm` インターフェース（プロジェクト共通）
 - 依存性注入: `github.com/google/wire`
 - JSON処理: Go標準 `encoding/json`
 
@@ -105,12 +105,12 @@ type TranslationResult struct {
 - [シーケンス図](main_translator_sequence_diagram.md) ✅
 - [テスト設計](main_translator_test_spec.md) ✅
 - [要件定義書](../requirements.md)
-- [Lore Slice 仕様書](../ContextEngineSlice/spec.md)
-- [Terminology Slice 仕様書](../TermTranslatorSlice/spec.md)
-- [Persona Slice 仕様書](../PersonaGenSlice/spec.md)
-- [Summary Slice 仕様書](../SummaryGeneratorSlice/spec.md)
-- [LLMクライアントインターフェース](../LLMClient/llm_client_interface.md)
-- [Config 仕様書](../ConfigStoreSlice/spec.md)
+- [Lore Slice 仕様書](../lore/spec.md)
+- [Terminology Slice 仕様書](../terminology/spec.md)
+- [Persona Slice 仕様書](../persona/spec.md)
+- [Summary Slice 仕様書](../summary/spec.md)
+- [LLMクライアントインターフェース](../llm/llm_interface.md)
+- [Config 仕様書](../config/spec.md)
 
 ---
 

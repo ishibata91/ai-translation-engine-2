@@ -29,7 +29,7 @@ func (s *SQLiteModTermStore) InitSchema(ctx context.Context) error {
 	return s.executeSchemaInTransaction(ctx)
 }
 
-// SaveTerms inserts or updates translated terms in the database.
+// SaveTerms inserts or updates translated terms in the datastore.
 func (s *SQLiteModTermStore) SaveTerms(ctx context.Context, results []TermTranslationResult) error {
 	s.logger.DebugContext(ctx, "ENTER SQLiteModTermStore.SaveTerms", slog.Int("count", len(results)))
 	defer s.logger.DebugContext(ctx, "EXIT SQLiteModTermStore.SaveTerms")
@@ -63,7 +63,7 @@ func (s *SQLiteModTermStore) GetTerm(ctx context.Context, originalEN string) (st
 	return translatedJA, nil
 }
 
-// Clear removes all data from the database.
+// Clear removes all data from the datastore.
 func (s *SQLiteModTermStore) Clear(ctx context.Context) error {
 	s.logger.DebugContext(ctx, "ENTER SQLiteModTermStore.Clear")
 	defer s.logger.DebugContext(ctx, "EXIT SQLiteModTermStore.Clear")

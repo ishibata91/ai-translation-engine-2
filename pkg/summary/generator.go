@@ -12,7 +12,7 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
-	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/llm_client"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/llm"
 )
 
 const (
@@ -42,7 +42,7 @@ func NewSummaryGenerator(store SummaryStore, config SummaryConfig) Summary {
 // dialogueCacheResult holds the outcome of a single parallel cache lookup.
 type dialogueCacheResult struct {
 	index  int // preserves original order
-	job    *llm_client.Request
+	job    *llm.Request
 	result *SummaryResult
 }
 
@@ -59,7 +59,7 @@ func (g *summaryGenerator) ProposeJobs(ctx context.Context, input SummaryInput) 
 	}()
 
 	output := &ProposeOutput{
-		Jobs:                 []llm_client.Request{},
+		Jobs:                 []llm.Request{},
 		PreCalculatedResults: []SummaryResult{},
 	}
 
@@ -123,7 +123,7 @@ func (g *summaryGenerator) proposeDialogueJobs(ctx context.Context, items []Dial
 				}
 			} else {
 				prompt := buildDialoguePrompt(item)
-				req := llm_client.Request{
+				req := llm.Request{
 					SystemPrompt: DialogueSystemPrompt,
 					UserPrompt:   prompt,
 					Temperature:  0.3,
@@ -166,7 +166,7 @@ func (g *summaryGenerator) proposeQuestJobs(ctx context.Context, items []QuestIt
 	}
 
 	type questResult struct {
-		jobs    []llm_client.Request
+		jobs    []llm.Request
 		results []SummaryResult
 	}
 
@@ -223,7 +223,7 @@ func (g *summaryGenerator) proposeQuestJobs(ctx context.Context, items []QuestIt
 				}
 
 				prompt := buildQuestPrompt(currentLines)
-				qr.jobs = append(qr.jobs, llm_client.Request{
+				qr.jobs = append(qr.jobs, llm.Request{
 					SystemPrompt: QuestSystemPrompt,
 					UserPrompt:   prompt,
 					Temperature:  0.3,
@@ -254,7 +254,7 @@ func (g *summaryGenerator) proposeQuestJobs(ctx context.Context, items []QuestIt
 	return nil
 }
 
-func (g *summaryGenerator) SaveResults(ctx context.Context, responses []llm_client.Response) error {
+func (g *summaryGenerator) SaveResults(ctx context.Context, responses []llm.Response) error {
 	start := time.Now()
 	slog.DebugContext(ctx, "ENTER Summary.SaveResults", slog.Int("responses", len(responses)))
 	defer func() {

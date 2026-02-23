@@ -55,7 +55,7 @@ func (s *sqlitePersonaStore) InitSchema(ctx context.Context) error {
 	return nil
 }
 
-// SavePersona inserts or updates a persona generation result in the database.
+// SavePersona inserts or updates a persona generation result in the datastore.
 func (s *sqlitePersonaStore) SavePersona(ctx context.Context, result PersonaResult) error {
 	slog.DebugContext(ctx, "ENTER SavePersona",
 		slog.String("slice", "Persona"),
@@ -153,7 +153,7 @@ func (s *sqlitePersonaStore) GetPersona(ctx context.Context, speakerID string) (
 	return personaText, nil
 }
 
-// Clear removes all personas from the database. Useful for resets.
+// Clear removes all personas from the datastore. Useful for resets.
 func (s *sqlitePersonaStore) Clear(ctx context.Context) error {
 	slog.DebugContext(ctx, "ENTER Clear",
 		slog.String("slice", "Persona"),

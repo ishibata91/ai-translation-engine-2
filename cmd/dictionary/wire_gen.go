@@ -9,7 +9,7 @@ package main
 import (
 	"database/sql"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/dictionary"
-	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/logger"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/telemetry"
 )
 
 import (
@@ -21,7 +21,7 @@ import (
 func initializeImporter(db *sql.DB) dictionary.DictionaryImporter {
 	config := dictionary.ConfigProvider()
 	dictionaryStore := dictionary.NewDictionaryStore(db)
-	slogLogger := logger.ProvideLogger()
-	dictionaryImporter := dictionary.NewImporter(config, dictionaryStore, slogLogger)
+	logger := telemetry.ProvideLogger()
+	dictionaryImporter := dictionary.NewImporter(config, dictionaryStore, logger)
 	return dictionaryImporter
 }

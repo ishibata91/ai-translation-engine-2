@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/ishibata91/ai-translation-engine-2/pkg/config"
-	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/llm_client"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/llm"
 	persona "github.com/ishibata91/ai-translation-engine-2/pkg/persona"
 	_ "modernc.org/sqlite"
 )
@@ -72,7 +72,7 @@ func TestPersonaGenSlice_TableDriven(t *testing.T) {
 		name                 string
 		input                persona.PersonaGenInput
 		config               persona.PersonaConfig
-		responses            []llm_client.Response
+		responses            []llm.Response
 		expectedRequestCount int
 		expectedDBCount      int
 	}{
@@ -92,7 +92,7 @@ func TestPersonaGenSlice_TableDriven(t *testing.T) {
 				ContextWindowLimit:   4000,
 				MaxOutputTokens:      500,
 			},
-			responses: []llm_client.Response{
+			responses: []llm.Response{
 				{
 					Content: "TL: |Personality: Brave, habits: direct|",
 					Success: true,
@@ -111,7 +111,7 @@ func TestPersonaGenSlice_TableDriven(t *testing.T) {
 					"NPC002": {ID: "NPC002", Name: "Farkas", Type: "Nord"},
 				},
 			},
-			responses: []llm_client.Response{
+			responses: []llm.Response{
 				{
 					Content: "TL: Personality: Simple and loyal.",
 					Success: true,
@@ -129,7 +129,7 @@ func TestPersonaGenSlice_TableDriven(t *testing.T) {
 					"NPC003": {ID: "NPC003", Name: "Vilkas", Type: "Nord"},
 				},
 			},
-			responses: []llm_client.Response{
+			responses: []llm.Response{
 				{
 					Content: "Here is the persona: |Personality: Smart and tactical|",
 					Success: true,
@@ -147,7 +147,7 @@ func TestPersonaGenSlice_TableDriven(t *testing.T) {
 					"NPC004": {ID: "NPC004", Name: "Kodlak", Type: "Nord"},
 				},
 			},
-			responses: []llm_client.Response{
+			responses: []llm.Response{
 				{
 					Content: "TL: |Old|",
 					Success: true,

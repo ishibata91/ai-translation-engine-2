@@ -8,15 +8,15 @@ import (
 	"sync"
 
 	"github.com/google/uuid"
-	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/job_queue"
-	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/llm_client"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/queue"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/llm"
 )
 
 // Manager coordinates vertical slices and infrastructure.
 type Manager struct {
 	store    *Store
-	jobQueue *job_queue.Queue
-	worker   *job_queue.Worker
+	jobQueue *queue.Queue
+	worker   *queue.Worker
 	logger   *slog.Logger
 
 	// Slice registration
@@ -27,8 +27,8 @@ type Manager struct {
 // NewManager creates a new Pipeline.
 func NewManager(
 	store *Store,
-	jobQueue *job_queue.Queue,
-	worker *job_queue.Worker,
+	jobQueue *queue.Queue,
+	worker *queue.Worker,
 	logger *slog.Logger,
 ) *Manager {
 	m := &Manager{
@@ -134,7 +134,7 @@ func (m *Manager) handleCompletion(ctx context.Context, processID string, worker
 	}
 
 	// 4. Phase 2: Save Results
-	responses := make([]llm_client.Response, len(jobRequests))
+	responses := make([]llm.Response, len(jobRequests))
 	for i, jr := range jobRequests {
 		if jr.ResponseJSON != nil {
 			if err := json.Unmarshal([]byte(*jr.ResponseJSON), &responses[i]); err != nil {

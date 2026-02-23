@@ -3,7 +3,7 @@ package summary
 import (
 	"context"
 
-	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/llm_client"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/llm"
 )
 
 // Summary is the main entry point for dialogue and quest summary generation.
@@ -13,7 +13,7 @@ type Summary interface {
 	ProposeJobs(ctx context.Context, input SummaryInput) (*ProposeOutput, error)
 
 	// SaveResults persists LLM responses to the SQLite cache.
-	SaveResults(ctx context.Context, responses []llm_client.Response) error
+	SaveResults(ctx context.Context, responses []llm.Response) error
 
 	// GetSummary retrieves a single summary by record ID. Used by Pass 2.
 	GetSummary(ctx context.Context, recordID string, summaryType string) (*SummaryResult, error)

@@ -41,7 +41,7 @@ func ensureSchemaVersionTable(ctx context.Context, db *sql.DB) error {
 	return nil
 }
 
-// getCurrentVersion retrieves the current schema version from the database.
+// getCurrentVersion retrieves the current schema version from the datastore.
 func getCurrentVersion(ctx context.Context, db *sql.DB) (int, error) {
 	slog.DebugContext(ctx, "ENTER getCurrentVersion")
 

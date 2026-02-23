@@ -35,12 +35,12 @@ AIDDにおける決定的なコード再生成の確実性を担保するため�
 #### Scenario: 用語翻訳ジョブの提案 (Phase 1: Propose)
 - **WHEN** プロセスマネージャーから `TermTranslatorInput` 形式のデータを受け取った
 - **THEN** 内部の辞書検索を行い、LLMプロンプトのコンテキストを構築する
-- **AND** 構築されたプロンプトの配列 `[]llm_client.Request` を返す（自身ではLLMクライアントを呼び出さない）
+- **AND** 構築されたプロンプトの配列 `[]llm.Request` を返す（自身ではLLMクライアントを呼び出さない）
 - **AND** 強制翻訳（既訳と完全一致）が可能な場合は、リクエストにその旨を含めるか、即時結果として分離する
 - **AND** `specs/architecture.md` に従い、関数の開始・終了ログを TraceID 付きで出力する
 
 #### Scenario: 用語翻訳結果の保存 (Phase 2: Save)
-- **WHEN** プロセスマネージャーから、自身の生成したリクエストに対応する `[]llm_client.Response` が渡された
+- **WHEN** プロセスマネージャーから、自身の生成したリクエストに対応する `[]llm.Response` が渡された
 - **THEN** 各レスポンスから `TL: |にほんご|` フォーマットを抽出する
 - **AND** パースに成功したテキストを Mod用語DB の該当レコードに対して UPSERT する
 - **AND** `specs/architecture.md` に従い、関数の開始・終了ログを TraceID 付きで出力する
@@ -141,7 +141,7 @@ NPC名（`NPC_:FULL`, `NPC_:SHRT`）は、他のレコードタイプと異な�
 
 ### 5. LLM翻訳の実行
 - 用語翻訳リクエストごとに、レコードタイプに応じた最適なシステムプロンプトを動的に生成する。
-- LLMクライアントインターフェース（`infrastructure/llm_client`）を通じて翻訳を実行する。
+- LLMクライアントインターフェース（`infrastructure/llm`）を通じて翻訳を実行する。
 - リトライ（指数バックオフ）とタイムアウト制御を備える。
 - 並列翻訳（Goroutine）により処理を高速化する。
 - 翻訳対象テキストが既に日本語を含む場合はスキップする。
@@ -187,7 +187,7 @@ NPC名（`NPC_:FULL`, `NPC_:SHRT`）は、他のレコードタイプと異な�
 - 翻訳の進捗（完了数/総数）をコールバックまたはチャネル経由でPipelineに通知し、UIでのリアルタイム進捗表示を可能にする。
 
 ### 10. ライブラリの選定
-- LLMクライアント: `infrastructure/llm_client` インターフェース（プロジェクト共通）
+- LLMクライアント: `infrastructure/llm` インターフェース（プロジェクト共通）
 - DBアクセス (PM側): `github.com/mattn/go-sqlite3` または標準 `database/sql`
 - 依存性注入: `github.com/google/wire`
 - 並行処理: Go標準 `sync`, `context`
@@ -198,7 +198,7 @@ NPC名（`NPC_:FULL`, `NPC_:SHRT`）は、他のレコードタイプと異な�
 - [シーケンス図](./terminology_sequence_diagram.md)
 - [テスト設計](./terminology_test_spec.md)
 - [Dictionary Slice 仕様書](../dictionary/spec.md)
-- [LLMクライアントインターフェース](../llm_client/llm_client_interface.md)
+- [LLMクライアントインターフェース](../llm/llm_interface.md)
 - [Config 仕様書](../config/spec.md)
 
 ---

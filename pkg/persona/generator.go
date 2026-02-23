@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/ishibata91/ai-translation-engine-2/pkg/config"
-	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/llm_client"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/llm"
 )
 
 const personaSystemPrompt = `You are a character persona analyzer.
@@ -55,7 +55,7 @@ func (g *DefaultPersonaGenerator) PreparePrompts(
 	ctx context.Context,
 	data PersonaGenInput,
 	config PersonaConfig,
-) ([]llm_client.Request, error) {
+) ([]llm.Request, error) {
 	slog.DebugContext(ctx, "ENTER PreparePrompts",
 		slog.String("slice", "Persona"),
 		slog.Int("npc_count", len(data.NPCs)),
@@ -66,7 +66,7 @@ func (g *DefaultPersonaGenerator) PreparePrompts(
 		return nil, fmt.Errorf("failed to collect NPC dialogues: %w", err)
 	}
 
-	var requests []llm_client.Request
+	var requests []llm.Request
 	for _, npcData := range groupedData {
 		// Check if already generated
 		exists, err := g.Store.GetPersona(ctx, npcData.SpeakerID)
@@ -98,7 +98,7 @@ func (g *DefaultPersonaGenerator) PreparePrompts(
 		}
 		sb.WriteString("\nFormat Requirement: Output the persona summary strictly within TL: |...| format.")
 
-		requests = append(requests, llm_client.Request{
+		requests = append(requests, llm.Request{
 			SystemPrompt: personaSystemPrompt,
 			UserPrompt:   sb.String(),
 			MaxTokens:    config.MaxOutputTokens,
@@ -121,7 +121,7 @@ func (g *DefaultPersonaGenerator) PreparePrompts(
 func (g *DefaultPersonaGenerator) SaveResults(
 	ctx context.Context,
 	data PersonaGenInput,
-	results []llm_client.Response,
+	results []llm.Response,
 ) error {
 	slog.DebugContext(ctx, "ENTER SaveResults",
 		slog.String("slice", "Persona"),

@@ -5,7 +5,7 @@ import (
 	"log/slog"
 
 	"github.com/google/wire"
-	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/job_queue"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/queue"
 )
 
 // ProviderSet represents the dependencies for pipeline.
@@ -25,8 +25,8 @@ func NewStoreProvider(ctx context.Context, logger *slog.Logger) (*Store, error) 
 // ManagerProvider provides the Manager and ensures it's initialized.
 func ManagerProvider(
 	store *Store,
-	jobQueue *job_queue.Queue,
-	worker *job_queue.Worker,
+	jobQueue *queue.Queue,
+	worker *queue.Worker,
 	logger *slog.Logger,
 ) *Manager {
 	return NewManager(store, jobQueue, worker, logger)

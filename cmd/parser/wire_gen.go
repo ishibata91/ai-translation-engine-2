@@ -9,8 +9,8 @@ package main
 import (
 	"context"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/config"
-	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/database"
-	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/logger"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/datastore"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/telemetry"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/parser"
 )
 
@@ -18,12 +18,12 @@ import (
 
 // InitializeParser creates a new Parser instance with all dependencies wired.
 func InitializeParser(ctx context.Context) (parser.Parser, func(), error) {
-	db, cleanup, err := database.NewSQLiteDB()
+	db, cleanup, err := datastore.NewSQLiteDB()
 	if err != nil {
 		return nil, nil, err
 	}
-	slogLogger := logger.ProvideLogger()
-	sqLiteStore, err := config.NewSQLiteStore(ctx, db, slogLogger)
+	logger := telemetry.ProvideLogger()
+	sqLiteStore, err := config.NewSQLiteStore(ctx, db, logger)
 	if err != nil {
 		cleanup()
 		return nil, nil, err

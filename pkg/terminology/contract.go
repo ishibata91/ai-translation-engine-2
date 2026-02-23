@@ -3,7 +3,7 @@ package terminology
 import (
 	"context"
 
-	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/llm_client"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/llm"
 )
 
 // TerminologyInput is the input data required for term translation.
@@ -48,10 +48,10 @@ type TermLocation struct {
 // It is now split into two phases to support job queue infrastructure.
 type Terminology interface {
 	// PreparePrompts builds LLM requests (Phase 1).
-	PreparePrompts(ctx context.Context, data TerminologyInput) ([]llm_client.Request, error)
+	PreparePrompts(ctx context.Context, data TerminologyInput) ([]llm.Request, error)
 
 	// SaveResults parses LLM responses and persists to the mod term database (Phase 2).
-	SaveResults(ctx context.Context, data TerminologyInput, results []llm_client.Response) error
+	SaveResults(ctx context.Context, data TerminologyInput, results []llm.Response) error
 }
 
 // TermRequestBuilder extracts term translation targets from TerminologyInput

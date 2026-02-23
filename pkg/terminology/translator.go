@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/llm_client"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/llm"
 )
 
 // TermTranslatorImpl implements Terminology.
@@ -36,7 +36,7 @@ func NewTermTranslator(
 }
 
 // PreparePrompts builds LLM requests (Phase 1).
-func (t *TermTranslatorImpl) PreparePrompts(ctx context.Context, data TerminologyInput) ([]llm_client.Request, error) {
+func (t *TermTranslatorImpl) PreparePrompts(ctx context.Context, data TerminologyInput) ([]llm.Request, error) {
 	t.logger.InfoContext(ctx, "ENTER TermTranslatorImpl.PreparePrompts")
 	defer t.logger.InfoContext(ctx, "EXIT TermTranslatorImpl.PreparePrompts")
 
@@ -50,7 +50,7 @@ func (t *TermTranslatorImpl) PreparePrompts(ctx context.Context, data Terminolog
 		return nil, nil
 	}
 
-	llmRequests := make([]llm_client.Request, 0, len(requests))
+	llmRequests := make([]llm.Request, 0, len(requests))
 	for _, req := range requests {
 		// Fetch reference terms for LLM context
 		t.fetchReferenceTerms(ctx, &req)
@@ -60,7 +60,7 @@ func (t *TermTranslatorImpl) PreparePrompts(ctx context.Context, data Terminolog
 			return nil, fmt.Errorf("failed to build prompt for %s: %w", req.SourceText, err)
 		}
 
-		llmRequests = append(llmRequests, llm_client.Request{
+		llmRequests = append(llmRequests, llm.Request{
 			SystemPrompt: prompt,
 			UserPrompt:   "Translate the provided term.",
 		})
@@ -70,7 +70,7 @@ func (t *TermTranslatorImpl) PreparePrompts(ctx context.Context, data Terminolog
 }
 
 // SaveResults parses LLM responses and persists to the mod term database (Phase 2).
-func (t *TermTranslatorImpl) SaveResults(ctx context.Context, data TerminologyInput, results []llm_client.Response) error {
+func (t *TermTranslatorImpl) SaveResults(ctx context.Context, data TerminologyInput, results []llm.Response) error {
 	t.logger.InfoContext(ctx, "ENTER TermTranslatorImpl.SaveResults")
 	defer t.logger.InfoContext(ctx, "EXIT TermTranslatorImpl.SaveResults")
 
