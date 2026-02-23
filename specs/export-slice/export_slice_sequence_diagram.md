@@ -5,7 +5,7 @@
 ```mermaid
 sequenceDiagram
     autonumber
-    participant PM as Process Manager
+    participant PM as Pipeline
     participant EG as ExportGeneratorImpl
     participant RM as ResultMerger
     participant XF as XMLFormatter

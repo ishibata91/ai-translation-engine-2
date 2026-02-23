@@ -4,13 +4,19 @@ context: |
   # ドキュメントの参照先
   - データベース構造を変更する場合は、必ず `specs/database_erd.md` を参照および更新すること。
   - テストを設計する際は、必ず `specs/standard_test_spec.md` のテンプレートと規約に従うこと。
-  - システム全体のアーキテクチャについては `specs/refactoring_strategy.md` を参照すること。
+  - システム全体のアーキテクチャについては `specs/architecture.md` を参照すること。
+  - システム全体の仕様については､'specs/requirements.md' を参照すること｡
+  - アーティファクトは全て日本語で記述すること｡
+  - 資料の図はmermaidで出力する。
+  - mermaidはダークモードで読みやすく色付けする｡
 
 rules:
   proposal:
     - データベースのスキーマ変更を伴う場合は、ER図への影響範囲を必ず記載すること。
+    - 車輪の再発明を避けること｡デファクトスタンダードのライブラリがあれば､利用を提案すること｡
   design:
     - テスト仕様の設計は、`specs/standard_test_spec.md` のフォーマットに厳密に準拠して出力すること。
+    - 追加でクラス図とシーケンス図を記載すること｡
   tasks:
     - ER図や共通ドキュメントの更新タスクを必要に応じて含めること。
 # Project context (optional)

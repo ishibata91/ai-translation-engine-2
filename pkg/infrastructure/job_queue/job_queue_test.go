@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ishibata91/ai-translation-engine-2/pkg/config_store"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/config"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/llm_client"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/progress"
 )
@@ -79,7 +79,7 @@ func (m *mockConfigStore) Delete(ctx context.Context, ns, key string) error   { 
 func (m *mockConfigStore) GetAll(ctx context.Context, ns string) (map[string]string, error) {
 	return nil, nil
 }
-func (m *mockConfigStore) Watch(ns, key string, cb config_store.ChangeCallback) config_store.UnsubscribeFunc {
+func (m *mockConfigStore) Watch(ns, key string, cb config.ChangeCallback) config.UnsubscribeFunc {
 	return func() {}
 }
 

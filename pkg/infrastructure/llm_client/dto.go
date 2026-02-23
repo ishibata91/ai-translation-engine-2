@@ -38,15 +38,15 @@ const (
 	BulkStrategySync BulkStrategy = "sync"
 )
 
-// ConfigStore keys for LLM bulk sync settings.
+// Config keys for LLM bulk sync settings.
 const (
-	// LLMConfigNamespace is the ConfigStore namespace for LLM-related settings.
+	// LLMConfigNamespace is the Config namespace for LLM-related settings.
 	LLMConfigNamespace = "llm"
-	// LLMBulkStrategyKey is the ConfigStore key for the bulk processing strategy.
+	// LLMBulkStrategyKey is the Config key for the bulk processing strategy.
 	// Values: "batch" or "sync".
 	LLMBulkStrategyKey = "bulk_strategy"
 	// LLMSyncConcurrencyKeySuffix is the suffix appended to the provider name
-	// to build the ConfigStore key for sync concurrency (e.g., "sync_concurrency.gemini").
+	// to build the Config key for sync concurrency (e.g., "sync_concurrency.gemini").
 	LLMSyncConcurrencyKeySuffix = "sync_concurrency"
 )
 

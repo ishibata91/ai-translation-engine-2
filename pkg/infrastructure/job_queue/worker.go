@@ -8,7 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/ishibata91/ai-translation-engine-2/pkg/config_store"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/config"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/llm_client"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/progress"
 )
@@ -17,8 +17,8 @@ import (
 type Worker struct {
 	queue           *Queue
 	llmManager      llm_client.LLMManager
-	configStore     config_store.ConfigStore
-	secretStore     config_store.SecretStore
+	configStore     config.Config
+	secretStore     config.SecretStore
 	notifier        progress.ProgressNotifier
 	logger          *slog.Logger
 	pollingInterval time.Duration
@@ -28,8 +28,8 @@ type Worker struct {
 func NewWorker(
 	queue *Queue,
 	llmManager llm_client.LLMManager,
-	configStore config_store.ConfigStore,
-	secretStore config_store.SecretStore,
+	configStore config.Config,
+	secretStore config.SecretStore,
 	notifier progress.ProgressNotifier,
 	logger *slog.Logger,
 ) *Worker {

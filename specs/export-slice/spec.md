@@ -1,7 +1,7 @@
 # XMLエクスポート (Export Slice) 仕様書
 
 ## 概要
-Term Translator Slice (Pass 1) の用語翻訳結果と、Pass 2 Translator Slice (Pass 2) の本文翻訳結果を統合し、xTranslator エディタで読み込み可能なXML形式（SSTXMLRessources）として出力する機能である。
+Terminology Slice (Pass 1) の用語翻訳結果と、Pass 2 Translator Slice (Pass 2) の本文翻訳結果を統合し、xTranslator エディタで読み込み可能なXML形式（SSTXMLRessources）として出力する機能である。
 これにより、AIによる翻訳結果をxTranslator経由でSkyrimのプラグイン（.esp / .esm）に適用可能とする。
 
 当機能は Interface-First AIDD v2 アーキテクチャに則り、**完全な自律性を持つ Vertical Slice** として設計される。
@@ -19,20 +19,20 @@ AIDDにおける決定的なコード再生成の確実性を担保するため�
 3. **ファイルへの出力**: 構築したXMLデータを指定されたパスにファイルとして書き出す。
 
 ### 本Sliceの責務外
-- LLMによる翻訳実行（Term Translator / Pass 2 Translatorの責務）
-- 元データの抽出（Loader Sliceの責務）
-- DBからのデータ読み出し（オーケストレーター/Process Managerがデータを収集して本Sliceに渡す）
+- LLMによる翻訳実行（Terminology / Pass 2 Translatorの責務）
+- 元データの抽出（parser Sliceの責務）
+- DBからのデータ読み出し（オーケストレーター/Pipelineがデータを収集して本Sliceに渡す）
 
 ## 要件
 
 ### 1. 独立性: エクスポート用データの受け取りと独自DTO定義
 **Reason**: スライスの完全独立性を確保するAnti-Corruption Layerパターンを適用し、他スライスのDTOへの依存を排除するため。
-**Migration**: Process Managerが各DBやJSONから結果を読み集め、本Slice専用の `ExportInput` DTOにマッピングして渡す。
+**Migration**: Pipelineが各DBやJSONから結果を読み集め、本Slice専用の `ExportInput` DTOにマッピングして渡す。
 
 #### Scenario: 独自定義DTOによる初期化とエクスポート処理
 - **WHEN** オーケストレーター層から本スライス専用の入力DTO（`ExportInput`）が提供された場合
 - **THEN** 外部パッケージのDTOに一切依存することなく、XMLファイルの構築と保存を完結できること
-- **AND** `specs/refactoring_strategy.md` に従い、関数の開始・終了ログを TraceID 付きで出力する
+- **AND** `specs/architecture.md` に従い、関数の開始・終了ログを TraceID 付きで出力する
 
 ### 2. データ構造
 
@@ -60,7 +60,7 @@ type ExportRecord struct {
 ```
 
 ### 3. 翻訳結果の統合 (Data Merge)
-Pass 1（Term Translator）と Pass 2（Pass 2 Translator）は、処理対象のレコードタイプが完全に分かれている（例: Pass 1は `WEAP:FULL`、Pass 2は `INFO:NAM1` など）ため、**正常な設定下において `TermResults` と `MainResults` の間で同一レコード（`EditorID` と `RecordType` のペアが一致）が競合することはない**。
+Pass 1（Terminology）と Pass 2（Pass 2 Translator）は、処理対象のレコードタイプが完全に分かれている（例: Pass 1は `WEAP:FULL`、Pass 2は `INFO:NAM1` など）ため、**正常な設定下において `TermResults` と `MainResults` の間で同一レコード（`EditorID` と `RecordType` のペアが一致）が競合することはない**。
 
 **統合ルール**:
 1. `TermResults` と `MainResults` を結合（Append）する。
@@ -130,7 +130,7 @@ type ExportGenerator interface {
 
 ## ログ出力・テスト共通規約
 
-> 本スライスは `refactoring_strategy.md` セクション 6（テスト戦略）・セクション 7（構造化ログ基盤）に準拠する。
+> 本スライスは `architecture.md` セクション 6（テスト戦略）・セクション 7（構造化ログ基盤）に準拠する。
 
 ### 実装時の義務
 

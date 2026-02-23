@@ -18,7 +18,7 @@ sequenceDiagram
     Provider->>Provider: buildRequest() [private]
     Provider->>API: POST /chat/completions (HTTP)
     API-->>Provider: APIレスポンス (JSON)
-    Provider->>Provider: parseResponse() [private]
+    Provider->>Provider: Parseresponse() [private]
     Provider-->>Client: Response
     Client-->>App: Response
 ```

@@ -2,7 +2,7 @@
 
 Interface-First AIDD v2アーキテクチャおよびVertical Slice Architecture (VSA)に従った、各Sliceのデータベース設計を以下に示します。各Sliceは独自の責務範囲に応じて、独立したコンテキスト（ファイル・テーブル群）として管理されます。
 
-## Config Store Slice (設定・レイアウト保存)
+## Config Slice (設定・レイアウト保存)
 
 共通の設定やUI状態を永続化するインフラストラクチャ層のコンテキストです。
 **データベース名:** `config.db` (システム設定・全Mod共通)
@@ -24,7 +24,7 @@ erDiagram
     secrets ||--o| schema_version : "schema"
     
     config {
-        TEXT namespace PK "名前空間 (e.g. llm, dictionary_builder)"
+        TEXT namespace PK "名前空間 (e.g. llm, dictionary)"
         TEXT key PK "設定キー (e.g. selected_provider)"
         TEXT value "プレーン文字列（JSON不可）"
         DATETIME updated_at "最終更新日時"
@@ -50,7 +50,7 @@ erDiagram
     }
 ```
 
-## Dictionary Builder Slice (辞書構築)
+## Dictionary Slice (辞書構築)
 
 公式DLCや基本辞書など、xTranslatorフォーマットから構築される汎用辞書データのコンテキストです。
 **データベース名:** `dictionary.db` (システム辞書・全Mod共通)
@@ -67,7 +67,7 @@ erDiagram
   'nodeBorder': '#5a5a5a'
 }}}%%
 erDiagram
-    %% Dictionary Builder Slice
+    %% Dictionary Slice
     dlc_dictionary_entries {
         INTEGER id PK "自動採番ID"
         TEXT edid "Editor ID"
@@ -77,7 +77,7 @@ erDiagram
     }
 ```
 
-## NPC Persona Gen Slice (ペルソナ生成)
+## NPC Persona Slice (ペルソナ生成)
 
 NPCの会話履歴から生成された性格や口調のペルソナ情報を管理するコンテキストです。
 **データベース名:** `{PluginName}_terms.db` (生成元Mod専用データベース・テーブル同居)
@@ -94,7 +94,7 @@ NPCの会話履歴から生成された性格や口調のペルソナ情報を�
   'nodeBorder': '#5a5a5a'
 }}}%%
 erDiagram
-    %% Persona Gen Slice
+    %% Persona Slice
     npc_personas {
         INTEGER id PK "自動採番ID"
         TEXT speaker_id "NPC識別子 (SpeakerID) UNIQUE"
@@ -112,7 +112,7 @@ erDiagram
     }
 ```
 
-## Term Translator Slice (Mod用語翻訳)
+## Terminology Slice (Mod用語翻訳)
 
 対象Mod固有の固有名詞翻訳結果と、その部分一致検索用のFTS（全文検索）テーブルを管理するコンテキストです。
 **データベース名:** `{PluginName}_terms.db` (翻訳対象Mod専用データベース)
@@ -153,7 +153,7 @@ erDiagram
     }
 ```
 
-## Summary Generator Slice (要約キャッシュ)
+## Summary Slice (要約キャッシュ)
 
 会話やクエストの背景情報をLLMで要約し、再利用するためのキャッシュを管理するコンテキストです。
 **データベース名:** `{PluginName}_summary_cache.db` (ソースプラグイン別)
@@ -215,10 +215,10 @@ erDiagram
     }
 ```
 
-## Process Manager Slice (進行状態管理)
+## Pipeline Slice (進行状態管理)
 
 各スライスの実行状態やJobQueueとの紐付けを管理し、プロセスのレジューム（再開）を可能にするコンテキストです。
-**データベース名:** `process-manager.db` (管理用データベース)
+**データベース名:** `pipeline.db` (管理用データベース)
 
 ```mermaid
 %%{init: {'theme': 'dark', 'themeVariables': {
@@ -251,4 +251,4 @@ erDiagram
 ```
 
 ## 補足事項
-- **Vertical Slice Architecture の原則**: VSAの原則（Refactoring Strategy Section 5）に基づき、上記テーブルはDRY原則を避け「あえて分断」されています。各Slice（`ConfigStoreSlice`, `DictionaryBuilderSlice`, `PersonaGenSlice`, `TermTranslatorSlice`）は自身が必要とするテーブルのみに依存し、他Sliceのテーブルに直接クエリを発行することはありません。
+- **Vertical Slice Architecture の原則**: VSAの原則（Architecture Section 5）に基づき、上記テーブルはDRY原則を避け「あえて分断」されています。各Slice（`ConfigSlice`, `DictionarySlice`, `PersonaSlice`, `TerminologySlice`）は自身が必要とするテーブルのみに依存し、他Sliceのテーブルに直接クエリを発行することはありません。
