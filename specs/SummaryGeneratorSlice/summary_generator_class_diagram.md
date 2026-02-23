@@ -4,24 +4,30 @@
 
 ```mermaid
 classDiagram
+    class SummaryGeneratorInput {
+        +[]DialogueGroupInput DialogueGroups
+        +[]QuestInput Quests
+    }
+
+    class ProposeOutput {
+        +[]llm_client.Request Requests
+        +[]SummaryResult PreCalculatedResults
+    }
+
     class SummaryGenerator {
         <<interface>>
-        +GenerateDialogueSummaries(ctx context.Context, groups []DialogueGroupInput, progress func(done, total int)) ([]SummaryResult, error)
-        +GenerateQuestSummaries(ctx context.Context, quests []QuestInput, progress func(done, total int)) ([]SummaryResult, error)
+        +ProposeJobs(ctx context.Context, input SummaryGeneratorInput) (ProposeOutput, error)
+        +SaveResults(ctx context.Context, responses []llm_client.Response) error
+        +GetSummary(ctx context.Context, recordID string, summaryType string) (*SummaryResult, error)
     }
 
     class SummaryGeneratorImpl {
-        -llmClient LLMClient
         -store SummaryStore
         -hasher CacheKeyHasher
-        -concurrency int
-        -maxTokens int
-        -temperature float64
-        +GenerateDialogueSummaries(...)
-        +GenerateQuestSummaries(...)
-        -summarizeSingle(ctx, input) string
-        -buildDialoguePrompt(lines) string
-        -buildQuestPrompt(stages) string
+        -promptBuilder SummaryPromptBuilder
+        +ProposeJobs(...)
+        +SaveResults(...)
+        +GetSummary(...)
     }
 
     class SummaryStore {
@@ -35,23 +41,25 @@ classDiagram
 
     class SQLiteSummaryStore {
         -db *sql.DB
-        -dbPath string
-        +NewSQLiteSummaryStore(cacheDir string, sourcePlugin string) (*SQLiteSummaryStore, error)
         +InitTable(ctx) error
         +Get(ctx, cacheKey) (*SummaryRecord, error)
         +Upsert(ctx, record) error
         +GetByRecordID(ctx, recordID, summaryType) (*SummaryRecord, error)
-        +Close() error
     }
 
     class CacheKeyHasher {
         +BuildCacheKey(recordID string, lines []string) string
     }
 
+    class SummaryPromptBuilder {
+        +BuildDialoguePrompt(lines []string) string
+        +BuildQuestPrompt(stages []string) string
+    }
+
     SummaryGenerator <|.. SummaryGeneratorImpl : implements
-    SummaryGeneratorImpl --> LLMClient : uses
     SummaryGeneratorImpl --> SummaryStore : uses
     SummaryGeneratorImpl --> CacheKeyHasher : uses
+    SummaryGeneratorImpl --> SummaryPromptBuilder : uses
     SummaryStore <|.. SQLiteSummaryStore : implements
 ```
 
@@ -90,26 +98,9 @@ classDiagram
     }
 ```
 
-## ソースファイル単位キャッシュの構成
+## アーキテクチャの補足：2フェーズモデル (Propose/Save)
+本スライスはバッチAPIや長時間実行ジョブに対応するため、**「プロンプト生成(ProposeJobs)」**と**「結果保存(SaveResults)」**の2フェーズに分割されている。
+- **Phase 1 (Propose)**: 入力データを解析し、キャッシュヒット判定を行う。既訳がない場合はLLMプロンプトを生成してリクエスト群として返す。既訳がある場合は即時結果として返す。
+- **Phase 2 (Save)**: JobQueue等を通じて取得されたLLMのレスポンス群を受け取り、パースしてSQLiteキャッシュに永続化する。
 
-```
-cache_dir/
-├── Skyrim.esm_summary_cache.db        ← Skyrim.esm 用
-│   └── summaries テーブル
-├── Dawnguard.esm_summary_cache.db     ← Dawnguard.esm 用
-│   └── summaries テーブル
-└── MyMod.esp_summary_cache.db         ← MyMod.esp 用
-    └── summaries テーブル
-```
-
-- `NewSQLiteSummaryStore(cacheDir, sourcePlugin)` がソースファイル名からDBファイルパスを決定し、接続を確立する。
-- 命名規則: `{sourcePlugin}_summary_cache.db`
-- 各DBファイルは独立しており、Mod単位での削除・再生成・配布が容易。
-
-## 依存関係
-
-- `SummaryGeneratorImpl` → `LLMClient` (共通インフラ): LLM呼び出し
-- `SummaryGeneratorImpl` → `SummaryStore`: キャッシュの読み書き
-- `SummaryGeneratorImpl` → `CacheKeyHasher`: キャッシュキー生成
-- `SQLiteSummaryStore` → `*sql.DB` (内部生成): ソースファイル単位のDB接続
-- Process Manager → `SummaryGenerator`: 要約生成の起動
+スライス自身はLLM Clientを直接呼び出さず、呼び出し元のオーケストレーター（ProcessManager）が通信を制御する。

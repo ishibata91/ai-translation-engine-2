@@ -1,93 +1,64 @@
 # 要約ジェネレータ シーケンス図
 
-## 0. ソースファイル単位のStore初期化フロー
+## 1. 要約生成フロー（2フェーズモデル）
+
+2フェーズモデルでは、スライスは「ジョブ提案 (Phase 1)」と「結果保存 (Phase 2)」の2つの独立した Contract メソッドとして呼び出される。
+
+### Phase 1: 要約ジョブの提案 (Propose)
 
 ```mermaid
 sequenceDiagram
+    autonumber
     participant PM as ProcessManager
-    participant SS as SQLiteSummaryStore
-
-    PM->>SS: NewSQLiteSummaryStore(cacheDir, "Skyrim.esm")
-    SS->>SS: open "cacheDir/Skyrim.esm_summary_cache.db"
-    SS-->>PM: *SQLiteSummaryStore, nil
-
-    PM->>SS: InitTable(ctx)
-    SS->>SS: CREATE TABLE IF NOT EXISTS summaries ...
-    SS->>SS: CREATE INDEX IF NOT EXISTS ...
-    SS-->>PM: nil
-
-    Note over PM,SS: ソースファイルごとに繰り返し
-```
-
-## 1. 会話要約生成フロー
-
-```mermaid
-sequenceDiagram
-    participant PM as ProcessManager
-    participant SG as SummaryGeneratorImpl
+    participant SG as SummaryGenerator<br/>(Interface)
     participant CK as CacheKeyHasher
     participant SS as SummaryStore (SQLite)
-    participant LLM as LLMClient
 
-    PM->>SG: GenerateDialogueSummaries(ctx, groups, progress)
+    PM->>SG: ProposeJobs(ctx, input)
 
-    loop for each group
-        SG->>CK: BuildCacheKey(groupID, lines)
+    loop for each group/quest
+        SG->>CK: BuildCacheKey(id, texts)
         CK-->>SG: cacheKey
 
         SG->>SS: Get(ctx, cacheKey)
         SS-->>SG: *SummaryRecord / nil
 
-        alt cache miss
-            SG->>SG: buildDialoguePrompt(lines)
-            SG->>LLM: Complete(LLMRequest{system, user, maxTokens=200, temp=0.3})
-            LLM-->>SG: LLMResponse{content}
-            SG->>SS: Upsert(ctx, SummaryRecord)
-            SS-->>SG: ok
+        alt cache hit
+            SG->>SG: キャッシュ済みの結果として即時リターン用リストに追加
+        else cache miss
+            SG->>SG: LLMプロンプト構築
+            SG->>SG: []llm_client.Request に追加
         end
-
-        SG-->>PM: progress(done, total)
     end
 
-    SG-->>PM: []SummaryResult
+    SG-->>PM: ProposeOutput (Requests, PreCalculatedResults)
 ```
 
-## 2. クエスト要約生成フロー（累積的処理）
+### Phase 2: 要約結果の保存 (Save)
 
 ```mermaid
 sequenceDiagram
+    autonumber
     participant PM as ProcessManager
-    participant SG as SummaryGeneratorImpl
-    participant CK as CacheKeyHasher
+    participant SG as SummaryGenerator<br/>(Interface)
     participant SS as SummaryStore (SQLite)
-    participant LLM as LLMClient
 
-    PM->>SG: GenerateQuestSummaries(ctx, quests, progress)
+    PM->>SG: SaveResults(ctx, responses)
 
-    loop for each quest
-        SG->>SG: sort stages by Index (ascending)
-
-        SG->>CK: BuildCacheKey(questID, allStageTexts)
-        CK-->>SG: cacheKey
-
-        SG->>SS: Get(ctx, cacheKey)
-        SS-->>SG: *SummaryRecord / nil
-
-        alt cache miss
-            SG->>SG: buildQuestPrompt(stageTexts)
-            SG->>LLM: Complete(LLMRequest{system, user, maxTokens=200, temp=0.3})
-            LLM-->>SG: LLMResponse{content}
+    loop for each response
+        alt Success == true
+            SG->>SG: 要約テキスト抽出・バリデーション
             SG->>SS: Upsert(ctx, SummaryRecord)
             SS-->>SG: ok
+        else Success == false
+            SG->>SG: エラーログ記録 (Skip)
         end
-
-        SG-->>PM: progress(done, total)
     end
 
-    SG-->>PM: []SummaryResult
+    SG-->>PM: error (nil if success)
 ```
 
-## 3. Pass 2 参照フロー
+## 2. Pass 2 参照フロー
 
 ```mermaid
 sequenceDiagram
@@ -96,36 +67,8 @@ sequenceDiagram
 
     Note over TS,SS: 該当ソースファイルのSummaryStoreを使用
 
-    TS->>SS: GetByRecordID(ctx, dialogueGroupID, "dialogue")
-    SS-->>TS: *SummaryRecord / nil
-
-    TS->>SS: GetByRecordID(ctx, questID, "quest")
+    TS->>SS: GetByRecordID(ctx, recordID, summaryType)
     SS-->>TS: *SummaryRecord / nil
 
     Note over TS: 要約をLLMプロンプトのコンテキストに挿入
-```
-
-## 4. 並列実行モデル
-
-```mermaid
-sequenceDiagram
-    participant SG as SummaryGeneratorImpl
-    participant W1 as goroutine 1
-    participant W2 as goroutine 2
-    participant W3 as goroutine 3
-
-    Note over SG: Goroutine Pool (semaphore: concurrency=10)
-
-    par 並列実行
-        SG->>W1: summarize(group[0])
-        Note over W1: cache check → [miss] → LLM call → upsert
-    and
-        SG->>W2: summarize(group[1])
-        Note over W2: cache check → [hit] → return cached
-    and
-        SG->>W3: summarize(group[2])
-        Note over W3: cache check → [miss] → LLM call → upsert
-    end
-
-    Note over SG: collect results, notify progress
 ```
