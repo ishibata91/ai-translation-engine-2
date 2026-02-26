@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Dashboard - Mocks</title>
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@latest/dist/full.css" rel="stylesheet" type="text/css" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+            fetch('components/sidebar.html')
+                .then(res => res.text())
+                .then(data => {
+                    document.getElementById('sidebar-container').innerHTML = data;
+                });
+            fetch('components/log_viewer.html')
+                .then(res => res.text())
+                .then(data => {
+                    document.getElementById('log-container').innerHTML = data;
+                });
+        });
+    </script>
+</head>
+
+<body class="flex flex-col">
+
+    <div class="flex">
+
+        <!-- 左サブナビゲーション (インポート先) -->
+        <div id="sidebar-container">
+            <!-- components/sidebar.html -->
+        </div>
+
+        <!-- 中央メインコンテンツ -->
+        <div class="flex flex-col w-full p-4 gap-4">
+
+            <!-- ヘッダー部分 -->
+            <div class="navbar">
+                <div class="flex justify-between items-center w-full">
+                    <span>ダッシュボード (Dashboard)</span>
+                    <button class="btn btn-primary">クイックスタート</button>
+                </div>
+            </div>
+
+            <!-- 統計情報 (Dashboard metrics) -->
+            <div class="grid grid-cols-3 gap-4">
+                <div class="card card-compact">
+                    <div class="card-body">
+                        <div class="stat">
+                            <div class="stat-title">解析中 Mod</div>
+                            <div class="stat-value">2</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card card-compact">
+                    <div class="card-body">
+                        <div class="stat">
+                            <div class="stat-title">翻訳中 Mod</div>
+                            <div class="stat-value">1</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card card-compact">
+                    <div class="card-body">
+                        <div class="stat">
+                            <div class="stat-title">完了 Mod</div>
+                            <div class="stat-value">12</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 最近のジョブ -->
+            <div class="card">
+                <div class="card-body">
+                    <span>最近のジョブ</span>
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Mod名</th>
+                                <th>フェーズ</th>
+                                <th>進捗</th>
+                                <th>アクション</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>LotD.esp</td>
+                                <td>翻訳中</td>
+                                <td><progress class="progress" value="40" max="100"></progress></td>
+                                <td><button class="btn btn-ghost">詳細</button></td>
+                            </tr>
+                            <tr>
+                                <td>SkyUI.esp</td>
+                                <td>解析中</td>
+                                <td><progress class="progress" value="70" max="100"></progress></td>
+                                <td><button class="btn btn-ghost">詳細</button></td>
+                            </tr>
+                            <tr>
+                                <td>USSEP.esp</td>
+                                <td>完了</td>
+                                <td><progress class="progress" value="100" max="100"></progress></td>
+                                <td><button class="btn btn-ghost">詳細</button></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- ログビューア (インポート先) -->
+    <div id="log-container">
+        <!-- components/log_viewer.html -->
+    </div>
+
+</body>
+
+</html>

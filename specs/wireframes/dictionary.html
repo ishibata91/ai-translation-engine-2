@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Dictionary Builder - Mocks</title>
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@latest/dist/full.css" rel="stylesheet" type="text/css" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+            fetch('components/sidebar.html')
+                .then(res => res.text())
+                .then(data => {
+                    document.getElementById('sidebar-container').innerHTML = data;
+                });
+            fetch('components/log_viewer.html')
+                .then(res => res.text())
+                .then(data => {
+                    document.getElementById('log-container').innerHTML = data;
+                });
+        });
+    </script>
+</head>
+
+<body class="flex flex-col">
+
+    <div class="flex">
+
+        <!-- 左サブナビゲーション (インポート先) -->
+        <div id="sidebar-container">
+            <!-- components/sidebar.html -->
+        </div>
+
+        <!-- 中央メインコンテンツ -->
+        <div class="flex flex-col w-full p-4 gap-4">
+
+            <!-- ヘッダー部分 -->
+            <div class="navbar">
+                <div class="flex justify-between items-center w-full">
+                    <span>辞書構築 (Dictionary Builder)</span>
+                </div>
+            </div>
+
+            <!-- 通知エリア -->
+            <div class="alert">
+                <span>システム辞書(dictionary.db)の準備が整っています。新しいSSTXMLファイルからインポート可能です。</span>
+            </div>
+
+            <!-- 上部パネル -->
+            <div class="grid grid-cols-2 gap-4">
+
+                <!-- インポート設定カード -->
+                <div class="card bg-base-100">
+                    <div class="card-body">
+                        <span>XMLインポート (xTranslator形式)</span>
+                        <div class="flex flex-col gap-4">
+                            <span>SSTXMLファイル、または公式DLCの翻訳XMLを選択してください。選択後、自動的にインポートが開始されます。</span>
+                            <div class="flex gap-4">
+                                <!-- DaisyUIのファイルインプットコンポーネントのみ配置 -->
+                                <input type="file" class="file-input file-input-bordered w-full max-w-xs" />
+                            </div>
+                            <span>インポート進捗</span>
+                            <progress class="progress" value="0" max="100"></progress>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 辞書統計カード -->
+                <div class="card bg-base-100">
+                    <div class="card-body">
+                        <span>システム辞書ステータス</span>
+                        <div class="flex flex-col gap-4">
+                            <div class="stat">
+                                <div class="stat-title">総エントリ数</div>
+                                <div class="stat-value">1,240,512</div>
+                            </div>
+                            <div class="stat">
+                                <div class="stat-title">登録済みソース</div>
+                                <div class="stat-value">5</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- ボトムパネル: 登録済みソース一覧 -->
+            <div class="card w-full bg-base-100">
+                <div class="card-body">
+                    <div class="flex justify-between items-center">
+                        <span>登録済み辞書ソース一覧</span>
+                        <button class="btn btn-ghost">全て削除</button>
+                    </div>
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>ソース名 (ファイル名)</th>
+                                <th>エントリ数</th>
+                                <th>最終更新日時</th>
+                                <th>ステータス</th>
+                                <th>アクション</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>Skyrim.esm (SSTXML)</td>
+                                <td>850,231</td>
+                                <td>2026-02-26 12:00</td>
+                                <td>
+                                    <div class="badge">完了</div>
+                                </td>
+                                <td><button class="btn btn-ghost">削除</button></td>
+                            </tr>
+                            <tr>
+                                <td>Update.esm (SSTXML)</td>
+                                <td>10,023</td>
+                                <td>2026-02-26 12:01</td>
+                                <td>
+                                    <div class="badge">完了</div>
+                                </td>
+                                <td><button class="btn btn-ghost">削除</button></td>
+                            </tr>
+                            <tr>
+                                <td>Dawnguard.esm (SSTXML)</td>
+                                <td>150,490</td>
+                                <td>2026-02-26 12:05</td>
+                                <td>
+                                    <div class="badge">完了</div>
+                                </td>
+                                <td><button class="btn btn-ghost">削除</button></td>
+                            </tr>
+                            <tr>
+                                <td>HearthFires.esm (SSTXML)</td>
+                                <td>25,102</td>
+                                <td>2026-02-26 12:06</td>
+                                <td>
+                                    <div class="badge">完了</div>
+                                </td>
+                                <td><button class="btn btn-ghost">削除</button></td>
+                            </tr>
+                            <tr>
+                                <td>Dragonborn.esm (SSTXML)</td>
+                                <td>204,666</td>
+                                <td>2026-02-26 12:10</td>
+                                <td>
+                                    <div class="badge">完了</div>
+                                </td>
+                                <td><button class="btn btn-ghost">削除</button></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- ログビューア (インポート先) -->
+    <div id="log-container">
+        <!-- components/log_viewer.html -->
+    </div>
+
+</body>
+
+</html>
