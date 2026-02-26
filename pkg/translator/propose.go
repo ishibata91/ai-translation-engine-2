@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/llm"
 )
@@ -14,6 +15,7 @@ type translatorSlice struct {
 	resumeLoader  ResumeLoader
 	resultWriter  ResultWriter
 	tagProcessor  TagProcessor
+	bookChunker   BookChunker
 }
 
 func NewTranslatorSlice(
@@ -22,6 +24,7 @@ func NewTranslatorSlice(
 	rl ResumeLoader,
 	rw ResultWriter,
 	tp TagProcessor,
+	bc BookChunker,
 ) TranslatorSlice {
 	return &translatorSlice{
 		contextEngine: ce,
@@ -29,6 +32,7 @@ func NewTranslatorSlice(
 		resumeLoader:  rl,
 		resultWriter:  rw,
 		tagProcessor:  tp,
+		bookChunker:   bc,
 	}
 }
 
@@ -45,7 +49,11 @@ func (s *translatorSlice) PreparePrompts(ctx context.Context, input any) ([]llm.
 }
 
 func (s *translatorSlice) ProposeJobs(ctx context.Context, input TranslatorInput) ([]llm.Request, error) {
-	slog.DebugContext(ctx, "ProposeJobs started", "plugin", input.OutputConfig.PluginName)
+	slog.DebugContext(ctx, "ENTER ProposeJobs",
+		slog.String("plugin", input.OutputConfig.PluginName),
+		slog.Int("dialogue_count", len(input.GameData.Dialogues)),
+	)
+	start := time.Now()
 
 	// 1. Load cached results for resume
 	cached, err := s.resumeLoader.LoadCachedResults(input.OutputConfig.PluginName, input.OutputConfig.OutputBaseDir)
@@ -64,73 +72,84 @@ func (s *translatorSlice) ProposeJobs(ctx context.Context, input TranslatorInput
 		}
 
 		// Phase 1: Context Building (Integrated Lore logic)
-		pass2Ctx, terms, _, err := s.contextEngine.BuildTranslationContext(ctx, dial, &input.GameData)
+		pass2Ctx, terms, forced, err := s.contextEngine.BuildTranslationContext(ctx, dial, &input.GameData)
 		if err != nil {
 			slog.ErrorContext(ctx, "failed to build context", "id", dial.ID, "error", err)
 			continue
 		}
 
-		// Prepare internal request DTO
-		req := Pass2TranslationRequest{
-			ID:             dial.ID,
-			RecordType:     dial.Type,
-			SourceText:     *dial.Text,
-			Context:        *pass2Ctx,
-			ReferenceTerms: terms,
-			EditorID:       dial.EditorID,
-			SourcePlugin:   input.OutputConfig.PluginName,
-			SourceFile:     input.Config.SourceFile,
-			MaxTokens:      &input.OutputConfig.MaxTokens,
-		}
-
-		// Phase 2: Prompt Building
-		systemPrompt, userPrompt, err := s.promptBuilder.Build(ctx, req)
-		if err != nil {
-			slog.ErrorContext(ctx, "failed to build prompt", "id", dial.ID, "error", err)
+		// If forced translation is found in dictionary/terms, we can bypass LLM.
+		if forced != nil {
+			slog.InfoContext(ctx, "forced translation found", "id", dial.ID)
+			result := TranslationResult{
+				ID:             dial.ID,
+				RecordType:     dial.Type,
+				SourceText:     *dial.Text,
+				TranslatedText: forced,
+				Status:         "completed",
+				SourcePlugin:   input.OutputConfig.PluginName,
+			}
+			if err := s.resultWriter.Write(result); err != nil {
+				slog.ErrorContext(ctx, "failed to write forced result", "id", dial.ID, "error", err)
+			}
 			continue
 		}
 
-		requests = append(requests, llm.Request{
-			SystemPrompt: systemPrompt,
-			UserPrompt:   userPrompt,
-			MaxTokens:    input.OutputConfig.MaxTokens,
-			Metadata: map[string]interface{}{
-				"id": req.ID,
-			},
-		})
+		// Tag protection
+		processedText, tags := s.tagProcessor.Preprocess(*dial.Text)
+
+		// Book Chunking (if needed)
+		// Use MaxTokens as a character limit for now, or a reasonable default
+		maxChars := 4000
+		if input.OutputConfig.MaxTokens > 0 {
+			maxChars = input.OutputConfig.MaxTokens
+		}
+		chunks := s.bookChunker.Chunk(processedText, maxChars)
+
+		for i, chunk := range chunks {
+			// Prepare internal request DTO
+			req := Pass2TranslationRequest{
+				ID:             dial.ID,
+				RecordType:     dial.Type,
+				SourceText:     chunk,
+				Context:        *pass2Ctx,
+				ReferenceTerms: terms,
+				EditorID:       dial.EditorID,
+				SourcePlugin:   input.OutputConfig.PluginName,
+				SourceFile:     input.Config.SourceFile,
+				MaxTokens:      &input.OutputConfig.MaxTokens,
+			}
+			if len(chunks) > 1 {
+				idx := i
+				req.Index = &idx
+			}
+
+			// Phase 2: Prompt Building
+			systemPrompt, userPrompt, err := s.promptBuilder.Build(ctx, req)
+			if err != nil {
+				slog.ErrorContext(ctx, "failed to build prompt", "id", dial.ID, "chunk", i, "error", err)
+				continue
+			}
+
+			requests = append(requests, llm.Request{
+				SystemPrompt: systemPrompt,
+				UserPrompt:   userPrompt,
+				MaxTokens:    input.OutputConfig.MaxTokens,
+				Metadata: map[string]interface{}{
+					"id":            req.ID,
+					"record_type":   req.RecordType,
+					"source_plugin": req.SourcePlugin,
+					"tags":          tags,
+					"chunk_index":   i,
+					"is_chunked":    len(chunks) > 1,
+				},
+			})
+		}
 	}
 
-	slog.DebugContext(ctx, "ProposeJobs completed", "requests_count", len(requests))
+	slog.DebugContext(ctx, "EXIT ProposeJobs",
+		slog.Int("requests_count", len(requests)),
+		slog.Duration("elapsed", time.Since(start)),
+	)
 	return requests, nil
-}
-
-func (s *translatorSlice) SaveResults(ctx context.Context, responses []llm.Response) error {
-	slog.DebugContext(ctx, "SaveResults started", "responses_count", len(responses))
-
-	for _, resp := range responses {
-		id, ok := resp.Metadata["id"].(string)
-		if !ok {
-			slog.WarnContext(ctx, "response missing record id in metadata", "content", resp.Content)
-			continue
-		}
-
-		// 1. Tag Restoration & Validation could happen here
-
-		// 2. Write to persistent storage
-		result := TranslationResult{
-			ID:             id,
-			TranslatedText: &resp.Content,
-			Status:         "completed",
-		}
-		if err := s.resultWriter.Write(result); err != nil {
-			return fmt.Errorf("failed to write result for %s: %w", id, err)
-		}
-	}
-
-	if err := s.resultWriter.Flush(); err != nil {
-		return fmt.Errorf("failed to flush results: %w", err)
-	}
-
-	slog.DebugContext(ctx, "SaveResults completed")
-	return nil
 }

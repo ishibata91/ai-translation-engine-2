@@ -42,7 +42,7 @@ type TagProcessor interface {
 
 // BookChunker splits long book text into chunks.
 type BookChunker interface {
-	Chunk(text string, maxTokensPerChunk int) []string
+	Chunk(text string, maxCharsPerChunk int) []string
 }
 
 // ResultWriter persists translation results.

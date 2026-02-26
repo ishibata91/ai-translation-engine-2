@@ -15,10 +15,13 @@ type ContextEngineInput struct {
 }
 
 type ContextNPC struct {
-	ID       string
-	EditorID *string
-	Type     string
-	Name     string
+	ID        string
+	EditorID  *string
+	Type      string
+	Name      string
+	Race      string
+	Gender    string
+	VoiceType string
 }
 
 type ContextDialogue struct {
@@ -106,4 +109,98 @@ type TermLookup interface {
 type SummaryLookup interface {
 	FindDialogueSummary(ctx context.Context, dialogueGroupID string) (*string, error)
 	FindQuestSummary(ctx context.Context, questID string) (*string, error)
+}
+
+// contextEngine implements ContextEngine interface.
+type contextEngine struct {
+	toneResolver  ToneResolver
+	personaLookup PersonaLookup
+	termLookup    TermLookup
+	summaryLookup SummaryLookup
+}
+
+// NewContextEngine creates a new ContextEngine instance.
+func NewContextEngine(
+	tr ToneResolver,
+	pl PersonaLookup,
+	tl TermLookup,
+	sl SummaryLookup,
+) ContextEngine {
+	return &contextEngine{
+		toneResolver:  tr,
+		personaLookup: pl,
+		termLookup:    tl,
+		summaryLookup: sl,
+	}
+}
+
+func (e *contextEngine) BuildTranslationContext(ctx context.Context, record interface{}, input *ContextEngineInput) (*Pass2Context, []Pass2ReferenceTerm, *string, error) {
+	pass2Ctx := &Pass2Context{}
+	var terms []Pass2ReferenceTerm
+	var forcedTranslation *string
+
+	switch r := record.(type) {
+	case ContextDialogue:
+		// 1. Speaker Info
+		if r.SpeakerID != nil {
+			speaker, ok := input.NPCs[*r.SpeakerID]
+			if ok {
+				profile := &Pass2SpeakerProfile{
+					Name:      speaker.Name,
+					Race:      speaker.Race,
+					Gender:    speaker.Gender,
+					VoiceType: speaker.VoiceType,
+				}
+				// Solve tone instruction
+				profile.ToneInstruction = e.toneResolver.Resolve(speaker.Race, speaker.VoiceType, speaker.Gender)
+
+				// Fetch persona if available
+				persona, err := e.personaLookup.FindBySpeakerID(ctx, *r.SpeakerID)
+				if err == nil && persona != nil {
+					profile.PersonaText = persona
+				}
+				pass2Ctx.Speaker = profile
+			}
+		}
+
+		// 2. Summary Lookup
+		if r.QuestID != nil {
+			summary, err := e.summaryLookup.FindQuestSummary(ctx, *r.QuestID)
+			if err == nil && summary != nil {
+				pass2Ctx.QuestSummary = summary
+			}
+		}
+
+		// 3. Term Lookup for the source text
+		if r.Text != nil {
+			t, forced, err := e.termLookup.Search(ctx, *r.Text)
+			if err == nil {
+				terms = t
+				forcedTranslation = forced
+			}
+		}
+
+	case ContextQuestStage:
+		// Quest stages might not have speaker but have quest summary
+		summary, err := e.summaryLookup.FindQuestSummary(ctx, r.ParentID)
+		if err == nil && summary != nil {
+			pass2Ctx.QuestSummary = summary
+		}
+		t, forced, err := e.termLookup.Search(ctx, r.Text)
+		if err == nil {
+			terms = t
+			forcedTranslation = forced
+		}
+
+	case ContextItem:
+		if r.Name != nil {
+			t, forced, err := e.termLookup.Search(ctx, *r.Name)
+			if err == nil {
+				terms = t
+				forcedTranslation = forced
+			}
+		}
+	}
+
+	return pass2Ctx, terms, forcedTranslation, nil
 }

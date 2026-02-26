@@ -215,7 +215,43 @@ erDiagram
     }
 ```
 
+## translator (本文翻訳結果)
+
+Pass 2: 本文翻訳のスライスが管理する翻訳結果のコンテキストです。
+**データベース名:** `{PluginName}_translations.db` (ソースプラグイン別)
+
+```mermaid
+%%{init: {'theme': 'dark', 'themeVariables': {
+  'primaryColor': '#2b2b2b',
+  'primaryTextColor': '#e0e0e0',
+  'primaryBorderColor': '#2196f3',
+  'lineColor': '#888888',
+  'secondaryColor': '#0d47a1',
+  'tertiaryColor': '#1565c0',
+  'mainBkg': '#1e1e1e',
+  'nodeBorder': '#5a5a5a'
+}}}%%
+erDiagram
+    main_translations {
+        INTEGER id PK "自動採番ID"
+        TEXT form_id "FormID"
+        TEXT record_type "レコードタイプ (e.g. INFO NAM1)"
+        TEXT source_text "原文 (英語)"
+        TEXT translated_text "翻訳結果 (日本語, nullable)"
+        INTEGER stage_index "Stage/Objective Index (nullable)"
+        TEXT status "処理状態 (success, failed, skipped, cached)"
+        TEXT error_message "エラーメッセージ (nullable)"
+        TEXT source_plugin "ソースプラグイン名"
+        TEXT editor_id "Editor ID (nullable)"
+        TEXT parent_form_id "親のFormID (nullable)"
+        TEXT parent_editor_id "親のEditorID (nullable)"
+        DATETIME created_at "作成日時"
+        DATETIME updated_at "更新日時"
+    }
+```
+
 ## pipeline (進行状態管理)
+
 
 各スライスの実行状態やJobQueueとの紐付けを管理し、プロセスのレジューム（再開）を可能にするコンテキストです。
 **データベース名:** `pipeline.db` (管理用データベース)
