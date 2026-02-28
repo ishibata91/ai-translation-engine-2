@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import ModelSettings from '../ModelSettings';
 
 interface TranslationPanelProps {
@@ -7,13 +7,14 @@ interface TranslationPanelProps {
 }
 
 export const TranslationPanel: React.FC<TranslationPanelProps> = ({ isActive, onNext }) => {
+    const [isTranslating, setIsTranslating] = useState<boolean>(true);
     return (
         <div className={`tab-content-panel flex-col gap-4 h-full min-h-0 overflow-hidden ${isActive ? 'flex' : 'hidden'}`}>
             <div className="shrink-0">
                 <ModelSettings title="翻訳モデル設定" />
             </div>
 
-            <div className="flex gap-4 flex-1 min-h-0 overflow-hidden">
+            <div className="flex gap-4 flex-1 min-h-0 overflow-hidden relative">
                 {/* 左ペイン: 翻訳対象リスト */}
                 <div className="w-1/2 flex flex-col border rounded-xl bg-base-100 overflow-hidden">
                     <div className="p-3 border-b flex flex-col gap-2 bg-base-200 shrink-0">
@@ -24,7 +25,6 @@ export const TranslationPanel: React.FC<TranslationPanelProps> = ({ isActive, on
                                 <option>未翻訳 (800)</option>
                                 <option>AI翻訳済み (150)</option>
                                 <option>確認済み (15)</option>
-                                <option>翻訳済み (235)</option>
                                 <option>除外済み (0)</option>
                                 <option>すべて表示</option>
                             </select>
@@ -64,7 +64,7 @@ export const TranslationPanel: React.FC<TranslationPanelProps> = ({ isActive, on
                 </div>
 
                 {/* 右ペイン: 翻訳コンソール (詳細) */}
-                <div className="w-1/2 flex flex-col rounded-xl border bg-base-100 relative overflow-hidden">
+                <div className="w-1/2 flex flex-col rounded-xl border bg-base-100 overflow-hidden">
                     {/* ヘッダーアクション */}
                     <div className="shrink-0 z-10 bg-base-100 border-b p-3 flex justify-between items-center shadow-sm">
                         <span className="font-bold">詳細</span>
@@ -73,16 +73,7 @@ export const TranslationPanel: React.FC<TranslationPanelProps> = ({ isActive, on
                     <div className="p-4 flex flex-col gap-4 flex-1 overflow-y-auto">
                         <div className="flex justify-between items-center text-sm shrink-0">
                             <span className="badge badge-outline">Record: 0001A2B4</span>
-                            <div className="flex items-center gap-2">
-                                <span className="font-bold text-base-content/70">状態:</span>
-                                <div className="join">
-                                    <button className="join-item btn btn-xs">未</button>
-                                    <button className="join-item btn btn-xs">AI</button>
-                                    <button className="join-item btn btn-xs btn-warning text-white">確認済</button>
-                                    <button className="join-item btn btn-xs">翻訳済</button>
-                                    <button className="join-item btn btn-xs btn-error btn-outline">除外</button>
-                                </div>
-                            </div>
+                            <span className="badge badge-warning text-white">確認済み</span>
                         </div>
 
                         {/* コンテキスト情報 */}
@@ -126,17 +117,39 @@ export const TranslationPanel: React.FC<TranslationPanelProps> = ({ isActive, on
                         </div>
 
                         {/* アクション */}
-                        <div className="flex justify-end gap-2 mt-4 pt-4 border-t border-base-300 shrink-0">
-                            <div className="tooltip tooltip-top" data-tip="モデル設定を引き継いで翻訳 (バッチモードは無視)">
-                                <button className="btn btn-secondary btn-sm text-white">単体翻訳リクエスト</button>
+                        <div className="flex justify-between items-center mt-4 pt-4 border-t border-base-300 shrink-0">
+                            <button className="btn btn-outline btn-error btn-sm">除外</button>
+                            <div className="flex gap-2">
+                                <div className="tooltip tooltip-top" data-tip="モデル設定を引き継いで翻訳 (バッチモードは無視)">
+                                    <button className="btn btn-secondary btn-sm text-white">単体翻訳リクエスト</button>
+                                </div>
+                                <button className="btn btn-warning btn-sm text-white">確認済み</button>
                             </div>
                         </div>
                     </div>
                 </div>
+
+                {isTranslating && (
+                    <div className="absolute inset-0 bg-base-100/50 backdrop-blur-[1px] z-10 flex flex-col items-center justify-center gap-4 rounded-xl">
+                        <span className="loading loading-spinner text-primary loading-lg"></span>
+                        <span className="font-bold text-lg text-base-content/70">自動翻訳を実行中...</span>
+                    </div>
+                )}
             </div>
 
-            <div className="flex justify-end gap-2 shrink-0">
-                <button className="btn btn-primary" onClick={onNext}>確定して次へ</button>
+            <div className="flex justify-between items-center bg-base-200 p-2 rounded-xl border shrink-0 mt-auto">
+                <span className="text-sm font-bold text-gray-500 ml-2">Job: MainTranslation ({isTranslating ? 'Running' : 'Stopped'})</span>
+                <div className="flex gap-2">
+                    <button
+                        className={`btn btn-sm ${isTranslating ? 'btn-ghost' : 'btn-outline'}`}
+                        onClick={() => setIsTranslating(!isTranslating)}
+                    >
+                        {isTranslating ? '一時停止' : '再開'}
+                    </button>
+                    <button className="btn btn-primary btn-sm" onClick={onNext} disabled={isTranslating}>
+                        確定して次へ
+                    </button>
+                </div>
             </div>
         </div>
     );

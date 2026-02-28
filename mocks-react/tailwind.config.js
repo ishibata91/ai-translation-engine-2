@@ -12,6 +12,9 @@ module.exports = {
     require('daisyui'),
   ],
   daisyui: {
-    themes: ["dark"], // デフォルトはダークテーマにしておくか、要件に合わせて
+    themes: [
+      "light", "dark", "cupcake", "bumblebee", "emerald",
+      "corporate", "synthwave", "retro", "cyberpunk", "valentine"
+    ],
   },
 }

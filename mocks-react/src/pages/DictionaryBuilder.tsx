@@ -171,6 +171,7 @@ const DictionaryBuilder: React.FC = () => {
     const [view, setView] = useState<View>('list');
     const [selectedRow, setSelectedRow] = useState<DictSourceRow | null>(null);
     const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
+    const [isImporting, setIsImporting] = useState<boolean>(true);
 
     const handleRowSelect = (row: DictSourceRow | null, rowId: string | null) => {
         setSelectedRow(row);
@@ -244,50 +245,77 @@ const DictionaryBuilder: React.FC = () => {
                 </div>
             </div>
 
-            {/* 上部パネル */}
-            <div className="grid grid-cols-2 gap-4 shrink-0">
-                <div className="card bg-base-100 shadow-sm border border-base-200">
-                    <div className="card-body">
-                        <h2 className="card-title text-base">XMLインポート (xTranslator形式)</h2>
-                        <div className="flex flex-col gap-4 mt-2">
-                            <span className="text-sm">SSTXMLファイル、または公式DLCの翻訳XMLを選択してください。</span>
-                            <div className="flex gap-4">
-                                <input type="file" className="file-input file-input-bordered file-input-primary w-full max-w-xs" />
+            <div className="flex flex-1 flex-col min-h-0 gap-4 relative">
+                {/* 上部パネル */}
+                <div className="grid grid-cols-2 gap-4 shrink-0">
+                    <div className="card bg-base-100 shadow-sm border border-base-200">
+                        <div className="card-body">
+                            <h2 className="card-title text-base">XMLインポート (xTranslator形式)</h2>
+                            <div className="flex flex-col gap-4 mt-2">
+                                <span className="text-sm">SSTXMLファイル、または公式DLCの翻訳XMLを選択してください。</span>
+                                <div className="flex gap-4">
+                                    <input type="file" className="file-input file-input-bordered file-input-primary w-full max-w-xs" />
+                                </div>
+                                <div>
+                                    <span className="text-sm font-bold block mb-2">インポート進捗</span>
+                                    <progress className="progress progress-primary w-full" value="0" max="100"></progress>
+                                </div>
                             </div>
-                            <div>
-                                <span className="text-sm font-bold block mb-2">インポート進捗</span>
-                                <progress className="progress progress-primary w-full" value="0" max="100"></progress>
+                        </div>
+                    </div>
+
+                    <div className="card bg-base-100 shadow-sm border border-base-200">
+                        <div className="card-body">
+                            <h2 className="card-title text-base">システム辞書ステータス</h2>
+                            <div className="flex flex-col gap-4 mt-2">
+                                <div className="stat px-0 py-2">
+                                    <div className="stat-title text-sm">総エントリ数</div>
+                                    <div className="stat-value text-primary text-3xl font-mono">1,240,512</div>
+                                </div>
+                                <div className="stat px-0 py-2 border-t border-base-200">
+                                    <div className="stat-title text-sm">登録済みソース</div>
+                                    <div className="stat-value text-xl">5</div>
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <div className="card bg-base-100 shadow-sm border border-base-200">
-                    <div className="card-body">
-                        <h2 className="card-title text-base">システム辞書ステータス</h2>
-                        <div className="flex flex-col gap-4 mt-2">
-                            <div className="stat px-0 py-2">
-                                <div className="stat-title text-sm">総エントリ数</div>
-                                <div className="stat-value text-primary text-3xl font-mono">1,240,512</div>
-                            </div>
-                            <div className="stat px-0 py-2 border-t border-base-200">
-                                <div className="stat-title text-sm">登録済みソース</div>
-                                <div className="stat-value text-xl">5</div>
-                            </div>
+                {/* ソーステーブル */}
+                <div className="flex-1 min-h-0 flex flex-col">
+                    <DataTable
+                        columns={SOURCE_COLUMNS}
+                        data={DICT_SOURCES}
+                        title="登録済み辞書ソース一覧"
+                        selectedRowId={selectedRowId}
+                        onRowSelect={handleRowSelect}
+                        headerActions={tableHeaderActions}
+                    />
+                </div>
+
+                {isImporting && (
+                    <div className="absolute inset-0 bg-base-100/50 backdrop-blur-[1px] z-10 flex flex-col items-center justify-center gap-4 rounded-xl border border-base-200">
+                        <span className="loading loading-spinner text-primary loading-lg"></span>
+                        <div className="flex flex-col items-center gap-1">
+                            <span className="font-bold text-lg text-base-content/70">XML辞書データをインポート中...</span>
+                            <span className="text-sm text-base-content/50">ファイルの解析とデータベースへのマージを行っています</span>
                         </div>
                     </div>
-                </div>
+                )}
             </div>
 
-            {/* ソーステーブル */}
-            <DataTable
-                columns={SOURCE_COLUMNS}
-                data={DICT_SOURCES}
-                title="登録済み辞書ソース一覧"
-                selectedRowId={selectedRowId}
-                onRowSelect={handleRowSelect}
-                headerActions={tableHeaderActions}
-            />
+            {/* 下部ステータスバー */}
+            <div className="flex justify-between items-center bg-base-200 p-2 rounded-xl border shrink-0">
+                <span className="text-sm font-bold text-gray-500 ml-2">Job: DictionaryImport ({isImporting ? 'Running' : 'Stopped'})</span>
+                <div className="flex gap-2">
+                    <button
+                        className={`btn btn-sm ${isImporting ? 'btn-ghost' : 'btn-outline'}`}
+                        onClick={() => setIsImporting(!isImporting)}
+                    >
+                        {isImporting ? '一時停止' : '再開 (デモ)'}
+                    </button>
+                </div>
+            </div>
 
             {/* 詳細ペイン */}
             <DetailPane

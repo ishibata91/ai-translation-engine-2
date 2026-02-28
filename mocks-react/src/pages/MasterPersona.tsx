@@ -106,6 +106,7 @@ const NPC_COLUMNS: ColumnDef<NpcRow, unknown>[] = [
 const MasterPersona: React.FC = () => {
     const [selectedRow, setSelectedRow] = useState<NpcRow | null>(null);
     const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
+    const [isGenerating, setIsGenerating] = useState<boolean>(true);
 
     const handleRowSelect = (row: NpcRow | null, rowId: string | null) => {
         setSelectedRow(row);
@@ -171,7 +172,7 @@ const MasterPersona: React.FC = () => {
             </div>
 
             {/* 2ペインレイアウト (左: NPC テーブル, 右: PersonaDetail) */}
-            <div className="flex gap-4 flex-1 min-h-0 overflow-hidden">
+            <div className="flex gap-4 flex-1 min-h-0 overflow-hidden relative">
                 <div className="w-1/2 flex flex-col min-h-0 border border-base-200 rounded-xl bg-base-100 overflow-hidden">
                     <DataTable
                         columns={NPC_COLUMNS}
@@ -185,6 +186,32 @@ const MasterPersona: React.FC = () => {
 
                 <div className="w-1/2 flex flex-col min-h-0">
                     <PersonaDetail npc={selectedRow} />
+                </div>
+
+                {isGenerating && (
+                    <div className="absolute inset-0 bg-base-100/50 backdrop-blur-[1px] z-10 flex flex-col items-center justify-center gap-4 rounded-xl border border-base-200">
+                        <span className="loading loading-spinner text-primary loading-lg"></span>
+                        <div className="flex flex-col items-center gap-1">
+                            <span className="font-bold text-lg text-base-content/70">マスターペルソナを一括生成中...</span>
+                            <span className="text-sm text-base-content/50">選択されたJSONデータから全NPCのセリフを解析しています</span>
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            {/* 下部ステータスバー */}
+            <div className="flex justify-between items-center bg-base-200 p-2 rounded-xl border shrink-0">
+                <span className="text-sm font-bold text-gray-500 ml-2">Job: MasterPersonaGeneration ({isGenerating ? 'Running' : 'Stopped'})</span>
+                <div className="flex gap-2">
+                    <button
+                        className={`btn btn-sm ${isGenerating ? 'btn-ghost' : 'btn-outline'}`}
+                        onClick={() => setIsGenerating(!isGenerating)}
+                    >
+                        {isGenerating ? '一時停止' : '再開 (デモ)'}
+                    </button>
+                    <button className="btn btn-primary btn-sm" disabled={isGenerating}>
+                        生成データを確定
+                    </button>
                 </div>
             </div>
 

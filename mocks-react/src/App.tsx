@@ -6,6 +6,7 @@ import DictionaryBuilder from './pages/DictionaryBuilder';
 import MasterPersona from './pages/MasterPersona';
 import TranslationFlow from './pages/TranslationFlow';
 import Settings from './pages/Settings';
+import ThemeShowcase from './pages/ThemeShowcase';
 
 const App: React.FC = () => {
   return (
@@ -17,6 +18,7 @@ const App: React.FC = () => {
           <Route path="master_persona" element={<MasterPersona />} />
           <Route path="translation_flow" element={<TranslationFlow />} />
           <Route path="settings" element={<Settings />} />
+          <Route path="theme" element={<ThemeShowcase />} />
         </Route>
       </Routes>
     </BrowserRouter>

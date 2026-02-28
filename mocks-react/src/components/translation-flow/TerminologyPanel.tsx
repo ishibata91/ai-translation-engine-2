@@ -51,41 +51,13 @@ export const TerminologyPanel: React.FC<TerminologyPanelProps> = ({ isActive, on
         <div className={`tab-content-panel flex-col gap-4 h-full overflow-y-auto ${isActive ? 'flex' : 'hidden'}`}>
             <div className="alert alert-info shadow-sm shrink-0">
                 <span>Mod内から抽出された固有名詞や特殊用語を翻訳し、Mod専用辞書を構築・保存しています。</span>
-                <div className="flex-none">
-                    <button className="btn btn-sm btn-primary" onClick={handleNextClick}>用語翻訳を開始</button>
-                </div>
             </div>
 
             <div className="shrink-0">
                 <ModelSettings title="用語翻訳モデル設定" />
             </div>
 
-            {/* 統計サマリー */}
-            <div className="flex gap-4 shrink-0">
-                <div className="stat bg-base-100 border rounded-xl shadow-sm p-4">
-                    <div className="stat-title text-xs font-bold">抽出用語数</div>
-                    <div className="stat-value text-2xl">1,245</div>
-                    <div className="stat-desc">一意な抽出レコード</div>
-                </div>
-                <div className="stat bg-base-100 border rounded-xl shadow-sm p-4">
-                    <div className="stat-title text-xs font-bold">辞書マッチ (強制翻訳)</div>
-                    <div className="stat-value text-success text-2xl">892</div>
-                    <div className="stat-desc">LLMを介さず確定</div>
-                </div>
-                <div className="stat bg-base-100 border rounded-xl shadow-sm p-4">
-                    <div className="stat-title text-xs font-bold">LLM翻訳</div>
-                    <div className="stat-value text-primary text-2xl">353</div>
-                    <div className="stat-desc">新規・未知の用語</div>
-                </div>
-                <div className="stat bg-base-100 border rounded-xl shadow-sm p-4">
-                    <div className="stat-figure text-primary">
-                        <div className="radial-progress text-sm font-bold" style={{ '--value': 80, '--size': '3rem' } as React.CSSProperties}>80%</div>
-                    </div>
-                    <div className="stat-title text-xs font-bold">全体進捗</div>
-                    <div className="stat-value text-2xl">996</div>
-                    <div className="stat-desc">完了した用語</div>
-                </div>
-            </div>
+
 
             {/* 翻訳結果リスト */}
             <div className="flex-1 relative border rounded-xl bg-base-100 overflow-hidden flex flex-col">

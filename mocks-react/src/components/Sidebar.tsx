@@ -55,6 +55,12 @@ const Sidebar: React.FC = () => {
                         {!isCollapsed && <span className="ml-1 font-medium truncate">設定</span>}
                     </NavLink>
                 </li>
+                <li title="テーマ">
+                    <NavLink to="/theme" className={({ isActive }) => (`flex items-center p-2 ${isActive ? 'active' : ''} ${isCollapsed ? 'justify-center' : ''}`)}>
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6 shrink-0"><path strokeLinecap="round" strokeLinejoin="round" d="M4.098 19.902a3.75 3.75 0 0 0 5.304 0l6.401-6.402M6.75 21A3.75 3.75 0 0 1 3 17.25l7.22-7.22a3.75 3.75 0 0 1 5.304 5.304L8.304 22.546ZM18 10.5l-4.5-4.5m4.5 4.5 1.5-1.5a3.182 3.182 0 1 0-4.5-4.5l-1.5 1.5m4.5 4.5-4.5-4.5" /></svg>
+                        {!isCollapsed && <span className="ml-1 font-medium truncate">テーマ確認</span>}
+                    </NavLink>
+                </li>
             </ul>
         </div>
     );

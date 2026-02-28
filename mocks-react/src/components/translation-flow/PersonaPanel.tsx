@@ -11,20 +11,18 @@ interface PersonaPanelProps {
 
 export const PersonaPanel: React.FC<PersonaPanelProps> = ({ isActive, onNext }) => {
     const [selectedNpc, setSelectedNpc] = useState<NpcRow | null>(NPC_DATA[0]);
+    const [isGenerating, setIsGenerating] = useState<boolean>(true);
 
     return (
         <div className={`tab-content-panel flex-col gap-4 h-full ${isActive ? 'flex' : 'hidden'}`}>
             <div className="alert alert-info shadow-sm shrink-0">
                 <span>検出されたNPCのペルソナ（性格・口調）を生成します。マスター辞書に存在すればキャッシュを利用します。</span>
-                <div className="flex-none">
-                    <button className="btn btn-sm btn-primary">LLMで一括生成</button>
-                </div>
             </div>
 
             <div className="shrink-0">
                 <ModelSettings title="ペルソナ生成モデル設定" />
             </div>
-            <div className="flex gap-4 flex-1 min-h-0 overflow-hidden">
+            <div className="flex gap-4 flex-1 min-h-0 overflow-hidden relative">
                 {/* 左：NPCリスト */}
                 <div className="w-1/3 border rounded-xl bg-base-100 flex flex-col min-h-0 overflow-hidden">
                     <ul className="menu w-full bg-base-100 flex-1 overflow-y-auto">
@@ -48,9 +46,28 @@ export const PersonaPanel: React.FC<PersonaPanelProps> = ({ isActive, onNext }) 
                 <div className="w-2/3 flex flex-col min-h-0">
                     <PersonaDetail npc={selectedNpc} />
                 </div>
+
+                {isGenerating && (
+                    <div className="absolute inset-0 bg-base-100/50 backdrop-blur-[1px] z-10 flex flex-col items-center justify-center gap-4 rounded-xl">
+                        <span className="loading loading-spinner text-primary loading-lg"></span>
+                        <span className="font-bold text-lg text-base-content/70">ペルソナを自動生成中...</span>
+                    </div>
+                )}
             </div>
-            <div className="flex justify-end gap-2 shrink-0">
-                <button className="btn btn-primary" onClick={onNext}>ペルソナを確定して次へ</button>
+
+            <div className="flex justify-between items-center bg-base-200 p-2 rounded-xl border shrink-0 mt-auto">
+                <span className="text-sm font-bold text-gray-500 ml-2">Job: PersonaGeneration ({isGenerating ? 'Running' : 'Stopped'})</span>
+                <div className="flex gap-2">
+                    <button
+                        className={`btn btn-sm ${isGenerating ? 'btn-ghost' : 'btn-outline'}`}
+                        onClick={() => setIsGenerating(!isGenerating)}
+                    >
+                        {isGenerating ? '一時停止' : '再開'}
+                    </button>
+                    <button className="btn btn-primary btn-sm" onClick={onNext} disabled={isGenerating}>
+                        ペルソナを確定して次へ
+                    </button>
+                </div>
             </div>
         </div>
     );

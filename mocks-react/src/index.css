@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 @plugin "daisyui" {
-  themes: dark;
+  themes: dark --default, light, cupcake, bumblebee, emerald, corporate, synthwave, retro, cyberpunk, valentine;
 }
 
 @plugin "@tailwindcss/typography";

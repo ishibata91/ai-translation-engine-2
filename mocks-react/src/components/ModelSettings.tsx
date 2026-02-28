@@ -110,7 +110,7 @@ const ModelSettings: React.FC<Props> = ({ title = 'モデル設定' }) => {
                             </div>
                             <input
                                 type="range" min="0" max="2" step="0.01"
-                                className="range range-primary range-sm"
+                                className="range range-primary range-sm w-full"
                                 value={temperature}
                                 onChange={(e) => setTemperature(parseFloat(e.target.value))}
                             />
@@ -129,7 +129,7 @@ const ModelSettings: React.FC<Props> = ({ title = 'モデル設定' }) => {
                                 </div>
                                 <input
                                     type="range" min="1" max="100" step="1"
-                                    className="range range-secondary range-sm"
+                                    className="range range-secondary range-sm w-full"
                                     value={topK}
                                     onChange={(e) => setTopK(parseInt(e.target.value))}
                                 />
@@ -141,7 +141,7 @@ const ModelSettings: React.FC<Props> = ({ title = 'モデル設定' }) => {
                                 </div>
                                 <input
                                     type="range" min="0" max="1" step="0.01"
-                                    className="range range-secondary range-sm"
+                                    className="range range-secondary range-sm w-full"
                                     value={topP}
                                     onChange={(e) => setTopP(parseFloat(e.target.value))}
                                 />
@@ -154,7 +154,6 @@ const ModelSettings: React.FC<Props> = ({ title = 'モデル設定' }) => {
                         <div className="flex flex-col gap-1">
                             <label className="label pb-0">
                                 <span className="label-text font-bold">最大コンテキスト長 (トークン)</span>
-                                <span className="label-text-alt text-base-content/50">LM Studio側のモデル設定と合わせること</span>
                             </label>
                             <div className="flex gap-2 items-center">
                                 <input
@@ -220,7 +219,7 @@ const ModelSettings: React.FC<Props> = ({ title = 'モデル設定' }) => {
                             </div>
                             <input
                                 type="range" min="1" max="16" step="1"
-                                className="range range-primary range-sm"
+                                className="range range-primary range-sm w-full"
                                 value={parallel}
                                 onChange={(e) => setParallel(parseInt(e.target.value))}
                             />

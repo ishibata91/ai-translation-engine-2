@@ -1,10 +1,12 @@
-import React from 'react';
+import React, { useState } from 'react';
 
 interface ExportPanelProps {
     isActive: boolean;
 }
 
 export const ExportPanel: React.FC<ExportPanelProps> = ({ isActive }) => {
+    const [isExporting, setIsExporting] = useState<boolean>(true);
+
     return (
         <div className={`tab-content-panel flex-col gap-4 h-full overflow-y-auto ${isActive ? 'flex' : 'hidden'}`}>
             <div className="alert alert-success shadow-sm text-white shrink-0">
@@ -13,7 +15,7 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({ isActive }) => {
                 </svg>
                 <span>翻訳フェーズが完了しました。成果物をエクスポートできます。</span>
             </div>
-            <div className="card bg-base-100 border border-base-200 flex-1 shadow-sm">
+            <div className="card bg-base-100 border border-base-200 flex-1 shadow-sm relative overflow-hidden">
                 <div className="card-body items-center text-center justify-center gap-6">
                     <h2 className="card-title text-2xl font-bold">エクスポート設定</h2>
 
@@ -38,11 +40,40 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({ isActive }) => {
                     </div>
 
                     <div className="card-actions mt-6 w-full max-w-md flex flex-col gap-4">
-                        <button className="btn btn-primary btn-lg w-full">成果物をダウンロード</button>
+                        <button className="btn btn-primary btn-lg w-full" disabled={isExporting}>
+                            {isExporting ? (
+                                <>
+                                    <span className="loading loading-spinner"></span>
+                                    処理中...
+                                </>
+                            ) : (
+                                "成果物をダウンロード"
+                            )}
+                        </button>
                     </div>
                     <div className="text-sm text-gray-400 mt-4">
                         最終更新: 2026/02/26 23:09
                     </div>
+                </div>
+                {isExporting && (
+                    <div className="absolute inset-0 bg-base-100/50 backdrop-blur-[1px] z-10 flex flex-col items-center justify-center gap-4">
+                        <span className="loading loading-spinner text-primary loading-lg"></span>
+                        <div className="flex flex-col items-center gap-1">
+                            <span className="font-bold text-lg text-base-content/70">データを生成中...</span>
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            <div className="flex justify-between items-center bg-base-200 p-2 rounded-xl border shrink-0 mt-auto">
+                <span className="text-sm font-bold text-gray-500 ml-2">Job: ExportParsing ({isExporting ? 'Running' : 'Stopped'})</span>
+                <div className="flex gap-2">
+                    <button
+                        className={`btn btn-sm ${isExporting ? 'btn-ghost' : 'btn-outline'}`}
+                        onClick={() => setIsExporting(!isExporting)}
+                    >
+                        {isExporting ? '一時停止' : '再開 (デモ)'}
+                    </button>
                 </div>
             </div>
         </div>
