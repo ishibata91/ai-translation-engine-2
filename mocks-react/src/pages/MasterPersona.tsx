@@ -2,31 +2,10 @@ import React, { useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
 import ModelSettings from '../components/ModelSettings';
 import DataTable from '../components/DataTable';
-import DetailPane from '../components/DetailPane';
-
-// ── 型定義 ──────────────────────────────────────────────
-type NpcStatus = '完了' | '生成中' | '抽出完了' | 'エラー';
-
-interface Dialogue {
-    recordType: string;
-    editorId: string;
-    source: string;
-    translation: string;
-}
-
-interface NpcRow {
-    formId: string;
-    name: string;
-    dialogueCount: number;
-    status: NpcStatus;
-    updatedAt: string;
-    promptHistory: string[];
-    rawResponse: string;
-    dialogues: Dialogue[];
-}
-
+import PersonaDetail from '../components/PersonaDetail';
+import { type NpcRow, type NpcStatus, STATUS_BADGE } from '../types/npc';
 // ── モックデータ ─────────────────────────────────────────
-const NPC_DATA: NpcRow[] = [
+export const NPC_DATA: NpcRow[] = [
     {
         formId: '00013B9B', name: 'UlfricStormcloak', dialogueCount: 342, status: '完了',
         updatedAt: '2026-02-26 14:02',
@@ -93,14 +72,6 @@ const NPC_DATA: NpcRow[] = [
     },
 ];
 
-// ── ステータスバッジ ──────────────────────────────────────
-const STATUS_BADGE: Record<NpcStatus, string> = {
-    '完了': 'badge-success',
-    '生成中': 'badge-info',
-    '抽出完了': 'badge-ghost',
-    'エラー': 'badge-error',
-};
-
 // ── 列定義 ───────────────────────────────────────────────
 const NPC_COLUMNS: ColumnDef<NpcRow, unknown>[] = [
     {
@@ -131,18 +102,14 @@ const NPC_COLUMNS: ColumnDef<NpcRow, unknown>[] = [
     },
 ];
 
-type DetailTab = 'dialogues' | 'prompt' | 'raw' | 'meta';
-
 // ── ページコンポーネント ──────────────────────────────────
 const MasterPersona: React.FC = () => {
     const [selectedRow, setSelectedRow] = useState<NpcRow | null>(null);
     const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
-    const [detailTab, setDetailTab] = useState<DetailTab>('dialogues');
 
     const handleRowSelect = (row: NpcRow | null, rowId: string | null) => {
         setSelectedRow(row);
         setSelectedRowId(rowId);
-        if (row) setDetailTab('dialogues');
     };
 
 
@@ -203,110 +170,23 @@ const MasterPersona: React.FC = () => {
                 <ModelSettings title="ペルソナ生成モデル設定" />
             </div>
 
-            {/* NPC テーブル (flex-1 で残り縦幅を占有) */}
-            <DataTable
-                columns={NPC_COLUMNS}
-                data={NPC_DATA}
-                title="NPC処理ステータス (Skyrim.esm)"
-                selectedRowId={selectedRowId}
-                onRowSelect={handleRowSelect}
-                enableColumnFilter
-            />
+            {/* 2ペインレイアウト (左: NPC テーブル, 右: PersonaDetail) */}
+            <div className="flex gap-4 flex-1 min-h-0 overflow-hidden">
+                <div className="w-1/2 flex flex-col min-h-0 border border-base-200 rounded-xl bg-base-100 overflow-hidden">
+                    <DataTable
+                        columns={NPC_COLUMNS}
+                        data={NPC_DATA}
+                        title="NPC処理ステータス (Skyrim.esm)"
+                        selectedRowId={selectedRowId}
+                        onRowSelect={handleRowSelect}
+                        enableColumnFilter
+                    />
+                </div>
 
-            {/* 詳細ペイン (選択行があると下からスライドイン) */}
-            <DetailPane
-                isOpen={!!selectedRow}
-                onClose={() => handleRowSelect(null, null)}
-                title={selectedRow ? `詳細: ${selectedRow.name} (${selectedRow.formId})` : '詳細'}
-                defaultHeight={280}
-            >
-                {selectedRow && (
-                    <div className="flex flex-col gap-3 h-full">
-                        {/* タブ */}
-                        <div className="tabs tabs-boxed bg-base-200 w-fit shrink-0">
-                            <a className={`tab ${detailTab === 'dialogues' ? 'tab-active' : ''}`} onClick={() => setDetailTab('dialogues')}>セリフ一覧</a>
-                            <a className={`tab ${detailTab === 'prompt' ? 'tab-active' : ''}`} onClick={() => setDetailTab('prompt')}>プロンプト履歴</a>
-                            <a className={`tab ${detailTab === 'raw' ? 'tab-active' : ''}`} onClick={() => setDetailTab('raw')}>RAWレスポンス</a>
-                            <a className={`tab ${detailTab === 'meta' ? 'tab-active' : ''}`} onClick={() => setDetailTab('meta')}>メタ情報</a>
-                        </div>
-
-                        {/* セリフ一覧タブ */}
-                        {detailTab === 'dialogues' && (
-                            <div className="flex-1 overflow-y-auto min-h-0">
-                                {selectedRow.dialogues.length > 0 ? (
-                                    <table className="table table-zebra table-pin-rows w-full text-sm">
-                                        <thead>
-                                            <tr>
-                                                <th className="w-16">Type</th>
-                                                <th className="w-48">EditorID</th>
-                                                <th>原文</th>
-                                                <th>訳文</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {selectedRow.dialogues.map((d, i) => (
-                                                <tr key={i}>
-                                                    <td><div className="badge badge-outline badge-sm font-mono">{d.recordType}</div></td>
-                                                    <td className="font-mono text-xs">{d.editorId}</td>
-                                                    <td className="text-base-content/70">{d.source}</td>
-                                                    <td>{d.translation}</td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                ) : (
-                                    <div className="text-sm text-base-content/40 p-2">(セリフデータなし)</div>
-                                )}
-                            </div>
-                        )}
-
-                        {/* プロンプト履歴タブ */}
-                        {detailTab === 'prompt' && (
-                            <div className="mockup-code flex-1 overflow-y-auto bg-base-200 text-base-content text-sm">
-                                {selectedRow.promptHistory.length > 0
-                                    ? selectedRow.promptHistory.map((line, i) => (
-                                        <pre key={i} data-prefix={i + 1}><code>{line}</code></pre>
-                                    ))
-                                    : <pre data-prefix="—"><code className="text-base-content/40">(プロンプト履歴なし)</code></pre>
-                                }
-                            </div>
-                        )}
-
-                        {/* RAWレスポンスタブ */}
-                        {detailTab === 'raw' && (
-                            <div className="mockup-code flex-1 overflow-y-auto bg-base-200 text-base-content text-sm">
-                                <pre data-prefix=">"><code>{selectedRow.rawResponse}</code></pre>
-                            </div>
-                        )}
-
-                        {/* メタ情報タブ */}
-                        {detailTab === 'meta' && (
-                            <div className="flex flex-col gap-2 text-sm">
-                                <div className="flex gap-4">
-                                    <span className="font-bold w-32">FormID</span>
-                                    <span className="font-mono">{selectedRow.formId}</span>
-                                </div>
-                                <div className="flex gap-4">
-                                    <span className="font-bold w-32">NPC名</span>
-                                    <span>{selectedRow.name}</span>
-                                </div>
-                                <div className="flex gap-4">
-                                    <span className="font-bold w-32">ステータス</span>
-                                    <div className={`badge badge-sm ${STATUS_BADGE[selectedRow.status]}`}>{selectedRow.status}</div>
-                                </div>
-                                <div className="flex gap-4">
-                                    <span className="font-bold w-32">セリフ数</span>
-                                    <span className="font-mono">{selectedRow.dialogueCount} 行</span>
-                                </div>
-                                <div className="flex gap-4">
-                                    <span className="font-bold w-32">生成日時</span>
-                                    <span>{selectedRow.updatedAt}</span>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                )}
-            </DetailPane>
+                <div className="w-1/2 flex flex-col min-h-0">
+                    <PersonaDetail npc={selectedRow} />
+                </div>
+            </div>
 
             {/* ペルソナ確認モーダル */}
             <dialog id="persona_modal" className="modal">

@@ -22,9 +22,7 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({ isActive }) => {
                             <span className="label-text font-bold">出力形式</span>
                         </label>
                         <select className="select select-bordered w-full">
-                            <option>xTranslator 用 XML (.xml) - 推奨</option>
-                            <option>テキスト一覧 (.csv)</option>
-                            <option>JSON形式 (.json)</option>
+                            <option>xTranslator 用 XML (.xml)</option>
                         </select>
                     </div>
 
@@ -41,7 +39,6 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({ isActive }) => {
 
                     <div className="card-actions mt-6 w-full max-w-md flex flex-col gap-4">
                         <button className="btn btn-primary btn-lg w-full">成果物をダウンロード</button>
-                        <button className="btn btn-outline btn-sm w-full">プロジェクトをアーカイブ</button>
                     </div>
                     <div className="text-sm text-gray-400 mt-4">
                         最終更新: 2026/02/26 23:09

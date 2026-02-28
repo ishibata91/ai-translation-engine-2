@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import GridEditor from '../GridEditor';
 import type { GridColumnDef } from '../GridEditor';
+import ModelSettings from '../ModelSettings';
 
 interface TerminologyPanelProps {
     isActive: boolean;
@@ -53,6 +54,10 @@ export const TerminologyPanel: React.FC<TerminologyPanelProps> = ({ isActive, on
                 <div className="flex-none">
                     <button className="btn btn-sm btn-primary" onClick={handleNextClick}>用語翻訳を開始</button>
                 </div>
+            </div>
+
+            <div className="shrink-0">
+                <ModelSettings title="用語翻訳モデル設定" />
             </div>
 
             {/* 統計サマリー */}

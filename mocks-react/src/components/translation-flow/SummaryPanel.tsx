@@ -1,11 +1,53 @@
-import React from 'react';
+import React, { useState } from 'react';
+import type { ColumnDef } from '@tanstack/react-table';
+import ModelSettings from '../ModelSettings';
+import DataTable from '../DataTable';
 
 interface SummaryPanelProps {
     isActive: boolean;
     onNext: () => void;
 }
 
+interface SummaryRow {
+    type: string;
+    typeColor: string;
+    target: string;
+    status: string;
+    statusColor: string;
+    content: React.ReactNode;
+}
+
+const SUMMARY_DATA: SummaryRow[] = [
+    { type: 'Book', typeColor: 'badge-primary', target: 'The Lusty Argonian Maid, v1', status: '完了', statusColor: 'badge-success', content: 'アルゴニアンのメイドであるリフトスと、主人のクラシウス・キュリオの際どい会話劇。比喩表現が多用される。' },
+    { type: 'Dialog', typeColor: 'badge-secondary', target: 'MQ101_UlfricExecution', status: '完了', statusColor: 'badge-success', content: 'ヘルゲンでの処刑シーン。帝国軍によるストームクローク兵の処刑と、突然のドラゴンの襲撃。緊迫した雰囲気。' },
+    { type: 'Dialog', typeColor: 'badge-secondary', target: 'MQ102_RiverwoodArrive', status: '未生成', statusColor: 'badge-ghost', content: <span className="text-gray-400 italic">（未生成）</span> },
+];
+
+const SUMMARY_COLUMNS: ColumnDef<SummaryRow, any>[] = [
+    {
+        accessorKey: 'type',
+        header: '種別',
+        cell: (info) => <span className={`badge ${info.row.original.typeColor} badge-sm text-white`}>{info.getValue<string>()}</span>,
+    },
+    {
+        accessorKey: 'target',
+        header: '対象レコード/シーン',
+    },
+    {
+        accessorKey: 'status',
+        header: '状態',
+        cell: (info) => <span className={`badge ${info.row.original.statusColor} badge-sm`}>{info.getValue<string>()}</span>,
+    },
+    {
+        accessorKey: 'content',
+        header: '要約内容',
+        cell: (info) => <div className="text-sm">{info.getValue<React.ReactNode>()}</div>,
+    }
+];
+
 export const SummaryPanel: React.FC<SummaryPanelProps> = ({ isActive, onNext }) => {
+    const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
+
     return (
         <div className={`tab-content-panel flex-col gap-4 h-full ${isActive ? 'flex' : 'hidden'}`}>
             <div className="alert alert-info shadow-sm shrink-0">
@@ -14,38 +56,20 @@ export const SummaryPanel: React.FC<SummaryPanelProps> = ({ isActive, onNext }) 
                     <button className="btn btn-sm btn-primary">要約の生成開始</button>
                 </div>
             </div>
-            <div className="overflow-y-auto border rounded-xl flex-1 bg-base-100">
-                <table className="table table-zebra table-pin-rows w-full">
-                    <thead>
-                        <tr>
-                            <th>種別</th>
-                            <th>対象レコード/シーン</th>
-                            <th>状態</th>
-                            <th>要約内容</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td><span className="badge badge-primary badge-sm text-white">Book</span></td>
-                            <td>The Lusty Argonian Maid, v1</td>
-                            <td><span className="badge badge-success badge-sm">完了</span></td>
-                            <td className="text-sm">アルゴニアンのメイドであるリフトスと、主人のクラシウス・キュリオの際どい会話劇。比喩表現が多用される。</td>
-                        </tr>
-                        <tr>
-                            <td><span className="badge badge-secondary badge-sm text-white">Dialog</span></td>
-                            <td>MQ101_UlfricExecution</td>
-                            <td><span className="badge badge-success badge-sm">完了</span></td>
-                            <td className="text-sm">ヘルゲンでの処刑シーン。帝国軍によるストームクローク兵の処刑と、突然のドラゴンの襲撃。緊迫した雰囲気。</td>
-                        </tr>
-                        <tr>
-                            <td><span className="badge badge-secondary badge-sm text-white">Dialog</span></td>
-                            <td>MQ102_RiverwoodArrive</td>
-                            <td><span className="badge badge-ghost badge-sm">未生成</span></td>
-                            <td className="text-gray-400 italic">（未生成）</td>
-                        </tr>
-                    </tbody>
-                </table>
+
+            <div className="shrink-0">
+                <ModelSettings title="要約生成モデル設定" />
             </div>
+
+            <div className="flex-1 flex flex-col min-h-0">
+                <DataTable
+                    columns={SUMMARY_COLUMNS}
+                    data={SUMMARY_DATA}
+                    selectedRowId={selectedRowId}
+                    onRowSelect={(_row, id) => setSelectedRowId(id)}
+                />
+            </div>
+
             <div className="flex justify-end gap-2 shrink-0">
                 <button className="btn btn-primary" onClick={onNext}>要約を確定して次へ</button>
             </div>
