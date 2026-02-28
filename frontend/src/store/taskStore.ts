@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { FrontendTask } from '../types/task'
-import * as Events from '../wailsjs/wailsjs/runtime/runtime'
-import { GetActiveTasks, ResumeTask, CancelTask } from '../wailsjs/wailsjs/go/task/Bridge'
+import * as Events from '../wailsjs/runtime/runtime'
+import { GetActiveTasks, ResumeTask, CancelTask } from '../wailsjs/go/task/Bridge'
 
 interface TaskState {
     tasks: Record<string, FrontendTask>;
@@ -46,10 +46,14 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     },
 
     fetchActiveTasks: async () => {
+        if (typeof GetActiveTasks !== 'function') {
+            console.warn('Wails GetActiveTasks binding is not available');
+            return;
+        }
         set({ isLoading: true });
         try {
             const tasks = (await GetActiveTasks() as any) as FrontendTask[];
-            get().setTasks(tasks);
+            get().setTasks(tasks || []);
         } catch (error) {
             console.error('Failed to fetch active tasks:', error);
         } finally {
@@ -76,8 +80,17 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     }
 }));
 
+let listenersInitialized = false;
+
 // Initialize event listeners
 export const initTaskListeners = () => {
+    if (listenersInitialized) return;
+
+    if (typeof Events.EventsOn !== 'function') {
+        console.warn('Wails EventsOn is not available');
+        return;
+    }
+
     Events.EventsOn('task:updated', (task: FrontendTask) => {
         useTaskStore.getState().updateTask(task);
     });
@@ -86,4 +99,6 @@ export const initTaskListeners = () => {
         console.log('Phase completed:', payload);
         // Additional handling can be added here (e.g., refetching data related to the task)
     });
+
+    listenersInitialized = true;
 };

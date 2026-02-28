@@ -3,8 +3,10 @@ import { useTaskStore } from '../store/taskStore';
 import { useNavigate } from 'react-router-dom';
 import { FrontendTask } from '../types/task';
 
+import { useShallow } from 'zustand/react/shallow';
+
 const Dashboard: React.FC = () => {
-    const tasks = useTaskStore(state => Object.values(state.tasks));
+    const tasks = useTaskStore(useShallow(state => Object.values(state.tasks)));
     const resumeTask = useTaskStore(state => state.resumeTask);
     const cancelTask = useTaskStore(state => state.cancelTask);
     const navigate = useNavigate();
