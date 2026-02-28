@@ -77,12 +77,12 @@ This skill allows you to batch-archive changes, handling spec conflicts intellig
    Display a table summarizing all changes:
 
    ```
-   | Change               | Artifacts | Tasks | Specs   | Conflicts | Status |
-   |---------------------|-----------|-------|---------|-----------|--------|
-   | schema-management   | Done      | 5/5   | 2 delta | None      | Ready  |
-   | project-config      | Done      | 3/3   | 1 delta | None      | Ready  |
-   | add-oauth           | Done      | 4/4   | 1 delta | auth (!)  | Ready* |
-   | add-verify-skill    | 1 left    | 2/5   | None    | None      | Warn   |
+   | Change            | Artifacts | Tasks | Specs   | Conflicts | Status |
+   | ----------------- | --------- | ----- | ------- | --------- | ------ |
+   | schema-management | Done      | 5/5   | 2 delta | None      | Ready  |
+   | project-config    | Done      | 3/3   | 1 delta | None      | Ready  |
+   | add-oauth         | Done      | 4/4   | 1 delta | auth (!)  | Ready* |
+   | add-verify-skill  | 1 left    | 2/5   | None    | None      | Warn   |
    ```
 
    For conflicts, show the resolution:
@@ -114,7 +114,8 @@ This skill allows you to batch-archive changes, handling spec conflicts intellig
    Process changes in the determined order (respecting conflict resolution):
 
    a. **Sync specs** if delta specs exist:
-      - Use the openspec-sync-specs approach (agent-driven intelligent merge)
+      - Read `openspec/config.yaml` to determine the `specsPath`.
+      - Use the openspec-sync-specs approach (agent-driven intelligent merge) merging into the main spec files located at `<specsPath>/<capability>/spec.md`.
       - For conflicts, apply in resolved order
       - Track if sync was done
 

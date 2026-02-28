@@ -47,8 +47,8 @@ Archive a completed change in the experimental workflow.
 
    Check for delta specs at `openspec/changes/<name>/specs/`. If none exist, proceed without sync prompt.
 
-   **If delta specs exist:**
-   - Compare each delta spec with its corresponding main spec at `openspec/specs/<capability>/spec.md`
+   - Read `openspec/config.yaml` to find the `specsPath` (e.g., `specs/` or `openspec/specs/`).
+   - Compare each delta spec with its corresponding main spec at `<specsPath>/<capability>/spec.md`
    - Determine what changes would be applied (adds, modifications, removals, renames)
    - Show a combined summary before prompting
 
