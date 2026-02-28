@@ -1,0 +1,90 @@
+{
+  "changeName": "port-layout-components",
+  "changeDir": "F:\\ai translation engine 2\\openspec\\changes\\port-layout-components",
+  "schemaName": "spec-driven",
+  "contextFiles": {
+    "proposal": "F:\\ai translation engine 2\\openspec\\changes\\port-layout-components\\proposal.md",
+    "specs": "F:\\ai translation engine 2\\openspec\\changes\\port-layout-components\\specs\\**\\*.md",
+    "design": "F:\\ai translation engine 2\\openspec\\changes\\port-layout-components\\design.md",
+    "tasks": "F:\\ai translation engine 2\\openspec\\changes\\port-layout-components\\tasks.md"
+  },
+  "progress": {
+    "total": 14,
+    "complete": 0,
+    "remaining": 14
+  },
+  "tasks": [
+    {
+      "id": "1",
+      "description": "1.1 `react-router-dom` 縺ｨ `zustand` 縺ｮ繝代ャ繧ｱ繝ｼ繧ｸ繧・`frontend` 縺ｫ繧､繝ｳ繧ｹ繝医・繝ｫ縺吶ｋ",
+      "done": false
+    },
+    {
+      "id": "2",
+      "description": "1.2 `frontend/src/store/uiStore.ts` 繧剃ｽ懈・縺励〇ustand縺ｮUI繧ｹ繝医い・・theme`, `isSidebarCollapsed`, `logViewerWidth`, `detailPane`迥ｶ諷具ｼ峨ｒ螳夂ｾｩ縺吶ｋ",
+      "done": false
+    },
+    {
+      "id": "3",
+      "description": "1.3 `frontend/src/hooks/useTheme.ts` 繧剃ｽ懈・縺励〇ustand縺ｮ繝・・繝樒憾諷九→HTML縺ｮ `data-theme` 螻樊ｧ縺翫ｈ縺ｳ `localStorage` 繧貞酔譛溘☆繧九ヵ繝・け繧貞ｮ溯｣・☆繧・,
+      "done": false
+    },
+    {
+      "id": "4",
+      "description": "2.1 `frontend/src/components/layout/Header.tsx` 繧呈眠隕丈ｽ懈・縺励～mocks-react` 縺九ｉ繝倥ャ繝繝ｼ縺ｮUI縺ｨ繝・・繝槫・繧頑崛縺亥宛蠕｡繧堤ｧｻ讀阪☆繧・,
+      "done": false
+    },
+    {
+      "id": "5",
+      "description": "2.2 `frontend/src/components/layout/Sidebar.tsx` 繧呈眠隕丈ｽ懈・縺励～mocks-react` 縺九ｉ繧ｵ繧､繝峨ヰ繝ｼ繧堤ｧｻ讀阪・幕髢牙宛蠕｡繧・Zustand (`isSidebarCollapsed`) 縺ｫ鄂ｮ縺肴鋤縺医ｋ",
+      "done": false
+    },
+    {
+      "id": "6",
+      "description": "2.3 `frontend/src/components/log/LogViewer.tsx` 繧呈眠隕丈ｽ懈・縺励～mocks-react` 縺九ｉ遘ｻ讀阪√Μ繧ｵ繧､繧ｺ譎ゅ・蟷・→繝ｭ繧ｰ驕ｸ謚樊凾縺ｮ `DetailPane` 繝医げ繝ｫ蛻ｶ蠕｡繧・Zustand 縺ｸ鄂ｮ縺肴鋤縺医ｋ",
+      "done": false
+    },
+    {
+      "id": "7",
+      "description": "2.4 `frontend/src/components/log/LogDetail.tsx` 繧・`mocks-react` 縺九ｉ縺昴・縺ｾ縺ｾ遘ｻ讀阪☆繧・,
+      "done": false
+    },
+    {
+      "id": "8",
+      "description": "2.5 `frontend/src/components/layout/DetailPane.tsx` 繧呈眠隕丈ｽ懈・縺励√す繝ｳ繧ｰ繝ｫ繝医Φ繝ｻ繝昴・繧ｿ繝ｫ縺ｨ縺励※蜍穂ｽ懊☆繧九ｈ縺・↓ Zustand 縺ｮ迥ｶ諷・(`detailPane.isOpen`, `type`, `payload`) 繧定ｳｼ隱ｭ縺吶ｋ繧医≧謾ｹ濶ｯ縺吶ｋ",
+      "done": false
+    },
+    {
+      "id": "9",
+      "description": "2.6 `frontend/src/components/layout/Layout.tsx` 繧呈眠隕丈ｽ懈・縺励√Ν繝ｼ繝・ぅ繝ｳ繧ｰ縺ｮ `Outlet` 縺ｨ荳願ｨ倥さ繝ｳ繝昴・繝阪Φ繝育ｾ､ (`Header`, `Sidebar`, `LogViewer`, `DetailPane`) 繧帝←蛻・↓驟咲ｽｮ縺吶ｋ繧ｳ繝ｳ繝・リ繧呈ｧ狗ｯ峨☆繧・,
+      "done": false
+    },
+    {
+      "id": "10",
+      "description": "2.7 `frontend/src/pages/Dashboard.tsx` 繧・`mocks-react` 縺九ｉ遘ｻ讀阪☆繧・,
+      "done": false
+    },
+    {
+      "id": "11",
+      "description": "3.1 `frontend/src/App.tsx` 繧呈隼菫ｮ縺励～react-router-dom`縺ｮ `HashRouter` 縺ｧ `Layout.tsx` 縺ｨ `Dashboard.tsx` 繧偵Ν繝ｼ繝・ぅ繝ｳ繧ｰ縺吶ｋ繧医≧險ｭ螳壹☆繧・,
+      "done": false
+    },
+    {
+      "id": "12",
+      "description": "3.2 繧｢繝励Μ繧偵ン繝ｫ繝峨・襍ｷ蜍輔＠縲ゞI繝・・繝槫・繧頑崛縺医√し繧､繝峨ヰ繝ｼ縺ｮ髢矩哩縲√Ν繝ｼ繝・ぅ繝ｳ繧ｰ縲´ogViewer縺ｮ繝ｪ繧ｵ繧､繧ｺ讖溯・縺係ails迺ｰ蠅・ｸ翫〒諠ｳ螳夐壹ｊ蜍穂ｽ懊☆繧九°遒ｺ隱阪☆繧・,
+      "done": false
+    },
+    {
+      "id": "13",
+      "description": "3.3 LogViewer 縺九ｉ驕ｩ蠖薙↑繝ｭ繧ｰ繧偵け繝ｪ繝・け縺励．etailPane 縺御ｸ矩Κ縺九ｉ繧ｹ繝ｩ繧､繝峨い繝・・縺励※隧ｳ邏ｰ縺瑚｡ｨ遉ｺ縺輔ｌ繧九°蜊倅ｽ薙ユ繧ｹ繝医☆繧・,
+      "done": false
+    },
+    {
+      "id": "14",
+      "description": "4.1 UI縺ｮ荳ｻ隕√↑讒矩螟画峩縺ｫ縺､縺・※縲∝ｿ・ｦ√↓蠢懊§縺ｦ `specs/architecture.md` 遲峨・蜈ｱ騾壹ラ繧ｭ繝･繝｡繝ｳ繝医↓陬懆ｶｳ隱ｬ譏弱ｒ霑ｽ險倥☆繧・,
+      "done": false
+    }
+  ],
+  "state": "ready",
+  "instruction": "Read context files, work through pending tasks, mark complete as you go.\nPause if you hit blockers or need clarification."
+}

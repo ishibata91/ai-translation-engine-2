@@ -292,3 +292,21 @@ graph TD
     
     PM -->|"6. Generate JSON"| Out_S
 ```
+
+---
+
+## 8. フロントエンド アーキテクチャ (UI Architecture)
+
+本アプリケーションのUIは、Wailsを利用してReact（Vite + TypeScript + TailwindCSS + DaisyUI）経由で提供されます。
+
+### 8.1 状態管理 (State Management)
+*   **Zustandの採用**: UIのレイアウト状態（サイドバーの開閉、ログビューアの幅など）や、現在選択されているログ情報など、クロスコンポーネントで共有すべき状態を管理するためにZustandを採用しています。これにより不要な再描画を防ぎます。
+*   **ローカルステートの分離**: 各コンポーネント内で完結する局所的な状態（開閉アニメーション中のフラグ等）は、引き続きローカルステート（`useState`）として管理し、グローバルストアの肥大化を防ぎます。
+
+### 8.2 コンポーネント設計 (Component Design)
+*   全体のレイアウトは `Layout.tsx` 内でコンテナとして定義し、個別の機能（`Header.tsx`, `Sidebar.tsx`, `LogViewer.tsx`, `DetailPane.tsx`）を独立したコンポーネントに分割しています。
+*   **シングルトン・ポータルパターン**: グローバルに1つだけ存在する `DetailPane`（詳細ペイン）は、Zustand上の状態（`isOpen`, `type`, `payload`）を監視して描画内容を切り替え、アプリ内のどのコンポーネントからでも詳細ペインを開ける設計としています。
+
+### 8.3 ルーティング (Routing)
+*   Wails環境における安全なページ遷移を実現するため、`react-router-dom` の `HashRouter` を採用しています。
+

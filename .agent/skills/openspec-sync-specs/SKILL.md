@@ -41,11 +41,13 @@ This is an **agent-driven** operation - you will read delta specs and directly e
 
    For each capability with a delta spec at `openspec/changes/<name>/specs/<capability>/spec.md`:
 
-   a. **Read the delta spec** to understand the intended changes
+   a. **First, determine the main specs path** by reading `openspec/config.yaml` and extracting the `specsPath` value (e.g., `specs/`, but it could be something else like `openspec/specs/`).
 
-   b. **Read the main spec** at `openspec/specs/<capability>/spec.md` (may not exist yet)
+   b. **Read the delta spec** to understand the intended changes
 
-   c. **Apply changes intelligently**:
+   c. **Read the main spec** at `<specsPath>/<capability>/spec.md` (may not exist yet)
+
+   d. **Apply changes intelligently**:
 
       **ADDED Requirements:**
       - If requirement doesn't exist in main spec → add it
@@ -65,8 +67,8 @@ This is an **agent-driven** operation - you will read delta specs and directly e
       **RENAMED Requirements:**
       - Find the FROM requirement, rename to TO
 
-   d. **Create new main spec** if capability doesn't exist yet:
-      - Create `openspec/specs/<capability>/spec.md`
+   e. **Create new main spec** if capability doesn't exist yet:
+      - Create `<specsPath>/<capability>/spec.md`
       - Add Purpose section (can be brief, mark as TBD)
       - Add Requirements section with the ADDED requirements
 
