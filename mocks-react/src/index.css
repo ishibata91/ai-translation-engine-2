@@ -1,0 +1,13 @@
+@import "tailwindcss";
+
+@plugin "daisyui" {
+  themes: dark;
+}
+
+@plugin "@tailwindcss/typography";
+
+@layer base {
+  body {
+    @apply h-screen overflow-hidden;
+  }
+}
