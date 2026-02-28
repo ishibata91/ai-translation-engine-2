@@ -57,9 +57,16 @@ func getCurrentVersion(ctx context.Context, db *sql.DB) (int, error) {
 func applyPendingMigrations(ctx context.Context, db *sql.DB, currentVersion int) error {
 	slog.DebugContext(ctx, "ENTER applyPendingMigrations", slog.Int("currentVersion", currentVersion))
 
-	targetVersion := 1
-	if currentVersion < targetVersion {
-		if err := runMigrationV1(ctx, db); err != nil {
+	targetVersion := 2
+	for v := currentVersion + 1; v <= targetVersion; v++ {
+		var err error
+		switch v {
+		case 1:
+			err = runMigrationV1(ctx, db)
+		case 2:
+			err = runMigrationV2(ctx, db)
+		}
+		if err != nil {
 			return err
 		}
 	}
@@ -70,6 +77,13 @@ func runMigrationV1(ctx context.Context, db *sql.DB) error {
 	slog.InfoContext(ctx, "ENTER runMigrationV1")
 
 	queries := buildV1MigrationQueries()
+	return executeMigrationQueries(ctx, db, queries)
+}
+
+func runMigrationV2(ctx context.Context, db *sql.DB) error {
+	slog.InfoContext(ctx, "ENTER runMigrationV2")
+
+	queries := buildV2MigrationQueries()
 	return executeMigrationQueries(ctx, db, queries)
 }
 
@@ -98,6 +112,25 @@ func buildV1MigrationQueries() []string {
 			PRIMARY KEY (namespace, key)
 		);`,
 		`INSERT INTO schema_version (version, applied_at) VALUES (1, ?);`,
+	}
+}
+
+// buildV2MigrationQueries returns the SQL statements for schema version 2.
+func buildV2MigrationQueries() []string {
+	return []string{
+		`CREATE TABLE IF NOT EXISTS frontend_tasks (
+			id TEXT PRIMARY KEY,
+			name TEXT NOT NULL,
+			type TEXT NOT NULL,
+			status TEXT NOT NULL,
+			phase TEXT NOT NULL,
+			progress REAL NOT NULL DEFAULT 0.0,
+			error_msg TEXT,
+			metadata TEXT,
+			created_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL
+		);`,
+		`INSERT INTO schema_version (version, applied_at) VALUES (2, ?);`,
 	}
 }
 

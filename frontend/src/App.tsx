@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { HashRouter, Routes, Route } from 'react-router-dom';
 import Layout from './components/layout/Layout';
 import Dashboard from './pages/Dashboard';
 import DictionaryBuilder from './pages/DictionaryBuilder';
+import { useTaskStore, initTaskListeners } from './store/taskStore';
 
 const PlaceholderPage: React.FC<{ title: string }> = ({ title }) => (
     <div className="flex items-center justify-center h-full w-full">
@@ -11,6 +12,13 @@ const PlaceholderPage: React.FC<{ title: string }> = ({ title }) => (
 );
 
 function App() {
+    const fetchActiveTasks = useTaskStore(state => state.fetchActiveTasks);
+
+    useEffect(() => {
+        initTaskListeners();
+        fetchActiveTasks();
+    }, [fetchActiveTasks]);
+
     return (
         <HashRouter>
             <Routes>

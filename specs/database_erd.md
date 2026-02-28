@@ -312,5 +312,43 @@ erDiagram
     }
 ```
 
+## frontend_tasks (UIタスク・進捗管理)
+
+フロントエンドと連携する非同期タスク（辞書構築、ペルソナ抽出、翻訳プロジェクト等）のメタデータと進捗状態を永続化し、クラッシュリカバーやフェーズに応じた画面遷移を可能にするコンテキストです。
+**データベース名:** `frontend_tasks.db` (管理用データベース)
+
+```mermaid
+%%{init: {'theme': 'dark', 'themeVariables': {
+  'primaryColor': '#2b2b2b',
+  'primaryTextColor': '#e0e0e0',
+  'primaryBorderColor': '#ffeb3b',
+  'lineColor': '#888888',
+  'secondaryColor': '#fbc02d',
+  'tertiaryColor': '#f57f17',
+  'mainBkg': '#1e1e1e',
+  'nodeBorder': '#5a5a5a'
+}}}%%
+erDiagram
+    tasks ||--o| schema_version : "schema"
+
+    tasks {
+        TEXT id PK "タスクID (UUID)"
+        TEXT name "タスク名/タイトル"
+        TEXT task_type "タスクの種別 (e.g. dictionary_import, translation_project)"
+        TEXT status "全体ステータス (PENDING/RUNNING/PAUSED/COMPLETED/FAILED/CANCELLED)"
+        TEXT phase "現在のフェーズ/ステップ (UI状態復元用)"
+        INTEGER progress "全体進捗 (0-100)"
+        TEXT metadata_json "設定値や再開用パラメータ (JSON)"
+        TEXT error_message "エラーメッセージ (nullable)"
+        DATETIME created_at "登録日時"
+        DATETIME updated_at "最終更新日時"
+    }
+
+    schema_version {
+        INTEGER version "現在のスキーマバージョン"
+        DATETIME applied_at "適用日時"
+    }
+```
+
 ## 補足事項
 - **Vertical Slice Architecture の原則**: VSAの原則（Architecture Section 5）に基づき、上記テーブルはDRY原則を避け「あえて分断」されています。各Slice（`config`, `dictionary`, `persona`, `terminology`）は自身が必要とするテーブルのみに依存し、他Sliceのテーブルに直接クエリを発行することはありません。
