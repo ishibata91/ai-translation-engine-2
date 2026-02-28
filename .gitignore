@@ -4,3 +4,11 @@
 .roo
 .roomodes
 .clinerules
+
+# Wails build artifacts
+build/bin/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/src/wailsjs/
