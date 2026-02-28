@@ -68,14 +68,40 @@ erDiagram
 }}}%%
 erDiagram
     %% Dictionary Slice
+    dlc_sources ||--o{ dlc_dictionary_entries : "1ソース = N エントリ"
+
+    dlc_sources {
+        INTEGER id PK "自動採番ID"
+        TEXT file_name "ファイル名 (e.g. Skyrim.esm) UNIQUE"
+        TEXT format "フォーマット (e.g. SSTXML)"
+        TEXT file_path "インポート元ファイルの絶対パス"
+        INTEGER file_size_bytes "ファイルサイズ (bytes)"
+        INTEGER entry_count "インポートされたエントリ数 (完了後に更新)"
+        TEXT status "インポート状態 (PENDING / IMPORTING / COMPLETED / ERROR)"
+        TEXT error_message "エラーメッセージ (ERROR時のみ, nullable)"
+        DATETIME imported_at "インポート完了日時 (nullable)"
+        DATETIME created_at "レコード作成日時"
+    }
+
     dlc_dictionary_entries {
         INTEGER id PK "自動採番ID"
+        INTEGER source_id FK "dlc_sources.id (インポート元ソース)"
         TEXT edid "Editor ID"
         TEXT record_type "レコードタイプ (e.g. BOOK:FULL)"
         TEXT source_text "原文(英語)"
         TEXT dest_text "翻訳文(日本語)"
     }
 ```
+
+### テーブル設計の補足
+
+| テーブル                 | 画面対応                                         | 変更頻度                          |
+| ------------------------ | ------------------------------------------------ | --------------------------------- |
+| `dlc_sources`            | 辞書構築画面①「登録済みソース一覧」              | ファイルインポート時のみ (低頻度) |
+| `dlc_dictionary_entries` | 辞書構築画面②「エントリ一覧」・③「エントリ編集」 | エントリ手動修正時 (中頻度)       |
+
+> [!NOTE]
+> `dlc_sources.entry_count` は `dlc_dictionary_entries` の行数と冗長になるが、一覧表示でのカウントクエリを省略するためのキャッシュカラムとして許容する。
 
 ## persona (ペルソナ生成)
 
