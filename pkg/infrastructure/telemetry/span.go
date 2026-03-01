@@ -36,7 +36,7 @@ func StartSpan(ctx context.Context, action ActionType) func() {
 	start := time.Now()
 
 	// 開始ログ
-	logger.DebugContext(ctx, "span.start",
+	logger.DebugContext(ctx, fmt.Sprintf("action: %s", action),
 		slog.String("action", string(action)),
 	)
 
@@ -44,7 +44,7 @@ func StartSpan(ctx context.Context, action ActionType) func() {
 		elapsed := time.Since(start)
 		ms := float64(elapsed.Microseconds()) / 1000.0
 
-		logger.DebugContext(ctx, "span.end",
+		logger.DebugContext(ctx, fmt.Sprintf("action: %s, %.0fms", action, ms),
 			slog.String("action", string(action)),
 			slog.Float64("duration_ms", ms),
 		)

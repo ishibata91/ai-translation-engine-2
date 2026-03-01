@@ -112,7 +112,7 @@ func TestStartSpan(t *testing.T) {
 	end()
 }
 
-// TestStartSpan_LogsOutput は StartSpan が span.start と span.end の
+// TestStartSpan_LogsOutput は StartSpan が開始と終了の
 // ログを出力することを確認する。
 func TestStartSpan_LogsOutput(t *testing.T) {
 	var buf bytes.Buffer
@@ -131,7 +131,7 @@ func TestStartSpan_LogsOutput(t *testing.T) {
 	if output == "" {
 		t.Error("expected log output from StartSpan, got empty")
 	}
-	// span.start と span.end の 2 行が出力されることを確認
+	// 開始と終了の 2 行が出力されることを確認
 	dec := json.NewDecoder(&buf)
 	var count int
 	for dec.More() {
