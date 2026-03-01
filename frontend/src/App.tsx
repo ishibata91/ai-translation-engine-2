@@ -3,6 +3,7 @@ import { HashRouter, Routes, Route } from 'react-router-dom';
 import Layout from './components/layout/Layout';
 import Dashboard from './pages/Dashboard';
 import DictionaryBuilder from './pages/DictionaryBuilder';
+import MasterPersona from './pages/MasterPersona';
 import { useTaskStore, initTaskListeners } from './store/taskStore';
 
 const PlaceholderPage: React.FC<{ title: string }> = ({ title }) => (
@@ -25,7 +26,7 @@ function App() {
                 <Route path="/" element={<Layout />}>
                     <Route index element={<Dashboard />} />
                     <Route path="dictionary" element={<DictionaryBuilder />} />
-                    <Route path="master_persona" element={<PlaceholderPage title="マスターペルソナ構築" />} />
+                    <Route path="master_persona" element={<MasterPersona />} />
                     <Route path="translation_flow" element={<PlaceholderPage title="翻訳プロジェクト" />} />
                     <Route path="settings" element={<PlaceholderPage title="設定" />} />
                     <Route path="theme" element={<PlaceholderPage title="テーマ確認" />} />

@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import ModelSettings from '../ModelSettings';
-import PersonaDetail from '../PersonaDetail';
-import { NPC_DATA } from '../../pages/MasterPersona';
-import { STATUS_BADGE, type NpcRow } from '../../types/npc';
+const ModelSettings = ({ title }: any) => <div className="p-4 border border-dashed border-base-300 text-center text-gray-500 rounded-xl">[{title} プレースホルダー]</div>;
+const PersonaDetail = ({ npc }: any) => <div className="p-4 text-center text-gray-400">Persona Detail Placeholder</div>;
+const NPC_DATA: any[] = [];
+const STATUS_BADGE: any = {};
+type NpcRow = any;
 
 interface PersonaPanelProps {
     isActive: boolean;

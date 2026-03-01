@@ -4,73 +4,6 @@ import ModelSettings from '../components/ModelSettings';
 import DataTable from '../components/DataTable';
 import PersonaDetail from '../components/PersonaDetail';
 import { type NpcRow, type NpcStatus, STATUS_BADGE } from '../types/npc';
-// ── モックデータ ─────────────────────────────────────────
-export const NPC_DATA: NpcRow[] = [
-    {
-        formId: '00013B9B', name: 'UlfricStormcloak', dialogueCount: 342, status: '完了',
-        updatedAt: '2026-02-26 14:02',
-        promptHistory: [
-            '[SYSTEM] You are a localization specialist for Skyrim...',
-            '[USER] Translate NPC dialogue. Speaker: UlfricStormcloak. Race: Nord. Voice: MaleEvenToned.',
-            '[ASSISTANT] 「ドラゴンボーンよ、俺と共にスカイリムのために戦え。」',
-        ],
-        rawResponse: '{"id":"chatcmpl-abc123","model":"gemini-2.0-flash","usage":{"prompt_tokens":1240,"completion_tokens":32},"choices":[{"message":{"content":"「ドラゴンボーンよ、俺と共にスカイリムのために戦え。」"}}]}',
-        dialogues: [
-            { recordType: 'INFO', editorId: 'DialogueUlfric001', source: "What is it? I'm in the middle of something.", translation: '何だ？今、手が離せないんだ。' },
-            { recordType: 'INFO', editorId: 'DialogueUlfric002', source: 'Victory or Sovngarde!', translation: '勝利か、ソブンガルデか！' },
-            { recordType: 'INFO', editorId: 'DialogueUlfric003', source: 'The Reach was ours, and it will be ours again.', translation: 'リーチは俺たちのものだった。そしてまた俺たちのものになる。' },
-            { recordType: 'DIAL', editorId: 'DialogueUlfricGreeting', source: 'Ulfric Stormcloak, at your service.', translation: 'ウルフリック・ストームクロークだ。世話になろう。' },
-            { recordType: 'INFO', editorId: 'DialogueUlfric004', source: 'Talos be with you.', translation: 'タロスのお在りを。' },
-        ],
-    },
-    {
-        formId: '0001A694', name: 'Tullius', dialogueCount: 298, status: '完了',
-        updatedAt: '2026-02-26 14:05',
-        promptHistory: [
-            '[SYSTEM] You are a localization specialist for Skyrim...',
-            '[USER] Translate NPC dialogue. Speaker: Tullius. Race: Imperial. Voice: MaleCommander.',
-            '[ASSISTANT] 「この反乱はすぐに終わらせる。帝国の意志は揺るがない。」',
-        ],
-        rawResponse: '{"id":"chatcmpl-def456","model":"gemini-2.0-flash","usage":{"prompt_tokens":1180,"completion_tokens":28},"choices":[{"message":{"content":"「この反乱はすぐに終わらせる。帝国の意志は揺るがない。」"}}]}',
-        dialogues: [
-            { recordType: 'INFO', editorId: 'DialogueTullius001', source: 'Rikke, get these men moving!', translation: 'リッケ、部下たちを動かせ！' },
-            { recordType: 'INFO', editorId: 'DialogueTullius002', source: 'For the Empire!', translation: '帝国のために！' },
-            { recordType: 'DIAL', editorId: 'DialogueTulliusGreeting', source: 'General Tullius. Commander of the Imperial Legion in Skyrim.', translation: 'タリアス将軍。スカイリム駐屯する帝国軍団の司令官だ。' },
-        ],
-    },
-    {
-        formId: '0001A695', name: 'Rikke', dialogueCount: 156, status: '生成中',
-        updatedAt: '-',
-        promptHistory: ['[SYSTEM] You are a localization specialist for Skyrim...'],
-        rawResponse: '(生成中...)',
-        dialogues: [
-            { recordType: 'INFO', editorId: 'DialogueRikke001', source: 'Yes, sir!', translation: 'はい、将軍！' },
-        ],
-    },
-    {
-        formId: '00013BA1', name: 'BalgruufTheGreater', dialogueCount: 210, status: '抽出完了',
-        updatedAt: '-',
-        promptHistory: [],
-        rawResponse: '(未実行)',
-        dialogues: [
-            { recordType: 'INFO', editorId: 'DialogueBalgruuf001', source: 'Ah, Dragonborn! Good to see you.', translation: 'ああ、ドラゴンボーン！会えて嬉しいぞ。' },
-            { recordType: 'INFO', editorId: 'DialogueBalgruuf002', source: "Whiterun's walls will hold, I assure you.", translation: 'ホワイトランの城壁は持たせる。保証する。' },
-            { recordType: 'DIAL', editorId: 'DialogueBalgruufAngle', source: 'What brings you to Dragonsreach?', translation: 'ドラゴンリーチに何の用か？' },
-        ],
-    },
-    {
-        formId: '0001A696', name: 'GalmarStoneFist', dialogueCount: 124, status: 'エラー',
-        updatedAt: '2026-02-26 14:10',
-        promptHistory: [
-            '[SYSTEM] You are a localization specialist for Skyrim...',
-            '[USER] Translate NPC dialogue. Speaker: GalmarStoneFist.',
-        ],
-        rawResponse: '{"error":{"code":429,"message":"Rate limit exceeded. Retry after 60 seconds."}}',
-        dialogues: [
-            { recordType: 'INFO', editorId: 'DialogueGalmar001', source: 'We fight for Skyrim!', translation: '向かうはスカイリムのために戦う！' },
-        ],
-    },
-];
 
 // ── 列定義 ───────────────────────────────────────────────
 const NPC_COLUMNS: ColumnDef<NpcRow, unknown>[] = [
@@ -104,9 +37,10 @@ const NPC_COLUMNS: ColumnDef<NpcRow, unknown>[] = [
 
 // ── ページコンポーネント ──────────────────────────────────
 const MasterPersona: React.FC = () => {
+    const [npcData] = useState<NpcRow[]>([]);
     const [selectedRow, setSelectedRow] = useState<NpcRow | null>(null);
     const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
-    const [isGenerating, setIsGenerating] = useState<boolean>(true);
+    const [isGenerating, setIsGenerating] = useState<boolean>(false);
 
     const handleRowSelect = (row: NpcRow | null, rowId: string | null) => {
         setSelectedRow(row);
@@ -142,7 +76,7 @@ const MasterPersona: React.FC = () => {
                             </div>
                             <div>
                                 <span className="mt-2 mb-1 block text-sm text-base-content/70 font-bold">全体進捗</span>
-                                <progress className="progress progress-primary w-full" value="45" max="100"></progress>
+                                <progress className="progress progress-primary w-full" value="0" max="100"></progress>
                             </div>
                         </div>
                     </div>
@@ -155,11 +89,11 @@ const MasterPersona: React.FC = () => {
                         <div className="grid grid-cols-2 gap-4 mt-2">
                             <div className="stat p-0">
                                 <div className="stat-title text-sm">登録済みNPC数</div>
-                                <div className="stat-value text-primary font-mono text-3xl">2,451</div>
+                                <div className="stat-value text-primary font-mono text-3xl">0</div>
                             </div>
                             <div className="stat p-0">
                                 <div className="stat-title text-sm">生成エラー</div>
-                                <div className="stat-value text-error font-mono text-3xl">12</div>
+                                <div className="stat-value text-error font-mono text-3xl">0</div>
                             </div>
                         </div>
                     </div>
@@ -176,7 +110,7 @@ const MasterPersona: React.FC = () => {
                 <div className="w-1/2 flex flex-col min-h-0 border border-base-200 rounded-xl bg-base-100 overflow-hidden">
                     <DataTable
                         columns={NPC_COLUMNS}
-                        data={NPC_DATA}
+                        data={npcData}
                         title="NPC処理ステータス (Skyrim.esm)"
                         selectedRowId={selectedRowId}
                         onRowSelect={handleRowSelect}
@@ -207,7 +141,7 @@ const MasterPersona: React.FC = () => {
                         className={`btn btn-sm ${isGenerating ? 'btn-ghost' : 'btn-outline'}`}
                         onClick={() => setIsGenerating(!isGenerating)}
                     >
-                        {isGenerating ? '一時停止' : '再開 (デモ)'}
+                        {isGenerating ? '一時停止' : '開始'}
                     </button>
                     <button className="btn btn-primary btn-sm" disabled={isGenerating}>
                         生成データを確定

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
-import ModelSettings from '../ModelSettings';
+const ModelSettings = ({ title }: any) => <div className="p-4 border border-dashed border-base-300 text-center text-gray-500 rounded-xl">[{title} プレースホルダー]</div>;
 import DataTable from '../DataTable';
 
 interface SummaryPanelProps {
