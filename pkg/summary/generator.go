@@ -13,6 +13,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/llm"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/telemetry"
 )
 
 const (
@@ -63,16 +64,11 @@ func (g *summaryGenerator) PreparePrompts(ctx context.Context, input any) ([]llm
 }
 
 func (g *summaryGenerator) ProposeJobs(ctx context.Context, input SummaryInput) (*ProposeOutput, error) {
-	start := time.Now()
-	slog.DebugContext(ctx, "ENTER Summary.ProposeJobs",
+	defer telemetry.StartSpan(ctx, telemetry.ActionSummary)()
+	slog.DebugContext(ctx, "starting summary job proposal",
 		slog.Int("dialogue_items", len(input.DialogueItems)),
 		slog.Int("quest_items", len(input.QuestItems)),
 	)
-	defer func() {
-		slog.DebugContext(ctx, "EXIT Summary.ProposeJobs",
-			slog.Duration("elapsed", time.Since(start)),
-		)
-	}()
 
 	output := &ProposeOutput{
 		Jobs:                 []llm.Request{},
@@ -81,16 +77,18 @@ func (g *summaryGenerator) ProposeJobs(ctx context.Context, input SummaryInput) 
 
 	// ── Phase 1: Dialogue – parallel cache lookup ──────────────────────────
 	if err := g.proposeDialogueJobs(ctx, input.DialogueItems, output); err != nil {
+		slog.ErrorContext(ctx, "failed to propose dialogue summary jobs", telemetry.ErrorAttrs(err)...)
 		return nil, err
 	}
 
 	// ── Phase 2: Quest – sequential (stage order must be preserved) ─────────
 	if err := g.proposeQuestJobs(ctx, input.QuestItems, output); err != nil {
+		slog.ErrorContext(ctx, "failed to propose quest summary jobs", telemetry.ErrorAttrs(err)...)
 		return nil, err
 	}
 
-	slog.DebugContext(ctx, "ProposeJobs result",
-		slog.Int("jobs", len(output.Jobs)),
+	slog.InfoContext(ctx, "summary job proposal completed",
+		slog.Int("jobs_generated", len(output.Jobs)),
 		slog.Int("cache_hits", len(output.PreCalculatedResults)),
 	)
 	return output, nil

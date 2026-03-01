@@ -6,6 +6,9 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+
+	"github.com/google/uuid"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/telemetry"
 )
 
 // DictionaryService は UI レベルのアクションをオーケストレートする Wails 向けサービス。
@@ -27,30 +30,34 @@ func NewDictionaryService(store DictionaryStore, importer DictionaryImporter, lo
 
 // GetSources は登録済みの辞書ソース一覧を返す。
 func (s *DictionaryService) GetSources(ctx context.Context) ([]DictSource, error) {
-	s.logger.DebugContext(ctx, "ENTER DictionaryService.GetSources")
-	defer s.logger.DebugContext(ctx, "EXIT DictionaryService.GetSources")
+	defer telemetry.StartSpan(ctx, telemetry.ActionDBQuery)()
+	s.logger.DebugContext(ctx, "fetching dictionary sources")
 	return s.store.GetSources(ctx)
 }
 
 // DeleteSource は指定された辞書ソースとその全エントリを削除する。
 func (s *DictionaryService) DeleteSource(ctx context.Context, id int64) error {
-	s.logger.DebugContext(ctx, "ENTER DictionaryService.DeleteSource", "id", id)
-	defer s.logger.DebugContext(ctx, "EXIT DictionaryService.DeleteSource")
+	defer telemetry.StartSpan(ctx, telemetry.ActionDBQuery)()
+	s.logger.InfoContext(ctx, "deleting dictionary source", slog.Int64("id", id))
 	return s.store.DeleteSource(ctx, id)
 }
 
 // GetEntries は指定ソースに紐付く辞書エントリ一覧を返す（後方互換用）。
 func (s *DictionaryService) GetEntries(ctx context.Context, sourceID int64) ([]DictTerm, error) {
-	s.logger.DebugContext(ctx, "ENTER DictionaryService.GetEntries", "sourceID", sourceID)
-	defer s.logger.DebugContext(ctx, "EXIT DictionaryService.GetEntries")
+	defer telemetry.StartSpan(ctx, telemetry.ActionDBQuery)()
+	s.logger.DebugContext(ctx, "fetching entries for source", slog.Int64("sourceID", sourceID))
 	return s.store.GetEntriesBySourceID(ctx, sourceID)
 }
 
 // GetEntriesPaginated は指定ソースのエントリをページネーション付きで返す。
 // page は1始まり、pageSize は取得件数（例: 500）。
 func (s *DictionaryService) GetEntriesPaginated(ctx context.Context, sourceID int64, query string, filters map[string]string, page, pageSize int) (*DictTermPage, error) {
-	s.logger.DebugContext(ctx, "ENTER DictionaryService.GetEntriesPaginated", "sourceID", sourceID, "query", query, "filters", filters, "page", page, "pageSize", pageSize)
-	defer s.logger.DebugContext(ctx, "EXIT DictionaryService.GetEntriesPaginated")
+	defer telemetry.StartSpan(ctx, telemetry.ActionDBQuery)()
+	s.logger.DebugContext(ctx, "fetching entries paginated",
+		slog.Int64("sourceID", sourceID),
+		slog.String("query", query),
+		slog.Int("page", page),
+	)
 	if page < 1 {
 		page = 1
 	}
@@ -61,8 +68,11 @@ func (s *DictionaryService) GetEntriesPaginated(ctx context.Context, sourceID in
 // SearchAll は全辞書ソースを横断してエントリを検索する。
 // page は1始まり、pageSize は取得件数。
 func (s *DictionaryService) SearchAll(ctx context.Context, query string, filters map[string]string, page, pageSize int) (*DictTermPage, error) {
-	s.logger.DebugContext(ctx, "ENTER DictionaryService.SearchAll", "query", query, "filters", filters, "page", page, "pageSize", pageSize)
-	defer s.logger.DebugContext(ctx, "EXIT DictionaryService.SearchAll")
+	defer telemetry.StartSpan(ctx, telemetry.ActionDBQuery)()
+	s.logger.DebugContext(ctx, "searching all dictionaries",
+		slog.String("query", query),
+		slog.Int("page", page),
+	)
 	if page < 1 {
 		page = 1
 	}
@@ -72,15 +82,15 @@ func (s *DictionaryService) SearchAll(ctx context.Context, query string, filters
 
 // UpdateEntry は指定エントリの source_text / dest_text を更新する。
 func (s *DictionaryService) UpdateEntry(ctx context.Context, term DictTerm) error {
-	s.logger.DebugContext(ctx, "ENTER DictionaryService.UpdateEntry", "id", term.ID)
-	defer s.logger.DebugContext(ctx, "EXIT DictionaryService.UpdateEntry")
+	defer telemetry.StartSpan(ctx, telemetry.ActionDBQuery)()
+	s.logger.InfoContext(ctx, "updating dictionary entry", slog.Int64("id", term.ID))
 	return s.store.UpdateEntry(ctx, term)
 }
 
 // DeleteEntry は指定エントリを削除する。
 func (s *DictionaryService) DeleteEntry(ctx context.Context, id int64) error {
-	s.logger.DebugContext(ctx, "ENTER DictionaryService.DeleteEntry", "id", id)
-	defer s.logger.DebugContext(ctx, "EXIT DictionaryService.DeleteEntry")
+	defer telemetry.StartSpan(ctx, telemetry.ActionDBQuery)()
+	s.logger.InfoContext(ctx, "deleting dictionary entry", slog.Int64("id", id))
 	return s.store.DeleteEntry(ctx, id)
 }
 
@@ -88,12 +98,13 @@ func (s *DictionaryService) DeleteEntry(ctx context.Context, id int64) error {
 // dlc_sources に PENDING レコードを作成した後、非同期でインポート処理を実行する。
 // 戻り値は作成されたソースの ID。
 func (s *DictionaryService) StartImport(ctx context.Context, filePath string) (int64, error) {
-	s.logger.DebugContext(ctx, "ENTER DictionaryService.StartImport", "filePath", filePath)
-	defer s.logger.DebugContext(ctx, "EXIT DictionaryService.StartImport")
+	defer telemetry.StartSpan(ctx, telemetry.ActionImport)()
+	s.logger.InfoContext(ctx, "starting dictionary import", slog.String("filePath", filePath))
 
 	// ファイル情報を取得
 	stat, err := os.Stat(filePath)
 	if err != nil {
+		s.logger.ErrorContext(ctx, "failed to stat file for import", telemetry.ErrorAttrs(err)...)
 		return 0, fmt.Errorf("failed to stat file: %w", err)
 	}
 
@@ -107,15 +118,22 @@ func (s *DictionaryService) StartImport(ctx context.Context, filePath string) (i
 	}
 	sourceID, err := s.store.CreateSource(ctx, src)
 	if err != nil {
+		s.logger.ErrorContext(ctx, "failed to create source record", telemetry.ErrorAttrs(err)...)
 		return 0, fmt.Errorf("failed to create source record: %w", err)
 	}
 
 	// 非同期でインポート実行
 	go func() {
-		bgCtx := context.Background()
+		// リクエストIDを引き継ぐ
+		bgCtx := telemetry.WithAttrs(context.Background(), slog.String("request_id", "async-import-"+uuid.New().String()))
+		defer telemetry.StartSpan(bgCtx, telemetry.ActionImport)()
+
+		s.logger.InfoContext(bgCtx, "background import task started", slog.Int64("sourceID", sourceID))
+
 		file, err := os.Open(filePath)
 		if err != nil {
-			s.logger.ErrorContext(bgCtx, "failed to open import file", "error", err, "sourceID", sourceID)
+			s.logger.ErrorContext(bgCtx, "failed to open import file",
+				append(telemetry.ErrorAttrs(err), slog.Int64("sourceID", sourceID))...)
 			_ = s.store.UpdateSourceStatus(bgCtx, sourceID, "ERROR", 0, err.Error())
 			return
 		}
@@ -123,8 +141,11 @@ func (s *DictionaryService) StartImport(ctx context.Context, filePath string) (i
 
 		count, err := s.importer.ImportXML(bgCtx, sourceID, src.FileName, file)
 		if err != nil {
-			s.logger.ErrorContext(bgCtx, "import failed", "error", err, "sourceID", sourceID, "count", count)
-			// UpdateSourceStatus は importer.go 内で呼ばれるため、ここでは追加の処理不要
+			s.logger.ErrorContext(bgCtx, "import process failed",
+				append(telemetry.ErrorAttrs(err), slog.Int64("sourceID", sourceID), slog.Int("processed_count", count))...)
+		} else {
+			s.logger.InfoContext(bgCtx, "import process completed",
+				slog.Int64("sourceID", sourceID), slog.Int("processed_count", count))
 		}
 	}()
 

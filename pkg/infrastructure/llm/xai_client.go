@@ -9,6 +9,8 @@ import (
 	"log/slog"
 	"net/http"
 	"time"
+
+	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/telemetry"
 )
 
 const (
@@ -55,9 +57,10 @@ func NewXAIClient(logger *slog.Logger, config LLMConfig) LLMClient {
 
 // Complete はテキスト生成リクエストを実行し、結果を返す。
 func (c *xaiClient) Complete(ctx context.Context, req Request) (Response, error) {
-	c.logger.DebugContext(ctx, "ENTER Complete",
-		"system_prompt_len", len(req.SystemPrompt),
-		"user_prompt_len", len(req.UserPrompt),
+	defer telemetry.StartSpan(ctx, telemetry.ActionLLMRequest)()
+	c.logger.DebugContext(ctx, "xAI request start",
+		slog.Int("system_prompt_len", len(req.SystemPrompt)),
+		slog.Int("user_prompt_len", len(req.UserPrompt)),
 	)
 
 	var resp Response
@@ -67,15 +70,17 @@ func (c *xaiClient) Complete(ctx context.Context, req Request) (Response, error)
 		return innerErr
 	})
 	if err != nil {
-		c.logger.DebugContext(ctx, "EXIT Complete (error)", "error", err)
+		c.logger.ErrorContext(ctx, "xAI request failed", telemetry.ErrorAttrs(err)...)
 		return Response{}, err
 	}
 
 	resp.Metadata = req.Metadata
 
-	c.logger.DebugContext(ctx, "EXIT Complete",
-		"content_len", len(resp.Content),
-		"total_tokens", resp.Usage.TotalTokens,
+	c.logger.InfoContext(ctx, "xAI request completed",
+		slog.Int("content_len", len(resp.Content)),
+		slog.Int("prompt_tokens", resp.Usage.PromptTokens),
+		slog.Int("completion_tokens", resp.Usage.CompletionTokens),
+		slog.Int("total_tokens", resp.Usage.TotalTokens),
 	)
 	return resp, nil
 }
@@ -272,7 +277,8 @@ func NewXAIBatchClient(logger *slog.Logger, config LLMConfig) (BatchClient, erro
 
 // SubmitBatch はリクエストリストをチャンク単位でバッチジョブに送信し、BatchJobID を返す。
 func (b *xaiBatchClient) SubmitBatch(ctx context.Context, reqs []Request) (BatchJobID, error) {
-	b.logger.DebugContext(ctx, "ENTER SubmitBatch", "request_count", len(reqs))
+	defer telemetry.StartSpan(ctx, telemetry.ActionLLMRequest)()
+	b.logger.InfoContext(ctx, "xAI SubmitBatch start", slog.Int("request_count", len(reqs)))
 
 	if len(reqs) == 0 {
 		return BatchJobID{}, fmt.Errorf("xai: no requests to submit")
@@ -281,9 +287,10 @@ func (b *xaiBatchClient) SubmitBatch(ctx context.Context, reqs []Request) (Batch
 	// 1. バッチジョブを作成
 	batchID, err := b.createBatch(ctx, fmt.Sprintf("translate-%d", len(reqs)))
 	if err != nil {
+		b.logger.ErrorContext(ctx, "xAI createBatch failed", telemetry.ErrorAttrs(err)...)
 		return BatchJobID{}, err
 	}
-	b.logger.DebugContext(ctx, "batch created", "batch_id", batchID)
+	b.logger.DebugContext(ctx, "batch created", slog.String("batch_id", batchID))
 
 	// 2. チャンク単位でリクエストを追加 → ポーリング
 	for chunkStart := 0; chunkStart < len(reqs); chunkStart += xaiMaxBatchChunkSize {
@@ -294,22 +301,30 @@ func (b *xaiBatchClient) SubmitBatch(ctx context.Context, reqs []Request) (Batch
 		chunk := reqs[chunkStart:chunkEnd]
 
 		if err := b.addRequests(ctx, batchID, chunk, chunkStart); err != nil {
+			b.logger.ErrorContext(ctx, "xAI addRequests failed",
+				append(telemetry.ErrorAttrs(err),
+					slog.String("batch_id", batchID),
+					slog.Int("chunk_start", chunkStart))...)
 			return BatchJobID{}, fmt.Errorf("xai: failed to add requests chunk [%d:%d]: %w", chunkStart, chunkEnd, err)
 		}
 
 		if err := b.pollUntilCompleted(ctx, batchID); err != nil {
+			b.logger.ErrorContext(ctx, "xAI polling failed",
+				append(telemetry.ErrorAttrs(err),
+					slog.String("batch_id", batchID),
+					slog.Int("chunk_start", chunkStart))...)
 			return BatchJobID{}, fmt.Errorf("xai: polling failed for chunk [%d:%d]: %w", chunkStart, chunkEnd, err)
 		}
 
-		b.logger.DebugContext(ctx, "chunk completed",
-			"batch_id", batchID,
-			"chunk_start", chunkStart,
-			"chunk_end", chunkEnd,
+		b.logger.InfoContext(ctx, "xAI chunk completed",
+			slog.String("batch_id", batchID),
+			slog.Int("chunk_start", chunkStart),
+			slog.Int("chunk_end", chunkEnd),
 		)
 	}
 
 	jobID := BatchJobID{ID: batchID, Provider: "xai"}
-	b.logger.DebugContext(ctx, "EXIT SubmitBatch", "batch_id", batchID)
+	b.logger.InfoContext(ctx, "xAI SubmitBatch completed", slog.String("batch_id", batchID))
 	return jobID, nil
 }
 

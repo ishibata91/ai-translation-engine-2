@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/telemetry"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -135,17 +136,12 @@ func (q *Queue) Close() error {
 
 // SubmitJobs saves incoming requests to the queue.
 func (q *Queue) SubmitJobs(ctx context.Context, processID string, reqs []any) error {
-	q.logger.DebugContext(ctx, "ENTER SubmitJobs", slog.String("process_id", processID), slog.Int("job_count", len(reqs)))
+	defer telemetry.StartSpan(ctx, telemetry.ActionDBQuery)()
+	q.logger.DebugContext(ctx, "submitting jobs", slog.String("process_id", processID), slog.Int("job_count", len(reqs)))
 
-	// Check wait limit/deadline
-	if _, ok := ctx.Deadline(); !ok {
-		// Just a fallback default context wrap if not present
-	}
-
-	start := time.Now()
 	tx, err := q.db.BeginTx(ctx, nil)
 	if err != nil {
-		q.logger.ErrorContext(ctx, "SubmitJobs begin tx failed", slog.String("error", err.Error()))
+		q.logger.ErrorContext(ctx, "failed to begin transaction for submitting jobs", telemetry.ErrorAttrs(err)...)
 		return fmt.Errorf("SubmitJobs begin tx failed: %w", err)
 	}
 	defer tx.Rollback()
@@ -166,30 +162,28 @@ func (q *Queue) SubmitJobs(ctx context.Context, processID string, reqs []any) er
 			return fmt.Errorf("failed to marshal request at index %d: %w", i, err)
 		}
 
-		// generate simple id for job, appending index to process_id or generating uuid.
-		// Since we need UUID, we can use a basic helper if UUID lib is used, or simulate it.
-		// Let's use formatting for now. A standard approach is using github.com/google/uuid,
-		// but since we only need a unique string, processID + suffix works for uniqueness.
 		jobID := uuid.New().String()
-
 		if _, err := stmt.ExecContext(ctx, jobID, processID, string(data), StatusPending, now, now); err != nil {
 			return fmt.Errorf("failed to insert job %s: %w", jobID, err)
 		}
 	}
 
 	if err := tx.Commit(); err != nil {
+		q.logger.ErrorContext(ctx, "failed to commit jobs", telemetry.ErrorAttrs(err)...)
 		return fmt.Errorf("SubmitJobs commit failed: %w", err)
 	}
 
-	q.logger.DebugContext(ctx, "EXIT SubmitJobs",
-		slog.Any("result", map[string]any{"inserted": len(reqs), "elapsed": time.Since(start).String()}))
+	q.logger.InfoContext(ctx, "jobs submitted successfully",
+		slog.String("process_id", processID),
+		slog.Int("inserted_count", len(reqs)),
+	)
 	return nil
 }
 
 // GetResults retrieves completed job responses for a given processID.
 func (q *Queue) GetResults(ctx context.Context, processID string) ([]JobRequest, error) {
-	q.logger.DebugContext(ctx, "ENTER GetResults", slog.String("process_id", processID))
-	start := time.Now()
+	defer telemetry.StartSpan(ctx, telemetry.ActionDBQuery)()
+	q.logger.DebugContext(ctx, "fetching job results", slog.String("process_id", processID))
 
 	rows, err := q.db.QueryContext(ctx, `
 		SELECT id, process_id, request_json, status, batch_job_id, response_json, error_message, created_at, updated_at
@@ -197,6 +191,7 @@ func (q *Queue) GetResults(ctx context.Context, processID string) ([]JobRequest,
 		WHERE process_id = ?
 	`, processID)
 	if err != nil {
+		q.logger.ErrorContext(ctx, "failed to query job results", telemetry.ErrorAttrs(err)...)
 		return nil, fmt.Errorf("GetResults query failed: %w", err)
 	}
 	defer rows.Close()
@@ -226,32 +221,30 @@ func (q *Queue) GetResults(ctx context.Context, processID string) ([]JobRequest,
 		jobs = append(jobs, job)
 	}
 
-	q.logger.DebugContext(ctx, "EXIT GetResults",
-		slog.Any("result", map[string]any{"fetched": len(jobs), "elapsed": time.Since(start).String()}))
+	q.logger.DebugContext(ctx, "job results fetched", slog.String("process_id", processID), slog.Int("fetched_count", len(jobs)))
 	return jobs, nil
 }
 
 // DeleteJobs performs a Hard Delete of jobs associated with the processID.
 func (q *Queue) DeleteJobs(ctx context.Context, processID string) error {
-	q.logger.DebugContext(ctx, "ENTER DeleteJobs", slog.String("process_id", processID))
-	start := time.Now()
+	defer telemetry.StartSpan(ctx, telemetry.ActionDBQuery)()
+	q.logger.InfoContext(ctx, "deleting jobs", slog.String("process_id", processID))
 
 	res, err := q.db.ExecContext(ctx, "DELETE FROM llm_jobs WHERE process_id = ?", processID)
 	if err != nil {
+		q.logger.ErrorContext(ctx, "failed to delete jobs", telemetry.ErrorAttrs(err)...)
 		return fmt.Errorf("DeleteJobs failed: %w", err)
 	}
 
 	deleted, _ := res.RowsAffected()
-
-	q.logger.DebugContext(ctx, "EXIT DeleteJobs",
-		slog.Any("result", map[string]any{"deleted": deleted, "elapsed": time.Since(start).String()}))
+	q.logger.InfoContext(ctx, "jobs deleted", slog.String("process_id", processID), slog.Int64("deleted_count", deleted))
 	return nil
 }
 
 // GetJobsByStatus retrieves jobs for a given processID that match a specific status.
 func (q *Queue) GetJobsByStatus(ctx context.Context, processID string, status string) ([]JobRequest, error) {
-	q.logger.DebugContext(ctx, "ENTER GetJobsByStatus", slog.String("process_id", processID), slog.String("status", status))
-	start := time.Now()
+	defer telemetry.StartSpan(ctx, telemetry.ActionDBQuery)()
+	q.logger.DebugContext(ctx, "fetching jobs by status", slog.String("process_id", processID), slog.String("status", status))
 
 	rows, err := q.db.QueryContext(ctx, `
 		SELECT id, process_id, request_json, status, batch_job_id, response_json, error_message, created_at, updated_at
@@ -259,6 +252,7 @@ func (q *Queue) GetJobsByStatus(ctx context.Context, processID string, status st
 		WHERE process_id = ? AND status = ?
 	`, processID, status)
 	if err != nil {
+		q.logger.ErrorContext(ctx, "failed to query jobs by status", telemetry.ErrorAttrs(err)...)
 		return nil, fmt.Errorf("GetJobsByStatus query failed: %w", err)
 	}
 	defer rows.Close()
@@ -288,15 +282,14 @@ func (q *Queue) GetJobsByStatus(ctx context.Context, processID string, status st
 		jobs = append(jobs, job)
 	}
 
-	q.logger.DebugContext(ctx, "EXIT GetJobsByStatus",
-		slog.Any("result", map[string]any{"fetched": len(jobs), "elapsed": time.Since(start).String()}))
+	q.logger.DebugContext(ctx, "jobs by status fetched", slog.String("process_id", processID), slog.String("status", status), slog.Int("fetched_count", len(jobs)))
 	return jobs, nil
 }
 
 // UpdateJob updates the status, response, error message, and batch job ID for a specific job.
 func (q *Queue) UpdateJob(ctx context.Context, jobID string, status string, responseJSON *string, errorMsg *string, batchJobID *string) error {
-	q.logger.DebugContext(ctx, "ENTER UpdateJob", slog.String("job_id", jobID), slog.String("status", status))
-	start := time.Now()
+	defer telemetry.StartSpan(ctx, telemetry.ActionDBQuery)()
+	q.logger.DebugContext(ctx, "updating job", slog.String("job_id", jobID), slog.String("status", status))
 
 	res, err := q.db.ExecContext(ctx, `
 		UPDATE llm_jobs 
@@ -305,12 +298,16 @@ func (q *Queue) UpdateJob(ctx context.Context, jobID string, status string, resp
 	`, status, responseJSON, errorMsg, batchJobID, time.Now().UTC(), jobID)
 
 	if err != nil {
+		attrs := append(telemetry.ErrorAttrs(err), slog.String("job_id", jobID))
+		q.logger.ErrorContext(ctx, "failed to update job", attrs...)
 		return fmt.Errorf("UpdateJob failed: %w", err)
 	}
 
 	affected, _ := res.RowsAffected()
-
-	q.logger.DebugContext(ctx, "EXIT UpdateJob",
-		slog.Any("result", map[string]any{"affected": affected, "elapsed": time.Since(start).String()}))
+	q.logger.InfoContext(ctx, "job updated",
+		slog.String("job_id", jobID),
+		slog.String("new_status", status),
+		slog.Int64("affected_rows", affected),
+	)
 	return nil
 }

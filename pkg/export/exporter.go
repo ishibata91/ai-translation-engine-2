@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/telemetry"
 )
 
 type exporter struct {
@@ -23,17 +25,19 @@ func NewExporter() Exporter {
 }
 
 func (e *exporter) ExportToXML(ctx context.Context, jsonPath string, xmlOutputPath string) error {
-	e.logger.DebugContext(ctx, "ENTER exporter.ExportToXML", slog.String("json_path", jsonPath), slog.String("xml_output", xmlOutputPath))
-	defer e.logger.DebugContext(ctx, "EXIT exporter.ExportToXML")
+	defer telemetry.StartSpan(ctx, telemetry.ActionExport)()
+	e.logger.DebugContext(ctx, "starting XML export", slog.String("json_path", jsonPath), slog.String("xml_output", xmlOutputPath))
 
 	// 1. Read JSON
 	content, err := os.ReadFile(jsonPath)
 	if err != nil {
+		e.logger.ErrorContext(ctx, "failed to read JSON file for export", telemetry.ErrorAttrs(err)...)
 		return fmt.Errorf("failed to read JSON file: %w", err)
 	}
 
 	var results []TranslationResult
 	if err := json.Unmarshal(content, &results); err != nil {
+		e.logger.ErrorContext(ctx, "failed to parse JSON for export", telemetry.ErrorAttrs(err)...)
 		return fmt.Errorf("failed to parse JSON: %w", err)
 	}
 
@@ -57,9 +61,6 @@ func (e *exporter) ExportToXML(ctx context.Context, jsonPath string, xmlOutputPa
 		if res.EditorID != nil {
 			edid = *res.EditorID
 		}
-		// If it's a child record (like Quest Stage), and it has a parent EditorID, use that?
-		// According to the requirement: "EditorID -> <EDID>"
-		// For Quest Stages, we might want to use ParentEditorID if it's more useful for xTranslator identification.
 		if res.ParentEditorID != nil && *res.ParentEditorID != "" {
 			edid = *res.ParentEditorID
 		}
@@ -88,6 +89,7 @@ func (e *exporter) ExportToXML(ctx context.Context, jsonPath string, xmlOutputPa
 	// 3. Generate XML
 	output, err := xml.MarshalIndent(xmlRoot, "", "  ")
 	if err != nil {
+		e.logger.ErrorContext(ctx, "failed to marshal XML", telemetry.ErrorAttrs(err)...)
 		return fmt.Errorf("failed to marshal XML: %w", err)
 	}
 
@@ -96,14 +98,20 @@ func (e *exporter) ExportToXML(ctx context.Context, jsonPath string, xmlOutputPa
 
 	// Ensure directory exists
 	if err := os.MkdirAll(filepath.Dir(xmlOutputPath), 0755); err != nil {
+		e.logger.ErrorContext(ctx, "failed to create export directory", telemetry.ErrorAttrs(err)...)
 		return fmt.Errorf("failed to create output directory: %w", err)
 	}
 
 	if err := os.WriteFile(xmlOutputPath, finalOutput, 0644); err != nil {
+		e.logger.ErrorContext(ctx, "failed to write XML file", telemetry.ErrorAttrs(err)...)
 		return fmt.Errorf("failed to write XML file: %w", err)
 	}
 
-	e.logger.InfoContext(ctx, "Export complete", slog.String("path", xmlOutputPath), slog.Int("count", len(stringsList)))
+	e.logger.InfoContext(ctx, "XML export completed",
+		slog.String("path", xmlOutputPath),
+		slog.Int("record_count", len(stringsList)),
+		slog.String("plugin", pluginName),
+	)
 	return nil
 }
 

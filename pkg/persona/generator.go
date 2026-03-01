@@ -9,6 +9,7 @@ import (
 
 	"github.com/ishibata91/ai-translation-engine-2/pkg/config"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/llm"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/telemetry"
 )
 
 const personaSystemPrompt = `You are a character persona analyzer.
@@ -60,13 +61,13 @@ func (g *DefaultPersonaGenerator) PreparePrompts(
 	ctx context.Context,
 	input any,
 ) ([]llm.Request, error) {
+	defer telemetry.StartSpan(ctx, telemetry.ActionProcessTranslation)() // Persona generation is part of translation process
 	data, ok := input.(PersonaGenInput)
 	if !ok {
 		return nil, fmt.Errorf("invalid input type for Persona slice: %T", input)
 	}
 
-	slog.DebugContext(ctx, "ENTER PreparePrompts",
-		slog.String("slice", "Persona"),
+	slog.DebugContext(ctx, "starting persona prompt preparation",
 		slog.Int("npc_count", len(data.NPCs)),
 	)
 
@@ -79,27 +80,33 @@ func (g *DefaultPersonaGenerator) PreparePrompts(
 
 	groupedData, err := g.Collector.CollectByNPC(ctx, data)
 	if err != nil {
+		slog.ErrorContext(ctx, "failed to collect NPC dialogues", telemetry.ErrorAttrs(err)...)
 		return nil, fmt.Errorf("failed to collect NPC dialogues: %w", err)
 	}
 
 	var requests []llm.Request
+	skippedCount := 0
+	thresholdCount := 0
+
 	for _, npcData := range groupedData {
 		// Check if already generated
 		exists, err := g.Store.GetPersona(ctx, npcData.SpeakerID)
 		if err == nil && exists != "" {
-			slog.DebugContext(ctx, "Skipping already generated persona",
-				slog.String("slice", "Persona"),
-				slog.String("speaker_id", npcData.SpeakerID),
-			)
+			skippedCount++
 			continue
 		}
 
 		if len(npcData.Dialogues) < config.MinDialogueThreshold {
+			thresholdCount++
 			continue
 		}
 
-		_, selectedDialogues := g.Evaluator.Evaluate(ctx, npcData, config)
+		estimation, selectedDialogues := g.Evaluator.Evaluate(ctx, npcData, config)
 		if len(selectedDialogues) == 0 {
+			slog.DebugContext(ctx, "no dialogues selected for persona generation",
+				slog.String("speaker_id", npcData.SpeakerID),
+				slog.Any("estimation", estimation),
+			)
 			continue
 		}
 
@@ -128,9 +135,10 @@ func (g *DefaultPersonaGenerator) PreparePrompts(
 		})
 	}
 
-	slog.DebugContext(ctx, "EXIT PreparePrompts",
-		slog.String("slice", "Persona"),
+	slog.InfoContext(ctx, "persona prompt preparation completed",
 		slog.Int("request_count", len(requests)),
+		slog.Int("skipped_already_exists", skippedCount),
+		slog.Int("skipped_below_threshold", thresholdCount),
 	)
 
 	return requests, nil
@@ -141,15 +149,10 @@ func (g *DefaultPersonaGenerator) SaveResults(
 	ctx context.Context,
 	results []llm.Response,
 ) error {
-	slog.DebugContext(ctx, "ENTER SaveResults",
-		slog.String("slice", "Persona"),
+	defer telemetry.StartSpan(ctx, telemetry.ActionProcessTranslation)()
+	slog.DebugContext(ctx, "saving persona results",
 		slog.Int("response_count", len(results)),
 	)
-
-	// Note: This implementation is currently limited because it doesn't have access
-	// to the original PersonaGenInput.NPCs needed to create PersonaResult.
-	// We might need to store this in state or include it in metadata.
-	// For now, we'll try to extract as much as possible from metadata.
 
 	successCount := 0
 	failCount := 0
@@ -158,14 +161,13 @@ func (g *DefaultPersonaGenerator) SaveResults(
 		// Identify NPC from metadata
 		speakerID, ok := resp.Metadata["speaker_id"].(string)
 		if !ok || speakerID == "" {
-			slog.WarnContext(ctx, "Missing speaker_id in response metadata", slog.String("slice", "Persona"))
+			slog.WarnContext(ctx, "missing speaker_id in response metadata")
 			failCount++
 			continue
 		}
 
 		if !resp.Success {
-			slog.WarnContext(ctx, "LLM response indicates failure",
-				slog.String("slice", "Persona"),
+			slog.WarnContext(ctx, "persona generation failed in LLM",
 				slog.String("speaker_id", speakerID),
 				slog.String("error", resp.Error),
 			)
@@ -175,8 +177,7 @@ func (g *DefaultPersonaGenerator) SaveResults(
 
 		personaText := g.extractPersona(resp.Content)
 		if personaText == "" {
-			slog.WarnContext(ctx, "Failed to extract persona text from response",
-				slog.String("slice", "Persona"),
+			slog.WarnContext(ctx, "failed to extract persona text from response",
 				slog.String("speaker_id", speakerID),
 			)
 			failCount++
@@ -184,8 +185,7 @@ func (g *DefaultPersonaGenerator) SaveResults(
 		}
 
 		if len(personaText) <= 5 {
-			slog.WarnContext(ctx, "Extracted persona text is too short",
-				slog.String("slice", "Persona"),
+			slog.WarnContext(ctx, "extracted persona text is too short",
 				slog.String("speaker_id", speakerID),
 				slog.String("content", personaText),
 			)
@@ -194,7 +194,6 @@ func (g *DefaultPersonaGenerator) SaveResults(
 		}
 
 		// Prepare PersonaResult from metadata if available
-		// (In a full implementation, we'd ensure all needed fields are in metadata)
 		npcName, _ := resp.Metadata["npc_name"].(string)
 		race, _ := resp.Metadata["race"].(string)
 		editorID, _ := resp.Metadata["editor_id"].(string)
@@ -209,26 +208,22 @@ func (g *DefaultPersonaGenerator) SaveResults(
 		}
 
 		if err := g.Store.SavePersona(ctx, result); err != nil {
-			slog.ErrorContext(ctx, "Failed to save persona to store",
-				slog.String("slice", "Persona"),
-				slog.String("speaker_id", speakerID),
-				slog.String("error", err.Error()),
-			)
+			slog.ErrorContext(ctx, "failed to save persona to store",
+				append(telemetry.ErrorAttrs(err), slog.String("speaker_id", speakerID))...)
 			failCount++
 			continue
 		}
 
 		successCount++
-		slog.InfoContext(ctx, "Successfully saved persona",
-			slog.String("slice", "Persona"),
+		slog.InfoContext(ctx, "persona saved successfully",
 			slog.String("speaker_id", speakerID),
+			slog.String("npc_name", npcName),
 		)
 	}
 
-	slog.DebugContext(ctx, "EXIT SaveResults",
-		slog.String("slice", "Persona"),
-		slog.Int("success", successCount),
-		slog.Int("fail", failCount),
+	slog.InfoContext(ctx, "persona results saving completed",
+		slog.Int("success_count", successCount),
+		slog.Int("fail_count", failCount),
 	)
 	return nil
 }

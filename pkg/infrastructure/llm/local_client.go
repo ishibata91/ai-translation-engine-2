@@ -9,6 +9,8 @@ import (
 	"log/slog"
 	"net/http"
 	"time"
+
+	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/telemetry"
 )
 
 const (
@@ -41,9 +43,10 @@ func NewLocalClient(logger *slog.Logger, config LLMConfig) LLMClient {
 
 // Complete はテキスト生成リクエストを実行し、結果を返す。
 func (c *localClient) Complete(ctx context.Context, req Request) (Response, error) {
-	c.logger.DebugContext(ctx, "ENTER Complete",
-		"system_prompt_len", len(req.SystemPrompt),
-		"user_prompt_len", len(req.UserPrompt),
+	defer telemetry.StartSpan(ctx, telemetry.ActionLLMRequest)()
+	c.logger.DebugContext(ctx, "local request start",
+		slog.Int("system_prompt_len", len(req.SystemPrompt)),
+		slog.Int("user_prompt_len", len(req.UserPrompt)),
 	)
 
 	var resp Response
@@ -53,11 +56,14 @@ func (c *localClient) Complete(ctx context.Context, req Request) (Response, erro
 		return innerErr
 	})
 	if err != nil {
-		c.logger.DebugContext(ctx, "EXIT Complete (error)", "error", err)
+		c.logger.ErrorContext(ctx, "local request failed", telemetry.ErrorAttrs(err)...)
 		return Response{}, err
 	}
 
-	c.logger.DebugContext(ctx, "EXIT Complete", "content_len", len(resp.Content))
+	c.logger.InfoContext(ctx, "local request completed",
+		slog.Int("content_len", len(resp.Content)),
+		slog.Int("total_tokens", resp.Usage.TotalTokens),
+	)
 	return resp, nil
 }
 

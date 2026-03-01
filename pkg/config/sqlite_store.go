@@ -8,6 +8,8 @@ import (
 	"log/slog"
 	"sync"
 	"time"
+
+	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/telemetry"
 )
 
 // SQLiteStore implements Config, UIStateStore, and SecretStore using SQLite.
@@ -21,15 +23,15 @@ type SQLiteStore struct {
 // --- Config Implementation ---
 
 func (s *SQLiteStore) Get(ctx context.Context, namespace string, key string) (string, error) {
-	s.logger.DebugContext(ctx, "ENTER Config.Get", slog.String("namespace", namespace), slog.String("key", key))
-	defer s.logger.DebugContext(ctx, "EXIT Config.Get")
+	defer telemetry.StartSpan(ctx, telemetry.ActionDBQuery)()
+	s.logger.DebugContext(ctx, "getting config", slog.String("namespace", namespace), slog.String("key", key))
 
 	return s.queryConfigValue(ctx, namespace, key)
 }
 
 func (s *SQLiteStore) Set(ctx context.Context, namespace string, key string, value string) error {
-	s.logger.DebugContext(ctx, "ENTER Config.Set", slog.String("namespace", namespace), slog.String("key", key))
-	defer s.logger.DebugContext(ctx, "EXIT Config.Set")
+	defer telemetry.StartSpan(ctx, telemetry.ActionConfigOperation)()
+	s.logger.InfoContext(ctx, "setting config", slog.String("namespace", namespace), slog.String("key", key))
 
 	oldValue, err := s.Get(ctx, namespace, key)
 	if err != nil {
@@ -37,6 +39,7 @@ func (s *SQLiteStore) Set(ctx context.Context, namespace string, key string, val
 	}
 
 	if err := s.upsertConfig(ctx, namespace, key, value); err != nil {
+		s.logger.ErrorContext(ctx, "failed to set config", telemetry.ErrorAttrs(err)...)
 		return err
 	}
 
@@ -45,12 +48,13 @@ func (s *SQLiteStore) Set(ctx context.Context, namespace string, key string, val
 }
 
 func (s *SQLiteStore) Delete(ctx context.Context, namespace string, key string) error {
-	s.logger.DebugContext(ctx, "ENTER Config.Delete", slog.String("namespace", namespace), slog.String("key", key))
-	defer s.logger.DebugContext(ctx, "EXIT Config.Delete")
+	defer telemetry.StartSpan(ctx, telemetry.ActionConfigOperation)()
+	s.logger.InfoContext(ctx, "deleting config", slog.String("namespace", namespace), slog.String("key", key))
 
 	oldValue, _ := s.Get(ctx, namespace, key)
 
 	if err := s.deleteConfigRow(ctx, namespace, key); err != nil {
+		s.logger.ErrorContext(ctx, "failed to delete config", telemetry.ErrorAttrs(err)...)
 		return err
 	}
 
@@ -59,11 +63,12 @@ func (s *SQLiteStore) Delete(ctx context.Context, namespace string, key string) 
 }
 
 func (s *SQLiteStore) GetAll(ctx context.Context, namespace string) (map[string]string, error) {
-	s.logger.DebugContext(ctx, "ENTER Config.GetAll", slog.String("namespace", namespace))
-	defer s.logger.DebugContext(ctx, "EXIT Config.GetAll")
+	defer telemetry.StartSpan(ctx, telemetry.ActionDBQuery)()
+	s.logger.DebugContext(ctx, "getting all configs", slog.String("namespace", namespace))
 
 	rows, err := s.queryAllByNamespace(ctx, "config", namespace)
 	if err != nil {
+		s.logger.ErrorContext(ctx, "failed to get all configs", telemetry.ErrorAttrs(err)...)
 		return nil, fmt.Errorf("failed to get all config: %w", err)
 	}
 	defer rows.Close()

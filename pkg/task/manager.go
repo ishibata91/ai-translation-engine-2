@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/telemetry"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
@@ -155,6 +156,7 @@ func (m *Manager) Initialize(ctx context.Context) error {
 }
 
 func (m *Manager) AddTask(name string, ttype TaskType, phase string, metadata TaskMetadata, runner func(ctx context.Context, update func(phase string, progress float64)) error) (string, error) {
+	defer telemetry.StartSpan(m.ctx, telemetry.ActionTaskManagement)()
 	id := uuid.New().String()
 	task := &Task{
 		ID:        id,
@@ -168,7 +170,15 @@ func (m *Manager) AddTask(name string, ttype TaskType, phase string, metadata Ta
 		UpdatedAt: time.Now().UTC(),
 	}
 
+	m.logger.InfoContext(m.ctx, "adding new task",
+		slog.String("id", id),
+		slog.String("name", name),
+		slog.String("type", string(ttype)),
+	)
+
 	if err := m.store.InsertTask(context.Background(), *task); err != nil {
+		m.logger.ErrorContext(m.ctx, "failed to insert task into store",
+			append(telemetry.ErrorAttrs(err), slog.String("id", id))...)
 		return "", err
 	}
 
@@ -206,10 +216,19 @@ func (m *Manager) UpdateTaskProgress(id string, phase string, progress float64) 
 		m.mu.Unlock()
 		return
 	}
+	oldPhase := task.Phase
 	task.Phase = phase
 	task.Progress = progress
 	task.UpdatedAt = time.Now().UTC()
 	m.mu.Unlock()
+
+	if oldPhase != phase {
+		m.logger.InfoContext(m.ctx, "task phase changed",
+			slog.String("id", id),
+			slog.String("old_phase", oldPhase),
+			slog.String("new_phase", phase),
+		)
+	}
 
 	// High frequency emit
 	m.emitTaskUpdate(task)

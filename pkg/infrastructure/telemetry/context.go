@@ -27,16 +27,31 @@ const (
 	ActionDelete    ActionType = "delete"
 	ActionValidate  ActionType = "validate"
 	ActionTranslate ActionType = "translate"
+
+	// 追加分
+	ActionDBQuery            ActionType = "db.query"
+	ActionLLMRequest         ActionType = "llm.request"
+	ActionProcessTranslation ActionType = "process.translation"
+	ActionTaskManagement     ActionType = "task.management"
+	ActionConfigOperation    ActionType = "config.operation"
+	ActionPipelineExecute    ActionType = "pipeline.execute"
+	ActionParser             ActionType = "parser.parse"
+	ActionSummary            ActionType = "summary.generate"
 )
 
 // ---- リソース定数 ----------------------------------------------------------
 
 const (
-	ResourceDictionary ResourceType = "dictionary"
-	ResourceEntry      ResourceType = "entry"
-	ResourceTask       ResourceType = "task"
-	ResourceUser       ResourceType = "user"
-	ResourceFile       ResourceType = "file"
+	ResourceDictionary  ResourceType = "dictionary"
+	ResourceEntry       ResourceType = "entry"
+	ResourceTask        ResourceType = "task"
+	ResourceUser        ResourceType = "user"
+	ResourceFile        ResourceType = "file"
+	ResourceConfig      ResourceType = "config"
+	ResourcePipeline    ResourceType = "pipeline"
+	ResourceLore        ResourceType = "lore"
+	ResourcePersona     ResourceType = "persona"
+	ResourceTerminology ResourceType = "terminology"
 )
 
 // ---- コンテキストキー -------------------------------------------------------

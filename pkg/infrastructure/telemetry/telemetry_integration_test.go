@@ -154,12 +154,14 @@ func TestErrorAttrs(t *testing.T) {
 
 	keys := map[string]bool{}
 	for _, a := range attrs {
-		keys[a.Key] = true
+		if attr, ok := a.(slog.Attr); ok {
+			keys[attr.Key] = true
+		}
 	}
 
 	for _, expected := range []string{"error_code", "exception_class", "stack_trace", "error_message"} {
 		if !keys[expected] {
-			t.Errorf("expected key %q in ErrorAttrs output. attrs: %v", expected, attrs)
+			t.Errorf("expected key %q in ErrorAttrs output. keys found: %v", expected, keys)
 		}
 	}
 }

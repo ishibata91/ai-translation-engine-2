@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"time"
 
 	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/llm"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/telemetry"
 )
 
 type translatorSlice struct {
@@ -49,38 +49,46 @@ func (s *translatorSlice) PreparePrompts(ctx context.Context, input any) ([]llm.
 }
 
 func (s *translatorSlice) ProposeJobs(ctx context.Context, input TranslatorInput) ([]llm.Request, error) {
-	slog.DebugContext(ctx, "ENTER ProposeJobs",
+	defer telemetry.StartSpan(ctx, telemetry.ActionProcessTranslation)()
+	slog.DebugContext(ctx, "starting job proposal",
 		slog.String("plugin", input.OutputConfig.PluginName),
 		slog.Int("dialogue_count", len(input.GameData.Dialogues)),
 	)
-	start := time.Now()
 
 	// 1. Load cached results for resume
 	cached, err := s.resumeLoader.LoadCachedResults(input.OutputConfig.PluginName, input.OutputConfig.OutputBaseDir)
 	if err != nil {
+		slog.ErrorContext(ctx, "failed to load cached results", telemetry.ErrorAttrs(err)...)
 		return nil, fmt.Errorf("failed to load cached results: %w", err)
 	}
 
 	var requests []llm.Request
+	completedCount := 0
+	forcedCount := 0
 
 	// 2. Process all records in GameData to build context and generate jobs
-	// Simplified loop over Dialogues as an example.
 	for _, dial := range input.GameData.Dialogues {
 		// Check if already translated
 		if res, ok := cached[dial.ID]; ok && res.Status == "completed" {
+			completedCount++
 			continue
 		}
 
 		// Phase 1: Context Building (Integrated Lore logic)
 		pass2Ctx, terms, forced, err := s.contextEngine.BuildTranslationContext(ctx, dial, &input.GameData)
 		if err != nil {
-			slog.ErrorContext(ctx, "failed to build context", "id", dial.ID, "error", err)
+			slog.ErrorContext(ctx, "failed to build translation context",
+				append(telemetry.ErrorAttrs(err), slog.String("resource_id", dial.ID))...)
 			continue
 		}
 
 		// If forced translation is found in dictionary/terms, we can bypass LLM.
 		if forced != nil {
-			slog.InfoContext(ctx, "forced translation found", "id", dial.ID)
+			forcedCount++
+			slog.InfoContext(ctx, "forced translation found",
+				slog.String("resource_id", dial.ID),
+				slog.String("reason", "dictionary_match"),
+			)
 			result := TranslationResult{
 				ID:             dial.ID,
 				RecordType:     dial.Type,
@@ -90,7 +98,8 @@ func (s *translatorSlice) ProposeJobs(ctx context.Context, input TranslatorInput
 				SourcePlugin:   input.OutputConfig.PluginName,
 			}
 			if err := s.resultWriter.Write(result); err != nil {
-				slog.ErrorContext(ctx, "failed to write forced result", "id", dial.ID, "error", err)
+				slog.ErrorContext(ctx, "failed to write forced result",
+					append(telemetry.ErrorAttrs(err), slog.String("resource_id", dial.ID))...)
 			}
 			continue
 		}
@@ -99,7 +108,6 @@ func (s *translatorSlice) ProposeJobs(ctx context.Context, input TranslatorInput
 		processedText, tags := s.tagProcessor.Preprocess(*dial.Text)
 
 		// Book Chunking (if needed)
-		// Use MaxTokens as a character limit for now, or a reasonable default
 		maxChars := 4000
 		if input.OutputConfig.MaxTokens > 0 {
 			maxChars = input.OutputConfig.MaxTokens
@@ -127,7 +135,10 @@ func (s *translatorSlice) ProposeJobs(ctx context.Context, input TranslatorInput
 			// Phase 2: Prompt Building
 			systemPrompt, userPrompt, err := s.promptBuilder.Build(ctx, req)
 			if err != nil {
-				slog.ErrorContext(ctx, "failed to build prompt", "id", dial.ID, "chunk", i, "error", err)
+				slog.ErrorContext(ctx, "failed to build prompt",
+					append(telemetry.ErrorAttrs(err),
+						slog.String("resource_id", dial.ID),
+						slog.Int("chunk_index", i))...)
 				continue
 			}
 
@@ -147,9 +158,10 @@ func (s *translatorSlice) ProposeJobs(ctx context.Context, input TranslatorInput
 		}
 	}
 
-	slog.DebugContext(ctx, "EXIT ProposeJobs",
-		slog.Int("requests_count", len(requests)),
-		slog.Duration("elapsed", time.Since(start)),
+	slog.InfoContext(ctx, "job proposal completed",
+		slog.Int("total_requests", len(requests)),
+		slog.Int("skipped_already_completed", completedCount),
+		slog.Int("forced_translations", forcedCount),
 	)
 	return requests, nil
 }

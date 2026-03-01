@@ -6,6 +6,7 @@ import (
 	"log/slog"
 
 	"github.com/ishibata91/ai-translation-engine-2/pkg/config"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/telemetry"
 )
 
 // jsonLoader implements contract.Parser interface.
@@ -23,22 +24,31 @@ func newJSONLoader(config config.Config) Parser {
 // 1. Decode file into map[string]json.RawMessage (Serial)
 // 2. Unmarshal and normalize each section in parallel (Parallel)
 func (l *jsonLoader) LoadExtractedJSON(ctx context.Context, path string) (*ParserOutput, error) {
-	slog.DebugContext(ctx, "ENTER jsonLoader.LoadExtractedJSON", slog.String("path", path))
-	defer slog.DebugContext(ctx, "EXIT jsonLoader.LoadExtractedJSON")
+	defer telemetry.StartSpan(ctx, telemetry.ActionParser)()
+	slog.DebugContext(ctx, "starting JSON load", slog.String("path", path))
 
 	// Phase 1: Serial Decode
 	rawMap, err := DecodeFile(path)
 	if err != nil {
+		slog.ErrorContext(ctx, "JSON decode phase failed", telemetry.ErrorAttrs(err)...)
 		return nil, fmt.Errorf("phase 1 (decode) failed: %w", err)
 	}
+
+	slog.DebugContext(ctx, "JSON decoded", slog.Int("section_count", len(rawMap)))
 
 	// Phase 2: Parallel Process
 	processor := NewParallelProcessor(rawMap)
 	data, err := processor.Process(ctx)
 	if err != nil {
+		slog.ErrorContext(ctx, "parallel processing phase failed", telemetry.ErrorAttrs(err)...)
 		return nil, fmt.Errorf("phase 2 (process) failed: %w", err)
 	}
 
 	data.SourceJSON = path
+	slog.InfoContext(ctx, "JSON load completed",
+		slog.String("path", path),
+		slog.Int("dialogue_group_count", len(data.DialogueGroups)),
+		slog.Int("npc_count", len(data.NPCs)),
+	)
 	return data, nil
 }

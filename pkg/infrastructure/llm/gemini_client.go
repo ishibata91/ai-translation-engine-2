@@ -9,6 +9,8 @@ import (
 	"log/slog"
 	"net/http"
 	"time"
+
+	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/telemetry"
 )
 
 const (
@@ -43,9 +45,10 @@ func NewGeminiClient(logger *slog.Logger, config LLMConfig) LLMClient {
 
 // Complete はテキスト生成リクエストを実行し、結果を返す。
 func (c *geminiClient) Complete(ctx context.Context, req Request) (Response, error) {
-	c.logger.DebugContext(ctx, "ENTER Complete",
-		"system_prompt_len", len(req.SystemPrompt),
-		"user_prompt_len", len(req.UserPrompt),
+	defer telemetry.StartSpan(ctx, telemetry.ActionLLMRequest)()
+	c.logger.DebugContext(ctx, "Gemini request start",
+		slog.Int("system_prompt_len", len(req.SystemPrompt)),
+		slog.Int("user_prompt_len", len(req.UserPrompt)),
 	)
 
 	var resp Response
@@ -55,16 +58,17 @@ func (c *geminiClient) Complete(ctx context.Context, req Request) (Response, err
 		return innerErr
 	})
 	if err != nil {
-		c.logger.DebugContext(ctx, "EXIT Complete (error)", "error", err)
+		c.logger.ErrorContext(ctx, "Gemini request failed", telemetry.ErrorAttrs(err)...)
 		return Response{}, err
 	}
 
 	resp.Metadata = req.Metadata
 
-	c.logger.DebugContext(ctx, "EXIT Complete",
-		"content_len", len(resp.Content),
-		"prompt_tokens", resp.Usage.PromptTokens,
-		"completion_tokens", resp.Usage.CompletionTokens,
+	c.logger.InfoContext(ctx, "Gemini request completed",
+		slog.Int("content_len", len(resp.Content)),
+		slog.Int("prompt_tokens", resp.Usage.PromptTokens),
+		slog.Int("completion_tokens", resp.Usage.CompletionTokens),
+		slog.Int("total_tokens", resp.Usage.TotalTokens),
 	)
 	return resp, nil
 }

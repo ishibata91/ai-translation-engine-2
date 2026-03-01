@@ -53,21 +53,14 @@ func StartSpan(ctx context.Context, action ActionType) func() {
 
 // ---- ErrorAttrs: エラー属性生成 --------------------------------------------
 
-// ErrorAttrs は error オブジェクトから構造化ログ用の slog.Attr スライスを生成する。
-// 以下のキーを標準的なフォーマットで出力する:
-//   - error_code    : HTTP ステータスコードや内部エラーコード（interface から取得、なければ "UNKNOWN"）
-//   - exception_class: エラーの型名
-//   - stack_trace   : スタックトレース文字列
-//
-// 利用例:
-//
-//	logger.ErrorContext(ctx, "operation failed", telemetry.ErrorAttrs(err)...)
-func ErrorAttrs(err error) []slog.Attr {
+// ErrorAttrs は error オブジェクトから構造化ログ用の属性スライスを生成する。
+// slog.ErrorContext などで ...telemetry.ErrorAttrs(err) として使用する。
+func ErrorAttrs(err error) []any {
 	if err == nil {
 		return nil
 	}
 
-	attrs := []slog.Attr{
+	attrs := []any{
 		slog.String("error_code", extractErrorCode(err)),
 		slog.String("exception_class", extractExceptionClass(err)),
 		slog.String("stack_trace", captureStackTrace()),
