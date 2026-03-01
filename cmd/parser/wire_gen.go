@@ -8,6 +8,7 @@ package main
 
 import (
 	"context"
+
 	"github.com/ishibata91/ai-translation-engine-2/pkg/config"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/datastore"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/telemetry"
@@ -22,7 +23,7 @@ func InitializeParser(ctx context.Context) (parser.Parser, func(), error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	logger := telemetry.ProvideLogger()
+	logger, _ := telemetry.ProvideLogger()
 	sqLiteStore, err := config.NewSQLiteStore(ctx, db, logger)
 	if err != nil {
 		cleanup()

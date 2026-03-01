@@ -31,7 +31,7 @@ func main() {
 	slog.InfoContext(ctx, "Starting Dictionary Builder", "dbPath", *dbPath, "xmlFilePath", xmlFilePath)
 
 	// 1. Initialize DB
-	db, dbCleanup, err := datastore.NewSQLiteDB(*dbPath) // Use *dbPath instead of hardcoded "dictionary.db"
+	db, dbCleanup, err := datastore.NewSQLiteDB(ctx, *dbPath) // Use *dbPath instead of hardcoded "dictionary.db"
 	if err != nil {
 		log.Fatalf("failed to initialize database: %v", err)
 	}

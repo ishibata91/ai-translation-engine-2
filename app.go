@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/ishibata91/ai-translation-engine-2/pkg/config"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/dictionary"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/telemetry"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -11,8 +12,9 @@ import (
 
 // App struct
 type App struct {
-	ctx         context.Context
-	dictService *dictionary.DictionaryService
+	ctx           context.Context
+	dictService   *dictionary.DictionaryService
+	configService *config.ConfigService
 }
 
 // NewApp creates a new App application struct
@@ -23,6 +25,11 @@ func NewApp() *App {
 // SetDictService sets the dictionary service instance
 func (a *App) SetDictService(dictService *dictionary.DictionaryService) {
 	a.dictService = dictService
+}
+
+// SetConfigService sets the config service instance
+func (a *App) SetConfigService(configService *config.ConfigService) {
+	a.configService = configService
 }
 
 // startup is called when the app starts. The context is saved
@@ -45,50 +52,50 @@ func (a *App) Greet(name string) string {
 
 // DictGetSources は登録済みの辞書ソース一覧を返す。
 func (a *App) DictGetSources() ([]dictionary.DictSource, error) {
-	ctx := telemetry.WithRequestID(a.ctx)
+	ctx := telemetry.WithTraceID(a.ctx)
 	return a.dictService.GetSources(ctx)
 }
 
 // DictDeleteSource は指定された辞書ソースとその全エントリを削除する。
 func (a *App) DictDeleteSource(id int64) error {
-	ctx := telemetry.WithRequestID(a.ctx)
+	ctx := telemetry.WithTraceID(a.ctx)
 	return a.dictService.DeleteSource(ctx, id)
 }
 
 // DictGetEntries は指定ソースに紐付く辞書エントリ一覧を返す（後方互換用）。
 func (a *App) DictGetEntries(sourceID int64) ([]dictionary.DictTerm, error) {
-	ctx := telemetry.WithRequestID(a.ctx)
+	ctx := telemetry.WithTraceID(a.ctx)
 	return a.dictService.GetEntries(ctx, sourceID)
 }
 
 // DictGetEntriesPaginated は指定ソースのエントリをページネーション付きで返す。
 // page は1始まり、pageSize は取得件数（例: 500）、query は検索キーワード（空文字で全件）。
 func (a *App) DictGetEntriesPaginated(sourceID int64, query string, filters map[string]string, page, pageSize int) (*dictionary.DictTermPage, error) {
-	ctx := telemetry.WithRequestID(a.ctx)
+	ctx := telemetry.WithTraceID(a.ctx)
 	return a.dictService.GetEntriesPaginated(ctx, sourceID, query, filters, page, pageSize)
 }
 
 // DictSearchAllEntriesPaginated は全辞書ソースを横断してエントリを検索する。
 func (a *App) DictSearchAllEntriesPaginated(query string, filters map[string]string, page, pageSize int) (*dictionary.DictTermPage, error) {
-	ctx := telemetry.WithRequestID(a.ctx)
+	ctx := telemetry.WithTraceID(a.ctx)
 	return a.dictService.SearchAll(ctx, query, filters, page, pageSize)
 }
 
 // DictUpdateEntry は指定エントリの source_text / dest_text を更新する。
 func (a *App) DictUpdateEntry(term dictionary.DictTerm) error {
-	ctx := telemetry.WithRequestID(a.ctx)
+	ctx := telemetry.WithTraceID(a.ctx)
 	return a.dictService.UpdateEntry(ctx, term)
 }
 
 // DictDeleteEntry は指定エントリを削除する。
 func (a *App) DictDeleteEntry(id int64) error {
-	ctx := telemetry.WithRequestID(a.ctx)
+	ctx := telemetry.WithTraceID(a.ctx)
 	return a.dictService.DeleteEntry(ctx, id)
 }
 
 // DictStartImport は指定ファイルのインポートを開始する。
 func (a *App) DictStartImport(filePath string) (int64, error) {
-	ctx := telemetry.WithRequestID(a.ctx)
+	ctx := telemetry.WithTraceID(a.ctx)
 	return a.dictService.StartImport(ctx, filePath)
 }
 

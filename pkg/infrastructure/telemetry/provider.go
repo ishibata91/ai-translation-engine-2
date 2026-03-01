@@ -45,31 +45,39 @@ func globalAttrsFromEnv() GlobalAttrs {
 	}
 }
 
-// ProvideLogger returns a *slog.Logger configured with slog-otel handler.
+// ProvideLogger returns a *slog.Logger configured with broadcast handler.
 // グローバル属性（env, app_version, service_name, host_name）がすべての
 // ログに自動付与される。
-func ProvideLogger() *slog.Logger {
+// 戻り値の *wailsHandler は app.startup() 後に SetContext を呼んで Wails context を注入すること。
+func ProvideLogger() (*slog.Logger, *wailsHandler) {
 	ga := globalAttrsFromEnv()
 
-	// Base JSON handler（グローバル属性をベース属性として付与）
-	baseHandler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		Level: slog.LevelDebug,
-	}).WithAttrs([]slog.Attr{
+	globalSlogAttrs := []slog.Attr{
 		slog.String("env", ga.Env),
 		slog.String("app_version", ga.AppVersion),
 		slog.String("service_name", ga.ServiceName),
 		slog.String("host_name", ga.HostName),
-	})
+	}
+
+	// Base JSON handler（コンソール出力）
+	baseHandler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	}).WithAttrs(globalSlogAttrs)
 
 	// Wrap with a custom handler to include trace/span IDs and custom context attrs
 	otelH := &otelHandler{next: baseHandler}
 
-	logger := slog.New(otelH)
+	// Wails broadcast handler（startup 前は emit をスキップ）
+	wH := newWailsHandler(otelH)
+	// グローバル属性を wailsHandler にも付与しておく（フロントエンドに届ける）
+	wHWithAttrs := wH.WithAttrs(globalSlogAttrs).(*wailsHandler)
+
+	logger := slog.New(wHWithAttrs)
 
 	// Set as default to catch any direct slog calls
 	slog.SetDefault(logger)
 
-	return logger
+	return logger, wH
 }
 
 // ProviderSet provides the logger for dependency injection.
@@ -84,7 +92,7 @@ func (h *otelHandler) Enabled(ctx context.Context, level slog.Level) bool {
 }
 
 // Handle はログレコードを処理する。
-// attrsFromContext でカスタム属性（request_id, action, resource_type 等）を
+// attrsFromContext でカスタム属性（trace_id, action, resource_type 等）を
 // コンテキストから取り出してレコードに付与する。
 func (h *otelHandler) Handle(ctx context.Context, r slog.Record) error {
 	// Custom context attributes (request_id, action, resource_type, resource_id, etc.)

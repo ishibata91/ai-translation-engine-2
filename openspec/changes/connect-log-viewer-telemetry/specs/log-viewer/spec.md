@@ -1,16 +1,4 @@
-# Log Viewer
-
-## Purpose
-TBD: システムログやテレメトリを表示するログビューアと、関連する詳細パネルの振る舞いを定義します。
-
-## Requirements
-
-### Requirement: Log Viewer Visibility and Resizing
-システム状態監視のために右側に配置される「ログビューア」は、手動で横幅をリサイズ可能でなければならない。
-
-#### Scenario: Resize Log Viewer
-- **WHEN** ログビューアの左端にあるリサイズ用ハンドルをドラッグする
-- **THEN** ログビューアの横幅がマウス移動に合わせて変化する（最小200px、最大800px）
+## MODIFIED Requirements
 
 ### Requirement: Log Filtering
 表示中のログリストは、ログレベル（INFO, WARN, ERROR等）とTraceIDによる文字列で絞り込みができなければならない。また、システム初期化時のデフォルトのログレベルは「ERROR」とし、ユーザーが選択したログレベルは再起動後も保持されなければならない。
@@ -34,6 +22,8 @@ TBD: システムログやテレメトリを表示するログビューアと、
 - **WHEN** ログビューア内の任意のログエントリをクリックする
 - **THEN** 画面下部よりDetailPaneがスライドアップ・アニメーションを伴って展開される
 - **AND** パネル内にそのログのメッセージ、スタックトレース、および各種テレメトリ属性（trace_id等）が表示され、タイトルがクリックしたログのものに更新される
+
+## ADDED Requirements
 
 ### Requirement: Asynchronous Log Streaming
 バックエンド（Go）で発生したテレメトリログは、実処理をブロックすることなく非同期でフロントエンド（UI）のログビューワーにストリーミングされなければならない。

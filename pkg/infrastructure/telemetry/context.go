@@ -104,13 +104,13 @@ func WithAction(ctx context.Context, action ActionType, resType ResourceType, re
 	)
 }
 
-// WithRequestID は新しい UUID を生成し、`request_id` としてコンテキストに付与する。
+// WithTraceID は新しい UUID を生成し、`trace_id` としてコンテキストに付与する。
 // Wails バインディングの各メソッド冒頭で一度呼ぶだけで、
-// Service / Store 層の全ログに自動で request_id が乗る。
+// Service / Store 層の全ログに自動で trace_id が乗る。
 //
 // 例:
 //
-//	ctx := telemetry.WithRequestID(a.ctx)
-func WithRequestID(ctx context.Context) context.Context {
-	return WithAttrs(ctx, slog.String("request_id", uuid.New().String()))
+//	ctx := telemetry.WithTraceID(a.ctx)
+func WithTraceID(ctx context.Context) context.Context {
+	return WithAttrs(ctx, slog.String("trace_id", uuid.New().String()))
 }

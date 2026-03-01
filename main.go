@@ -21,7 +21,7 @@ var assets embed.FS
 
 func main() {
 	// 1. Initialize DB (config.db)
-	db, dbCleanup, err := datastore.NewSQLiteDB("config.db")
+	db, dbCleanup, err := datastore.NewSQLiteDB(context.Background(), "config.db")
 	if err != nil {
 		log.Fatalf("failed to initialize config database: %v", err)
 	}
@@ -33,7 +33,7 @@ func main() {
 	}
 
 	// 3. Setup Task Manager
-	logger := telemetry.ProvideLogger()
+	logger, wailsLogH := telemetry.ProvideLogger()
 	taskStore := task.NewStore(db)
 	taskManager := task.NewManager(context.TODO(), logger, taskStore) // Context will be set in startup
 
@@ -41,7 +41,7 @@ func main() {
 	taskBridge := task.NewBridge(taskManager)
 
 	// 5. Setup Dictionary System (dictionary.db)
-	dictDB, dictDBCleanup, err := datastore.NewSQLiteDB("dictionary.db")
+	dictDB, dictDBCleanup, err := datastore.NewSQLiteDB(context.Background(), "dictionary.db")
 	if err != nil {
 		log.Fatalf("failed to initialize dictionary database: %v", err)
 	}
@@ -59,9 +59,17 @@ func main() {
 	dictImporter := dictionary.NewImporter(dictConfig, dictStore, wailsNotifier, logger)
 	dictService := dictionary.NewDictionaryService(dictStore, dictImporter, logger)
 
+	// 6. Setup Config Service (UIStateStore Wails binding)
+	configStore, err := config.NewSQLiteStore(context.Background(), db, logger)
+	if err != nil {
+		log.Fatalf("failed to initialize config store: %v", err)
+	}
+	configService := config.NewConfigService(configStore)
+
 	// Create an instance of the app structure
 	app := NewApp()
 	app.SetDictService(dictService)
+	app.SetConfigService(configService)
 
 	// Create application with options
 	err = wails.Run(&options.App{
@@ -74,6 +82,8 @@ func main() {
 		BackgroundColour: &options.RGBA{R: 27, G: 38, B: 54, A: 1},
 		OnStartup: func(ctx context.Context) {
 			app.startup(ctx)
+			// Wails ログハンドラにランタイムコンテキストを注入（これ以降 emit が有効になる）
+			wailsLogH.SetContext(ctx)
 			// Pass Wails context to TaskManager and Initialize it
 			taskManager.SetContext(ctx)
 			if err := taskManager.Initialize(ctx); err != nil {
@@ -86,6 +96,7 @@ func main() {
 		Bind: []interface{}{
 			app,
 			taskBridge,
+			configService,
 		},
 	})
 
