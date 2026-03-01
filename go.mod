@@ -9,7 +9,6 @@ require (
 	github.com/jdkato/prose/v2 v2.0.0
 	github.com/kljensen/snowball v0.10.0
 	github.com/mattn/go-sqlite3 v1.14.34
-	github.com/samber/slog-otel v0.1.0
 	github.com/stretchr/testify v1.11.1
 	github.com/wailsapp/wails/v2 v2.11.0
 	golang.org/x/sync v0.19.0
@@ -46,8 +45,6 @@ require (
 	github.com/valyala/fasttemplate v1.2.2 // indirect
 	github.com/wailsapp/go-webview2 v1.0.22 // indirect
 	github.com/wailsapp/mimetype v1.4.1 // indirect
-	go.opentelemetry.io/otel v1.25.0 // indirect
-	go.opentelemetry.io/otel/trace v1.25.0 // indirect
 	golang.org/x/crypto v0.33.0 // indirect
 	golang.org/x/exp v0.0.0-20251023183803-a4bb9ffd2546 // indirect
 	golang.org/x/net v0.35.0 // indirect

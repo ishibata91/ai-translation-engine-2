@@ -174,6 +174,8 @@
 
 ## 7. 構造化ログ基盤 (Structured Logging with OpenTelemetry + slog)
 
+> **重要**: ログ出力の具体的な設計思想、AI解析に最適化されたログ設計の詳細については必ず **[AI解析に最適化されたログ設計ガイド](log-guide.md)** を参照すること。
+
 ### 7.1 アーキテクチャ概要
 
 OpenTelemetry と Go 標準の `log/slog` を組み合わせ、全スライスで統一的な構造化ログを出力する。
