@@ -12,15 +12,21 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-var ProviderSet = wire.NewSet(NewSQLiteDB)
+var ProviderSet = wire.NewSet(NewConfigDB)
 
-// NewSQLiteDB creates a new SQLite database connection.
+// NewConfigDB creates a new SQLite database connection for "config.db".
+// This is the default database used for configuration and tasks.
+func NewConfigDB() (*sql.DB, func(), error) {
+	return NewSQLiteDB("config.db")
+}
+
+// NewSQLiteDB creates a new SQLite database connection for the given filename.
 // It resolves the data directory based on the OS.
-func NewSQLiteDB() (*sql.DB, func(), error) {
-	slog.Debug("ENTER NewSQLiteDB")
+func NewSQLiteDB(filename string) (*sql.DB, func(), error) {
+	slog.Debug("ENTER NewSQLiteDB", slog.String("filename", filename))
 	defer slog.Debug("EXIT NewSQLiteDB")
 
-	dbPath, err := resolveDBPath()
+	dbPath, err := resolveDBPath(filename)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -29,8 +35,8 @@ func NewSQLiteDB() (*sql.DB, func(), error) {
 }
 
 // resolveDBPath determines the database file path based on the OS.
-func resolveDBPath() (string, error) {
-	slog.Debug("ENTER resolveDBPath")
+func resolveDBPath(filename string) (string, error) {
+	slog.Debug("ENTER resolveDBPath", slog.String("filename", filename))
 
 	dbDir, err := getAppDataDir()
 	if err != nil {
@@ -41,14 +47,16 @@ func resolveDBPath() (string, error) {
 		return "", fmt.Errorf("failed to create app data dir: %w", err)
 	}
 
-	return filepath.Join(dbDir, "config.db"), nil
+	return filepath.Join(dbDir, filename), nil
 }
 
 // openAndConfigureDB opens the SQLite database and configures the connection pool.
 func openAndConfigureDB(dbPath string) (*sql.DB, func(), error) {
 	slog.Debug("ENTER openAndConfigureDB", slog.String("dbPath", dbPath))
 
-	db, err := sql.Open("sqlite", dbPath)
+	// Enable WAL mode for better concurrency
+	dsn := fmt.Sprintf("%s?_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)", dbPath)
+	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to open database: %w", err)
 	}

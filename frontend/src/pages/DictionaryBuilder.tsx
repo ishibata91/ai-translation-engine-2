@@ -57,38 +57,157 @@ const showModal = (id: string) => {
 // ── ビュー型 ─────────────────────────────────────────────
 type View = 'list' | 'entries';
 
-// ── ページコンポーネント ──────────────────────────────────
+import { DictGetSources, DictStartImport, DictGetEntries, SelectFiles, DictDeleteSource } from '../wailsjs/go/main/App';
+import * as Events from '../wailsjs/runtime/runtime';
+
 const DictionaryBuilder: React.FC = () => {
     const [view, setView] = useState<View>('list');
     const [selectedRow, setSelectedRow] = useState<DictSourceRow | null>(null);
     const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
-    const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+    const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
     const [isImporting, setIsImporting] = useState<boolean>(false);
-    const [fileProgresses, setFileProgresses] = useState<Record<string, number>>({});
+    // 進行中のインポートメッセージを保持する辞書 { CorrelationID: Message }
+    const [importMessages, setImportMessages] = useState<Record<string, string>>({});
+    // 削除対象のソースID
+    const [deletingRowId, setDeletingRowId] = useState<string | null>(null);
 
-    // 実データ保持用 (後ほど Wails 経由で取得)
+    // 実データ保持用
     const [sources, setSources] = useState<DictSourceRow[]>([]);
     const [entries, setEntries] = useState<Record<string, DictEntry[]>>({});
 
-    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (!e.target.files) return;
-        const newFileList = Array.from(e.target.files);
-        setSelectedFiles(prev => {
-            const currentNames = new Set(prev.map(f => f.name));
-            const uniqueNewFiles = newFileList.filter(f => !currentNames.has(f.name));
-            return [...prev, ...uniqueNewFiles];
-        });
-        // Clear input value so selecting the same file again triggers onChange
-        e.target.value = '';
+    // Wails からソース一覧を取得する
+    const fetchSources = async () => {
+        try {
+            const result = await DictGetSources() as any[];
+            if (!result) return;
+            const formatted = result.map(s => ({
+                id: s.id.toString(),
+                fileName: s.file_name,
+                format: s.format,
+                entryCount: s.entry_count,
+                status: (s.status === 'COMPLETED' ? '完了' : s.status === 'ERROR' ? 'エラー' : 'インポート中') as SourceStatus,
+                updatedAt: s.imported_at ? new Date(s.imported_at).toLocaleString() : '-',
+                filePath: s.file_path,
+                fileSize: `${(s.file_size_bytes / 1024).toFixed(1)} KB`,
+                importDuration: '-',
+                errorMessage: s.error_message
+            }));
+            setSources(formatted);
+        } catch (err) {
+            console.error('Failed to fetch sources:', err);
+        }
     };
 
-    const removeSelectedFile = (nameToRemove: string) => {
-        setSelectedFiles(prev => prev.filter(f => f.name !== nameToRemove));
+    // 初期マウント時に取得し、イベントを購読
+    React.useEffect(() => {
+        fetchSources();
+        const unsubs = [
+            Events.EventsOn('dictionary:import_progress', (payload: any) => {
+                const corrId = payload.CorrelationID;
+                if (payload.Status === 'COMPLETED' || payload.Status === 'FAILED') {
+                    setImportMessages(prev => {
+                        const next = { ...prev };
+                        delete next[corrId];
+                        return next;
+                    });
+                    if (Object.keys(importMessages).length <= 1) setIsImporting(false);
+                    fetchSources();
+                } else {
+                    setImportMessages(prev => ({ ...prev, [corrId]: payload.Message }));
+                    setIsImporting(true);
+                    // 1000件ごとなどにテーブル側も更新
+                    if (payload.Completed > 0 && payload.Completed % 1000 === 0) {
+                        fetchSources();
+                    }
+                }
+            })
+        ];
+        return () => {
+            unsubs.forEach(u => typeof u === 'function' ? u() : undefined);
+        };
+    }, []);
+
+    const handleImport = async () => {
+        if (selectedFiles.length === 0) return;
+        setIsImporting(true);
+
+        for (const filePath of selectedFiles) {
+            try {
+                const resultId = await DictStartImport(filePath);
+                console.log("Started import with ID:", resultId);
+            } catch (e) {
+                console.error("Import error:", e);
+            }
+        }
+        setSelectedFiles([]);
     };
 
-    const handleRowSelect = (row: DictSourceRow | null, rowId: string | null) => {
+    const fetchEntries = async (idStr: string) => {
+        try {
+            const idNum = parseInt(idStr, 10);
+            const result = await DictGetEntries(idNum) as any[];
+            if (!result) {
+                setEntries(prev => ({ ...prev, [idStr]: [] }));
+                return;
+            }
+            console.log("DictGetEntries result:", result.slice(0, 2)); // デバッグ用
+
+            const mapped = result.map(r => ({
+                id: r.id || r.ID,
+                sourceId: r.source_id || r.sourceId || r.SourceID,
+                edid: r.edid || r.EDID,
+                sourceText: r.source_text || r.sourceText || r.Source || r.source_text || "",
+                destText: r.dest_text || r.destText || r.Dest || r.dest_text || "",
+                recordType: r.record_type || r.recordType || r.RecordType || r.record_type || ""
+            }));
+            setEntries(prev => ({ ...prev, [idStr]: mapped }));
+        } catch (e) {
+            console.error(e);
+        }
+    };
+
+    const handleRowSelectAndFetch = (row: DictSourceRow | null, rowId: string | null) => {
         setSelectedRow(row);
         setSelectedRowId(rowId);
+        if (rowId) {
+            fetchEntries(rowId);
+        }
+    };
+
+    const handleSelectFilesClick = async () => {
+        try {
+            const files = await SelectFiles();
+            if (files && files.length > 0) {
+                setSelectedFiles(prev => {
+                    const currentPaths = new Set(prev);
+                    const uniqueNewFiles = files.filter(f => !currentPaths.has(f));
+                    return [...prev, ...uniqueNewFiles];
+                });
+            }
+        } catch (e) {
+            console.error('Failed to select files:', e);
+        }
+    };
+
+    const removeSelectedFile = (pathToRemove: string) => {
+        setSelectedFiles(prev => prev.filter(p => p !== pathToRemove));
+    };
+
+    const handleDeleteSource = async () => {
+        if (!deletingRowId) return;
+        try {
+            await DictDeleteSource(parseInt(deletingRowId, 10));
+            // 削除成功したらリスト再取得
+            await fetchSources();
+            // もし選択中だった行を削除した場合は選択解除
+            if (selectedRowId === deletingRowId) {
+                handleRowSelectAndFetch(null, null);
+            }
+        } catch (e) {
+            console.error('Failed to delete source:', e);
+        } finally {
+            setDeletingRowId(null);
+        }
     };
 
     const sourceColumns = useMemo<ColumnDef<DictSourceRow, unknown>[]>(() => [
@@ -125,27 +244,22 @@ const DictionaryBuilder: React.FC = () => {
         {
             id: 'actions',
             header: 'アクション',
-            cell: () => (
+            cell: (info) => (
                 <button
                     className="btn btn-ghost btn-xs text-error"
                     disabled={isImporting}
-                    onClick={(e) => { e.stopPropagation(); showModal('delete_modal'); }}
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        setDeletingRowId(info.row.original.id);
+                        showModal('delete_modal');
+                    }}
                 >
                     削除
                 </button>
             ),
         },
     ], [isImporting]);
-
-    const tableHeaderActions = useMemo(() => (
-        <button
-            className="btn btn-outline btn-error btn-sm"
-            disabled={isImporting}
-            onClick={() => showModal('delete_all_modal')}
-        >
-            全て削除
-        </button>
-    ), [isImporting]);
+    // tableHeaderActions は削除
 
     // 選択ソースのエントリデータ
     const currentEntries: DictEntry[] = selectedRow
@@ -154,25 +268,16 @@ const DictionaryBuilder: React.FC = () => {
 
     // ── entries ビュー ────────────────────────────────────
     if (view === 'entries' && selectedRow) {
-        let nextEntryId = 900; // モック用の新規ID採番
         return (
             <GridEditor<DictEntry>
                 title={`エントリ編集: ${selectedRow.fileName} (${currentEntries.length.toLocaleString()} 件表示中)`}
                 initialData={currentEntries}
                 columns={ENTRY_COLUMNS}
                 onBack={() => setView('list')}
-                onSave={(rows) => {
-                    console.log('[DictionaryBuilder] エントリ保存:', rows);
+                onSave={async () => {
+                    console.log('[DictionaryBuilder] エントリ保存指示 (現在UI上での一括保存APIは未実装のためリストに戻ります)');
                     setView('list');
                 }}
-                newRowFactory={() => ({
-                    id: nextEntryId++,
-                    sourceId: selectedRow.id,
-                    edid: '',
-                    recordType: '',
-                    sourceText: '',
-                    destText: '',
-                })}
             />
         );
     }
@@ -189,14 +294,14 @@ const DictionaryBuilder: React.FC = () => {
             </div>
 
             {/* 画面説明 */}
-            <div className="alert alert-info shadow-sm shrink-0 flex-col items-start gap-2">
-                <div className="flex items-center gap-2">
+            <details className="alert alert-info shadow-sm shrink-0 flex-col items-start gap-2 [&>summary::-webkit-details-marker]:hidden">
+                <summary className="flex items-center gap-2 cursor-pointer font-bold select-none list-none">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" className="stroke-current shrink-0 w-6 h-6">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
                     </svg>
-                    <h3 className="font-bold">システム辞書の構築について</h3>
-                </div>
-                <div className="text-sm space-y-2">
+                    システム辞書の構築について (クリックで展開)
+                </summary>
+                <div className="text-sm space-y-2 mt-2 pt-2 border-t border-info-content/20">
                     <p>
                         この画面では、公式翻訳や過去の翻訳済みModのデータ（SSTXML形式など）をインポートし、
                         <strong>全プロジェクト共通で利用される「システム辞書(dictionary.db)」</strong>を構築・管理します。
@@ -206,56 +311,57 @@ const DictionaryBuilder: React.FC = () => {
                         <li><code className="bg-base-100 text-base-content px-1 rounded">Skyrim.esm</code> などの公式マスターファイルを優先してインポートすることを推奨します。</li>
                     </ul>
                 </div>
-            </div>
+            </details>
 
             <div className="flex flex-1 flex-col min-h-0 gap-4 relative">
                 {/* 上部パネル */}
-                <div className="grid grid-cols-2 gap-4 shrink-0">
+                <div className="shrink-0">
                     <div className="card bg-base-100 shadow-sm border border-base-200">
                         <div className="card-body">
                             <h2 className="card-title text-base">XMLインポート (xTranslator形式)</h2>
                             <div className="flex flex-col gap-4 mt-2">
                                 <span className="text-sm">SSTXMLファイル、または公式DLCの翻訳XMLを選択してください。</span>
                                 <div className="flex gap-4">
-                                    <input
-                                        type="file"
-                                        multiple
-                                        className="file-input file-input-bordered file-input-primary w-full max-w-xs"
-                                        onChange={handleFileChange}
-                                        onClick={(e) => e.stopPropagation()}
+                                    <button
+                                        className="btn btn-outline btn-primary w-fit"
+                                        onClick={handleSelectFilesClick}
                                         disabled={isImporting}
-                                    />
+                                    >
+                                        ファイルを選択
+                                    </button>
                                 </div>
                                 {selectedFiles.length > 0 && (
                                     <div className="flex flex-col gap-2">
                                         <span className="text-sm font-bold text-base-content/70">選択されたファイル ({selectedFiles.length}件):</span>
                                         <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto p-2 bg-base-200/50 rounded-lg border border-base-300">
-                                            {selectedFiles.map(f => (
-                                                <div key={f.name} className="badge badge-primary badge-outline gap-1 py-3 px-2">
-                                                    <span className="truncate max-w-[200px] font-mono text-xs" title={f.name}>{f.name}</span>
-                                                    <button
-                                                        className="btn btn-ghost btn-xs btn-circle ml-1 opacity-70 hover:opacity-100"
-                                                        disabled={isImporting}
-                                                        onClick={() => removeSelectedFile(f.name)}
-                                                        title="リストから外す"
-                                                    >
-                                                        ✕
-                                                    </button>
-                                                </div>
-                                            ))}
+                                            {selectedFiles.map(filePath => {
+                                                const fileName = filePath.split(/[\\/]/).pop() || filePath;
+                                                return (
+                                                    <div key={filePath} className="badge badge-primary badge-outline gap-1 py-3 px-2">
+                                                        <span className="truncate max-w-[200px] font-mono text-xs" title={filePath}>{fileName}</span>
+                                                        <button
+                                                            className="btn btn-ghost btn-xs btn-circle ml-1 opacity-70 hover:opacity-100"
+                                                            disabled={isImporting}
+                                                            onClick={() => removeSelectedFile(filePath)}
+                                                            title="リストから外す"
+                                                        >
+                                                            ✕
+                                                        </button>
+                                                    </div>
+                                                );
+                                            })}
                                         </div>
                                     </div>
                                 )}
-                                {isImporting && (
+                                {isImporting && Object.keys(importMessages).length > 0 && (
                                     <div className="flex flex-col gap-3">
                                         <span className="text-sm font-bold block border-b border-base-200 pb-1">インポート進捗</span>
-                                        {selectedFiles.map(f => (
-                                            <div key={f.name} className="flex flex-col gap-1">
+                                        {Object.entries(importMessages).map(([corrId, msg]) => (
+                                            <div key={corrId} className="flex flex-col gap-1">
                                                 <div className="flex justify-between text-xs">
-                                                    <span className="truncate max-w-[200px]" title={f.name}>{f.name}</span>
-                                                    <span>{fileProgresses[f.name] ?? 0}%</span>
+                                                    <span className="truncate max-w-full text-primary" title={msg}>{msg}</span>
                                                 </div>
-                                                <progress className="progress progress-primary w-full" value={fileProgresses[f.name] ?? 0} max="100"></progress>
+                                                <progress className="progress progress-primary w-full"></progress>
                                             </div>
                                         ))}
                                     </div>
@@ -268,17 +374,8 @@ const DictionaryBuilder: React.FC = () => {
                                             if (selectedFiles.length === 0) return;
 
                                             // 実行開始時にソースファイル(既存行)の選択を解除
-                                            handleRowSelect(null, null);
-                                            setIsImporting(true);
-
-                                            const initProg: Record<string, number> = {};
-                                            selectedFiles.forEach(f => { initProg[f.name] = 0; });
-                                            setFileProgresses(initProg);
-
-                                            console.log('Starting dictionary build with:', selectedFiles.map(f => f.name));
-
-                                            // TODO: Wails Bridge 経由でのバックエンド呼び出しをここで行う
-                                            // StartDictionaryBuildTask(selectedFiles.map(f => f.path)) など
+                                            handleRowSelectAndFetch(null, null);
+                                            handleImport();
                                         }}
                                     >
                                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 mr-1">
@@ -286,22 +383,6 @@ const DictionaryBuilder: React.FC = () => {
                                         </svg>
                                         {isImporting ? 'インポート実行中...' : '辞書構築を開始'}
                                     </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="card bg-base-100 shadow-sm border border-base-200">
-                        <div className="card-body">
-                            <h2 className="card-title text-base">システム辞書ステータス</h2>
-                            <div className="flex flex-col gap-4 mt-2">
-                                <div className="stat px-0 py-2">
-                                    <div className="stat-title text-sm">総エントリ数</div>
-                                    <div className="stat-value text-primary text-3xl font-mono">0</div>
-                                </div>
-                                <div className="stat px-0 py-2 border-t border-base-200">
-                                    <div className="stat-title text-sm">登録済みソース</div>
-                                    <div className="stat-value text-xl">0</div>
                                 </div>
                             </div>
                         </div>
@@ -315,8 +396,7 @@ const DictionaryBuilder: React.FC = () => {
                         data={sources}
                         title="登録済み辞書ソース一覧"
                         selectedRowId={selectedRowId}
-                        onRowSelect={handleRowSelect}
-                        headerActions={tableHeaderActions}
+                        onRowSelect={handleRowSelectAndFetch}
                     />
 
                     {isImporting && (
@@ -335,7 +415,7 @@ const DictionaryBuilder: React.FC = () => {
             {/* 詳細ペイン */}
             <DetailPane
                 isOpen={!!selectedRow}
-                onClose={() => handleRowSelect(null, null)}
+                onClose={() => handleRowSelectAndFetch(null, null)}
                 title={selectedRow ? `詳細: ${selectedRow.fileName} (${selectedRow.format})` : '詳細'}
                 defaultHeight={280}
             >
@@ -397,23 +477,8 @@ const DictionaryBuilder: React.FC = () => {
                     <div className="modal-action">
                         <form method="dialog">
                             <div className="flex gap-2">
-                                <button className="btn btn-ghost">キャンセル</button>
-                                <button className="btn btn-error">削除する</button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            </dialog>
-
-            <dialog id="delete_all_modal" className="modal">
-                <div className="modal-box border border-error">
-                    <h3 className="font-bold text-lg text-error">全ソース削除の確認</h3>
-                    <p className="py-4">登録されている全ての辞書ソースをデータベースから削除しますか？<br />※この操作は取り消せません。</p>
-                    <div className="modal-action">
-                        <form method="dialog">
-                            <div className="flex gap-2">
-                                <button className="btn btn-ghost">キャンセル</button>
-                                <button className="btn btn-error">全て削除する</button>
+                                <button className="btn btn-ghost" onClick={() => setDeletingRowId(null)}>キャンセル</button>
+                                <button className="btn btn-error" onClick={handleDeleteSource}>削除する</button>
                             </div>
                         </form>
                     </div>

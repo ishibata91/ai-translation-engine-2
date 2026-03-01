@@ -2,12 +2,15 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"flag"
 	"fmt"
+	"log"
 	"log/slog"
 	"os"
 
+	"github.com/ishibata91/ai-translation-engine-2/pkg/dictionary"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/datastore"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/progress"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -24,50 +27,32 @@ func main() {
 	}
 	xmlFilePath := args[0]
 
-
 	ctx := context.Background()
 	slog.InfoContext(ctx, "Starting Dictionary Builder", "dbPath", *dbPath, "xmlFilePath", xmlFilePath)
 
-	// Open SQLite Database
-	db, err := sql.Open("sqlite3", *dbPath)
+	// 1. Initialize DB
+	db, dbCleanup, err := datastore.NewSQLiteDB(*dbPath) // Use *dbPath instead of hardcoded "dictionary.db"
 	if err != nil {
-		slog.ErrorContext(ctx, "Failed to open database", "error", err)
-		os.Exit(1)
+		log.Fatalf("failed to initialize database: %v", err)
 	}
-	defer db.Close()
+	defer dbCleanup()
 
-	// Use Wire to initialize the Importer
-	importer := initializeImporter(db)
-
-	// Initialize the database tables (this is a bit of a manual step here since Importer interface doesn't expose Initialize,
-	// ideally Store.Initialize should be called, but since Importer encapsulates Store, we assume the Store handles it or we expose it.
-	// For this slice, let's cast back to Store to initialize for the CLI, or we could have a Builder App struct.)
-	// To keep it simple, we will execute the schema creation directly here or adjust the Wire setup.
-	// We'll just run the initialize logic here manually to ensure tables exist.
-	_, err = db.ExecContext(ctx, `
-		CREATE TABLE IF NOT EXISTS dictionary_entries (
-			edid TEXT PRIMARY KEY,
-			rec TEXT NOT NULL,
-			source TEXT NOT NULL,
-			dest TEXT NOT NULL,
-			addon TEXT NOT NULL
-		);
-	`)
-	if err != nil {
-		slog.ErrorContext(ctx, "Failed to initialize db", "error", err)
-		os.Exit(1)
-	}
+	// 構築部分
+	store, _ := dictionary.NewDictionaryStore(db)
+	config := dictionary.DefaultConfig()
+	notifier := progress.NewNoopNotifier()
+	logger := slog.Default() // Define logger as it's used in NewImporter
+	importer := dictionary.NewImporter(config, store, notifier, logger)
 
 	// Open XML file for reading
-	file, err := os.Open(xmlFilePath)
+	file, err := os.Open(xmlFilePath) // Use xmlFilePath
 	if err != nil {
-		slog.ErrorContext(ctx, "Failed to open XML file", "error", err)
-		os.Exit(1)
+		log.Fatalf("failed to open file: %v", err)
 	}
 	defer file.Close()
 
 	// Run the import
-	count, err := importer.ImportXML(ctx, file)
+	count, err := importer.ImportXML(ctx, 1, xmlFilePath, file) // Use xmlFilePath
 	if err != nil {
 		slog.ErrorContext(ctx, "Import failed", "error", err)
 		os.Exit(1)

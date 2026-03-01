@@ -8,7 +8,7 @@ AIDDにおける決定的なコード再生成の確実性を担保するため�
 ## 要件
 1. **独立したUI**: ユーザーはWeb UI上から複数のxtranslator XMLファイルを指定し、一括でインポート処理を実行できる。
 2. **XML解析**: `SSTXMLRessources > Content > String` 階層から `EDID`, `REC`, `Source`, `Dest` を抽出する。
-3. **カプセル化された永続化**: プロセスマネージャーから `*sql.DB` などの**「DBのプーリング・接続管理のためだけのインフラモジュール」**のみをDIで受け取り、本Slice内の `DictionaryStore` が辞書テーブルに対するすべての操作（テーブル生成・INSERT/UPSERT等）を単独で完結させる。
+3. **カプセル化された永続化**: プロセスマネージャーから `*sql.DB` などの**「DBのプーリング・接続管理のためだけのインフラモジュール」**のみをDIで受け取り、本Slice内の `DictionaryStore` が2テーブル構成（`dlc_sources` / `dlc_dictionary_entries`）スキーマを使用し、辞書テーブルに対するすべての操作（ソース管理、エントリに関するCRUD等）を単独で完結させる。
 4. **名詞の抽出要件 (フィルタリング)**: 本機能は「用語辞書」であるため、XMLに含まれるすべてのテキストではなく、**対象とする特定のレコード（名詞類）のみ**を抽出して永続化する。対象リストに含まれないRECはすべて無視（パーススキップ）する。
    - **対象とするREC（許可リスト）**:
      - `BOOK:FULL`: 本のアイテム名
@@ -69,6 +69,7 @@ Dictionary Builder画面において、辞書の親データセット（辞書�
 
 ### Requirement: 複数ファイルのアップロードと選択状態の保持
 ユーザーはインポート用の辞書ファイル（SSTXMLなど）を複数同時に選択・管理できなければならない（SHALL）。
+Web標準の `<input type="file">` による絶対パス取得不可の制約を回避するため、ファイルの選択にはWailsのネイティブファイルダイアログ（`runtime.OpenMultipleFilesDialog`）をバックエンドから呼び出して利用しなければならない（SHALL）。
 
 #### Scenario: ファイルの追加と重複排除
 - **WHEN** ユーザーがファイル選択ボタンからファイルを追加したとき
@@ -78,6 +79,7 @@ Dictionary Builder画面において、辞書の親データセット（辞書�
 
 ### Requirement: 辞書構築の実行制御と進捗表示
 辞書インポートを実行する「辞書構築を開始」ボタンがインポートパネル設定下部に配置されなければならない（SHALL）。
+フロントエンドの進捗表示は、バックエンドから発火される `dictionary:import_progress` イベントを購読し、通知される `CorrelationID` とメッセージに基づいて動的に描画・管理されなければならない（SHALL）。
 
 #### Scenario: 構築の実行とUIロック
 - **WHEN** ファイルが1つ以上選択されているとき
@@ -86,6 +88,62 @@ Dictionary Builder画面において、辞書の親データセット（辞書�
 - **THEN** 選択したファイルごとの個別の進捗プログレスバーが表示されること（押下前は非表示であること）
 - **AND** ファイル選択ボタンが非活性化されること
 - **AND** 既存の辞書ソース一覧（DataTable）上にローディング画面（オーバーレイ表示）がかぶさり、操作不能となること
+
+### Requirement: データバインディングとリスト操作のUI要件
+フロントエンド・バックエンド間の通信（WailsによるJSONシリアライズ）におけるプロパティ名（スネークケースやキャメルケース）の揺れを吸収するため、DTOをフロントエンド側に取り込む際は複数のキーパターンでフォールバックマッピングされなければならない（SHALL）。
+また、各ソースデータの「削除」操作は、一覧行ごとのアクションとして実装し、確認モーダルを経由して個別の削除対象のバックエンド処理（`DictDeleteSource`）を呼び出すこと（SHALL）。
+
+### Requirement: 最新DBスキーマの準拠 (dlc_sources / dlc_dictionary_entries)
+`DictionaryStore` は、永続化レイヤーとして `dictionary.db` を使用し、`specs/database_erd.md` で定義されたテーブルを実装しなければならない。
+
+#### シナリオ: スキーマ移行
+- **WHEN** スライスが初期化されるとき
+- **THEN** `dictionary.db` 内に `dlc_sources` および `dlc_dictionary_entries` テーブルが存在することを確認する。
+- **AND** レガシーな `dictionary_entries` テーブルは無視するか、安全に削除すること。
+
+### Requirement: 辞書ソースの CRUD
+バックエンドは辞書ソースを管理するためのメソッドを提供しなければならない。
+
+#### シナリオ: ソースの一覧表示
+- **WHEN** `GetSources` が呼び出されたとき
+- **THEN** メタデータ（id, file_name, status, entry_count 等）を含む `dlc_sources` の全レコードを返さなければならない。
+
+#### シナリオ: ソースの削除
+- **WHEN** `DeleteSource(id)` が呼び出されたとき
+- **THEN** `dlc_sources` からそのソースレコードを削除しなければならない。
+- **AND** `dlc_dictionary_entries` に関連付けられているすべてのエントリをカスケード削除しなければならない。
+
+### Requirement: 辞書エントリの CRUD (GridEditor サポート)
+UI でのインライン編集を可能にするため、バックエンドは個別のエントリ操作をサポートしなければならない。
+
+#### シナリオ: ソースに紐づくエントリの取得
+- **WHEN** `GetEntriesBySourceID(sourceID)` が呼び出されたとき
+- **THEN** そのソースに関連付けられたすべての `dlc_dictionary_entries` を返さなければならない。
+
+#### シナリオ: エントリの更新
+- **WHEN** `UpdateEntry(term)` が呼び出されたとき
+- **THEN** `dlc_dictionary_entries` 内の特定の ID に対して `source_text` または `dest_text` を更新しなければならない。
+
+#### シナリオ: エントリの削除
+- **WHEN** `DeleteEntry(id)` が呼び出されたとき
+- **THEN** `dlc_dictionary_entries` から特定のエントリを削除しなければならない。
+
+### Requirement: Wails サービスバインディング (DictionaryService)
+内部のスライスロジックを Wails フロントエンドに橋渡しするための新しい `DictionaryService` を実装しなければならない。
+
+#### シナリオ: フロントエンド連携
+- **WHEN** Wails アプリが起動するとき
+- **THEN** `DictionaryService` がバインディング用として登録されていなければならない。
+- **AND** 上記で定義されたすべての CRUD メソッドが、タスク/UI レイヤーからアクセス可能でなければならない。
+
+### Requirement: 進捗報告とメタデータを伴うインポート処理
+`DictionaryImporter` は、メタデータを登録し、進捗を通知するよう調整されなければならない。
+
+#### シナリオ: ファイルのインポート
+- **WHEN** ファイルインポートが開始されたとき
+- **THEN** `dlc_sources` レコードを `status: "IMPORTING"` で作成しなければならない。
+- **AND** XML のトークンがパースされ、バッチ単位で保存される際、`pkg/infrastructure/progress`（または同等の通知機構）を介して進捗状況を送信しなければならない。
+- **AND** 完了時に、`status` は `"COMPLETED"` になり、`entry_count` は実際にインポートされたレコード数に更新されなければならない。
 
 ---
 

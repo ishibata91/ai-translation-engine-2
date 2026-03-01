@@ -18,7 +18,7 @@ import (
 
 // InitializeParser creates a new Parser instance with all dependencies wired.
 func InitializeParser(ctx context.Context) (parser.Parser, func(), error) {
-	db, cleanup, err := datastore.NewSQLiteDB()
+	db, cleanup, err := datastore.NewConfigDB()
 	if err != nil {
 		return nil, nil, err
 	}

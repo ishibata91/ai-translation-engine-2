@@ -20,9 +20,15 @@ classDiagram
         +SaveTerms(ctx context.Context, terms []DictTerm) error
     }
 
-    class Pipeline {
+    class DictionaryService {
+        -DictionaryStore store
         -DictionaryImporter importer
-        +HandleImport(w http.ResponseWriter, r *http.Request)
+        +GetSources(ctx context.Context) ([]DictSource, error)
+        +GetEntries(ctx context.Context, sourceID int64) ([]DictTerm, error)
+        +StartImport(ctx context.Context, filePath string) (int64, error)
+        +UpdateEntry(ctx context.Context, term DictTerm) error
+        +DeleteEntry(ctx context.Context, id int64) error
+        +DeleteSource(ctx context.Context, id int64) error
     }
 
     class XMLParser {
@@ -40,7 +46,8 @@ classDiagram
         +ImportXML(ctx context.Context, file io.Reader) (int, error)
     }
 
-    Pipeline --> DictionaryImporter : uses
+    DictionaryService --> DictionaryImporter : uses
+    DictionaryService --> DictionaryStore : uses
     DictionaryImporter <|.. DictionaryImporterImpl : implements
     DictionaryImporterImpl --> XMLParser : uses
     DictionaryImporterImpl --> DictionaryStore : uses
@@ -58,4 +65,4 @@ AIDDにおいてAIが変更範囲を迷わず限定・自己完結させて決�
 *   **XML 解析**: `encoding/xml` (標準ライブラリ)
 *   **DB アクセス**: `github.com/mattn/go-sqlite3` (デファクトスタンダード、ただしCGO有効化が必要) または `modernc.org/sqlite` (CGO不要な代替品)
 *   **依存性注入**: `github.com/google/wire` (プロジェクト標準)
-*   **ルーティング**: 標準 `net/http` 
+*   **通信方式**: Wails バインディング (フロントエンドとの直接通信)

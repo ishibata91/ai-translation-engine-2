@@ -6,29 +6,80 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+
+	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/progress"
 )
 
 type xmlImporter struct {
-	config Config
-	store  DictionaryStore
-	logger *slog.Logger
+	config   Config
+	store    DictionaryStore
+	notifier progress.ProgressNotifier
+	logger   *slog.Logger
 }
 
-// NewImporter creates a new instance of DictionaryImporter.
-func NewImporter(config Config, store DictionaryStore, logger *slog.Logger) DictionaryImporter {
+// NewImporter は DictionaryImporter の新しいインスタンスを生成する。
+func NewImporter(config Config, store DictionaryStore, notifier progress.ProgressNotifier, logger *slog.Logger) DictionaryImporter {
 	return &xmlImporter{
-		config: config,
-		store:  store,
-		logger: logger.With("component", "DictionaryImporter"),
+		config:   config,
+		store:    store,
+		notifier: notifier,
+		logger:   logger.With("component", "DictionaryImporter"),
 	}
 }
 
-// ImportXML reads an xTranslator XML from io.Reader using a streaming parser
-// to extract allowed noun records and persist them.
-func (i *xmlImporter) ImportXML(ctx context.Context, file io.Reader) (int, error) {
-	i.logger.DebugContext(ctx, "ENTER DictionaryImporter.ImportXML")
+// ImportXML は xTranslator XML を io.Reader からストリーミングパースし、
+// 許可された名詞レコードを sourceID に紐付けて保存する。
+// 処理中は progress パッケージを通じて進捗をフロントエンドに通知する。
+func (i *xmlImporter) ImportXML(ctx context.Context, sourceID int64, fileName string, file io.Reader) (int, error) {
+	i.logger.DebugContext(ctx, "ENTER DictionaryImporter.ImportXML", "sourceID", sourceID, "fileName", fileName)
 	defer i.logger.DebugContext(ctx, "EXIT DictionaryImporter.ImportXML")
 
+	// dlc_sources を IMPORTING 状態に更新
+	if err := i.store.UpdateSourceStatus(ctx, sourceID, "IMPORTING", 0, ""); err != nil {
+		return 0, fmt.Errorf("failed to set source to IMPORTING: %w", err)
+	}
+
+	correlationID := fmt.Sprintf("dict-import-%d", sourceID)
+
+	// 初回進捗通知
+	i.notifier.OnProgress(ctx, progress.ProgressEvent{
+		CorrelationID: correlationID,
+		Status:        progress.StatusInProgress,
+		Message:       fmt.Sprintf("辞書インポート開始: %s", fileName),
+	})
+
+	totalImported, err := i.parseAndSave(ctx, sourceID, correlationID, file)
+	if err != nil {
+		// エラー状態に更新して通知
+		_ = i.store.UpdateSourceStatus(ctx, sourceID, "ERROR", totalImported, err.Error())
+		i.notifier.OnProgress(ctx, progress.ProgressEvent{
+			CorrelationID: correlationID,
+			Completed:     totalImported,
+			Status:        progress.StatusFailed,
+			Message:       fmt.Sprintf("インポートエラー: %v", err),
+		})
+		return totalImported, err
+	}
+
+	// COMPLETED に更新
+	if err := i.store.UpdateSourceStatus(ctx, sourceID, "COMPLETED", totalImported, ""); err != nil {
+		return totalImported, fmt.Errorf("failed to set source to COMPLETED: %w", err)
+	}
+
+	// 完了通知
+	i.notifier.OnProgress(ctx, progress.ProgressEvent{
+		CorrelationID: correlationID,
+		Completed:     totalImported,
+		Status:        progress.StatusCompleted,
+		Message:       fmt.Sprintf("インポート完了: %d 件", totalImported),
+	})
+
+	i.logger.InfoContext(ctx, "Successfully imported terms", "total", totalImported, "sourceID", sourceID)
+	return totalImported, nil
+}
+
+// parseAndSave は XML を読み込み、バッチ単位で保存して合計件数を返す。
+func (i *xmlImporter) parseAndSave(ctx context.Context, sourceID int64, correlationID string, file io.Reader) (int, error) {
 	decoder := xml.NewDecoder(file)
 
 	var addonName string
@@ -39,12 +90,11 @@ func (i *xmlImporter) ImportXML(ctx context.Context, file io.Reader) (int, error
 	for {
 		t, err := decoder.Token()
 		if err != nil {
-			if err.Error() == "EOF" {
+			if err == io.EOF {
 				break
 			}
 			return totalImported, fmt.Errorf("error reading xml token: %w", err)
 		}
-
 		if t == nil {
 			break
 		}
@@ -58,7 +108,7 @@ func (i *xmlImporter) ImportXML(ctx context.Context, file io.Reader) (int, error
 		case "Addon":
 			addonName = i.handleAddonElement(ctx, decoder, &se, addonName)
 		case "String":
-			term, ok := i.handleStringElement(ctx, decoder, &se, addonName)
+			term, ok := i.handleStringElement(ctx, decoder, &se, sourceID)
 			if !ok {
 				continue
 			}
@@ -71,11 +121,19 @@ func (i *xmlImporter) ImportXML(ctx context.Context, file io.Reader) (int, error
 				}
 				totalImported += flushed
 				batch = batch[:0]
+
+				// バッチ完了ごとに進捗通知
+				i.notifier.OnProgress(ctx, progress.ProgressEvent{
+					CorrelationID: correlationID,
+					Completed:     totalImported,
+					Status:        progress.StatusInProgress,
+					Message:       fmt.Sprintf("インポート中: %d 件処理済み", totalImported),
+				})
 			}
 		}
 	}
 
-	// Flush remaining entries
+	// 残りのバッチをフラッシュ
 	if len(batch) > 0 {
 		flushed, err := i.flushBatch(ctx, batch)
 		if err != nil {
@@ -84,11 +142,10 @@ func (i *xmlImporter) ImportXML(ctx context.Context, file io.Reader) (int, error
 		totalImported += flushed
 	}
 
-	i.logger.InfoContext(ctx, "Successfully imported terms", "total", totalImported)
 	return totalImported, nil
 }
 
-// handleAddonElement decodes an Addon element and returns the addon name.
+// handleAddonElement は Addon 要素をデコードしてアドオン名を返す。
 func (i *xmlImporter) handleAddonElement(ctx context.Context, decoder *xml.Decoder, se *xml.StartElement, currentAddon string) string {
 	i.logger.DebugContext(ctx, "ENTER DictionaryImporter.handleAddonElement")
 
@@ -100,8 +157,9 @@ func (i *xmlImporter) handleAddonElement(ctx context.Context, decoder *xml.Decod
 	return currentAddon
 }
 
-// handleStringElement decodes a String element and returns a DictTerm if the REC type is allowed.
-func (i *xmlImporter) handleStringElement(ctx context.Context, decoder *xml.Decoder, se *xml.StartElement, addonName string) (DictTerm, bool) {
+// handleStringElement は String 要素をデコードして DictTerm を返す。
+// REC タイプが許可されていない場合は (DictTerm{}, false) を返す。
+func (i *xmlImporter) handleStringElement(ctx context.Context, decoder *xml.Decoder, se *xml.StartElement, sourceID int64) (DictTerm, bool) {
 	i.logger.DebugContext(ctx, "ENTER DictionaryImporter.handleStringElement")
 
 	var strElem struct {
@@ -122,15 +180,15 @@ func (i *xmlImporter) handleStringElement(ctx context.Context, decoder *xml.Deco
 	}
 
 	return DictTerm{
-		EDID:   strElem.EDID,
-		REC:    strElem.REC,
-		Source: strElem.Source,
-		Dest:   strElem.Dest,
-		Addon:  addonName,
+		SourceID:   sourceID,
+		EDID:       strElem.EDID,
+		RecordType: strElem.REC,
+		Source:     strElem.Source,
+		Dest:       strElem.Dest,
 	}, true
 }
 
-// flushBatch persists a batch of terms to the store and returns the count saved.
+// flushBatch はバッチのエントリをストアに保存し、保存件数を返す。
 func (i *xmlImporter) flushBatch(ctx context.Context, batch []DictTerm) (int, error) {
 	i.logger.DebugContext(ctx, "ENTER DictionaryImporter.flushBatch", slog.Int("batchSize", len(batch)))
 

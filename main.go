@@ -6,7 +6,9 @@ import (
 	"log"
 
 	"github.com/ishibata91/ai-translation-engine-2/pkg/config"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/dictionary"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/datastore"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/progress"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/telemetry"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/task"
 	"github.com/wailsapp/wails/v2"
@@ -18,10 +20,10 @@ import (
 var assets embed.FS
 
 func main() {
-	// 1. Initialize DB
-	db, dbCleanup, err := datastore.NewSQLiteDB()
+	// 1. Initialize DB (config.db)
+	db, dbCleanup, err := datastore.NewSQLiteDB("config.db")
 	if err != nil {
-		log.Fatalf("failed to initialize database: %v", err)
+		log.Fatalf("failed to initialize config database: %v", err)
 	}
 	defer dbCleanup()
 
@@ -38,8 +40,28 @@ func main() {
 	// 4. Setup Bridge
 	taskBridge := task.NewBridge(taskManager)
 
+	// 5. Setup Dictionary System (dictionary.db)
+	dictDB, dictDBCleanup, err := datastore.NewSQLiteDB("dictionary.db")
+	if err != nil {
+		log.Fatalf("failed to initialize dictionary database: %v", err)
+	}
+	defer dictDBCleanup()
+
+	dictStore, err := dictionary.NewDictionaryStore(dictDB)
+	if err != nil {
+		log.Fatalf("failed to initialize dictionary store: %v", err)
+	}
+	wailsNotifier := progress.NewWailsNotifier(logger)
+	wailsNotifier.SetEventName("dictionary:import_progress") // 必要に応じて変更可能
+
+	// Wails AST needs `New<StructName>` pattern or `&StructName{}` pattern to discover bindings properly
+	dictConfig := dictionary.DefaultConfig()
+	dictImporter := dictionary.NewImporter(dictConfig, dictStore, wailsNotifier, logger)
+	dictService := dictionary.NewDictionaryService(dictStore, dictImporter, logger)
+
 	// Create an instance of the app structure
 	app := NewApp()
+	app.SetDictService(dictService)
 
 	// Create application with options
 	err = wails.Run(&options.App{
@@ -57,6 +79,8 @@ func main() {
 			if err := taskManager.Initialize(ctx); err != nil {
 				log.Printf("failed to initialize task manager: %v", err)
 			}
+			// Dictionary service progress notifier
+			wailsNotifier.SetContext(ctx)
 		},
 		OnShutdown: app.shutdown,
 		Bind: []interface{}{

@@ -45,6 +45,7 @@ function DataTable<TData>({
         state: { rowSelection },
         getCoreRowModel: getCoreRowModel(),
         enableRowSelection: true,
+        getRowId: (row: any, index: number) => row.id !== undefined ? String(row.id) : String(index),
         // 選択制御は onRowSelect 経由で親が行うため内部更新は無効化
         onRowSelectionChange: () => { },
     });
