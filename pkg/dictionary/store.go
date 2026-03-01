@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 )
 
@@ -171,50 +172,75 @@ func (s *sqliteDictionaryStore) GetEntriesBySourceID(ctx context.Context, source
 	return entries, rows.Err()
 }
 
+// ─── ヘルパー関数 ─────────────────────────────────────────────────────────────
+
+func buildMapSearchWhere(query string, filters map[string]string, prefix string) (string, []interface{}) {
+	var conditions []string
+	var args []interface{}
+
+	// 1. 全体検索 (query)
+	if query != "" {
+		keywords := strings.Fields(query)
+		for _, kw := range keywords {
+			conditions = append(conditions, fmt.Sprintf("(%[1]ssource_text LIKE ? OR %[1]sdest_text LIKE ? OR %[1]sedid LIKE ? OR %[1]srecord_type LIKE ?)", prefix))
+			pattern := "%" + kw + "%"
+			args = append(args, pattern, pattern, pattern, pattern)
+		}
+	}
+
+	// 2. カラム別フィルタ (filters)
+	colMap := map[string]string{
+		"edid":       "edid",
+		"recordType": "record_type",
+		"sourceText": "source_text",
+		"destText":   "dest_text",
+	}
+	for frontKey, val := range filters {
+		val = strings.TrimSpace(val)
+		if val == "" {
+			continue
+		}
+		dbCol, ok := colMap[frontKey]
+		if !ok {
+			continue
+		}
+		// カラムごとのAND検索（スペース区切りで複数のキーワード指定可能とする）
+		keywords := strings.Fields(val)
+		for _, kw := range keywords {
+			conditions = append(conditions, fmt.Sprintf("%[1]s%[2]s LIKE ?", prefix, dbCol))
+			args = append(args, "%"+kw+"%")
+		}
+	}
+
+	if len(conditions) == 0 {
+		return "", nil
+	}
+	return " AND (" + strings.Join(conditions, " AND ") + ")", args
+}
+
 // GetEntriesBySourceIDPaginated は指定ソースのエントリをページネーション付きで返す。
-func (s *sqliteDictionaryStore) GetEntriesBySourceIDPaginated(ctx context.Context, sourceID int64, query string, limit, offset int) (*DictTermPage, error) {
-	slog.DebugContext(ctx, "ENTER DictionaryStore.GetEntriesBySourceIDPaginated", "sourceID", sourceID, "query", query, "limit", limit, "offset", offset)
+func (s *sqliteDictionaryStore) GetEntriesBySourceIDPaginated(ctx context.Context, sourceID int64, query string, filters map[string]string, limit, offset int) (*DictTermPage, error) {
+	slog.DebugContext(ctx, "ENTER DictionaryStore.GetEntriesBySourceIDPaginated", "sourceID", sourceID, "query", query, "filters", filters, "limit", limit, "offset", offset)
 	defer slog.DebugContext(ctx, "EXIT DictionaryStore.GetEntriesBySourceIDPaginated")
 
-	likePattern := "%" + query + "%"
+	whereClause, args := buildMapSearchWhere(query, filters, "")
 
-	// 全体件数を取得
 	var totalCount int
-	var countErr error
-	if query == "" {
-		countErr = s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM dlc_dictionary_entries WHERE source_id = ?`, sourceID).Scan(&totalCount)
-	} else {
-		countErr = s.db.QueryRowContext(ctx, `
-			SELECT COUNT(*) FROM dlc_dictionary_entries
-			WHERE source_id = ?
-			  AND (source_text LIKE ? OR dest_text LIKE ? OR edid LIKE ?)
-		`, sourceID, likePattern, likePattern, likePattern).Scan(&totalCount)
-	}
-	if countErr != nil {
-		return nil, fmt.Errorf("failed to count entries: %w", countErr)
+	countQuery := `SELECT COUNT(*) FROM dlc_dictionary_entries WHERE source_id = ?` + whereClause
+	countArgs := append([]interface{}{sourceID}, args...)
+	if err := s.db.QueryRowContext(ctx, countQuery, countArgs...).Scan(&totalCount); err != nil {
+		return nil, fmt.Errorf("failed to count entries: %w", err)
 	}
 
-	// ページ分のデータを取得
-	var rows *sql.Rows
-	var err error
-	if query == "" {
-		rows, err = s.db.QueryContext(ctx, `
-			SELECT id, source_id, edid, record_type, source_text, dest_text
-			FROM dlc_dictionary_entries
-			WHERE source_id = ?
-			ORDER BY id
-			LIMIT ? OFFSET ?
-		`, sourceID, limit, offset)
-	} else {
-		rows, err = s.db.QueryContext(ctx, `
-			SELECT id, source_id, edid, record_type, source_text, dest_text
-			FROM dlc_dictionary_entries
-			WHERE source_id = ?
-			  AND (source_text LIKE ? OR dest_text LIKE ? OR edid LIKE ?)
-			ORDER BY id
-			LIMIT ? OFFSET ?
-		`, sourceID, likePattern, likePattern, likePattern, limit, offset)
-	}
+	queryStr := `
+		SELECT id, source_id, edid, record_type, source_text, dest_text
+		FROM dlc_dictionary_entries
+		WHERE source_id = ?` + whereClause + `
+		ORDER BY id
+		LIMIT ? OFFSET ?
+	`
+	queryArgs := append(append([]interface{}{}, countArgs...), limit, offset)
+	rows, err := s.db.QueryContext(ctx, queryStr, queryArgs...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query entries paginated: %w", err)
 	}
@@ -238,48 +264,46 @@ func (s *sqliteDictionaryStore) GetEntriesBySourceIDPaginated(ctx context.Contex
 }
 
 // SearchAllEntriesPaginated は全ソースを横断してエントリを検索する。
-func (s *sqliteDictionaryStore) SearchAllEntriesPaginated(ctx context.Context, query string, limit, offset int) (*DictTermPage, error) {
-	slog.DebugContext(ctx, "ENTER DictionaryStore.SearchAllEntriesPaginated", "query", query, "limit", limit, "offset", offset)
+func (s *sqliteDictionaryStore) SearchAllEntriesPaginated(ctx context.Context, query string, filters map[string]string, limit, offset int) (*DictTermPage, error) {
+	slog.DebugContext(ctx, "ENTER DictionaryStore.SearchAllEntriesPaginated", "query", query, "filters", filters, "limit", limit, "offset", offset)
 	defer slog.DebugContext(ctx, "EXIT DictionaryStore.SearchAllEntriesPaginated")
 
-	likePattern := "%" + query + "%"
+	whereClause, args := buildMapSearchWhere(query, filters, "")
+	var countQuery string
+	if whereClause == "" {
+		countQuery = `SELECT COUNT(*) FROM dlc_dictionary_entries`
+	} else {
+		countQuery = `SELECT COUNT(*) FROM dlc_dictionary_entries WHERE ` + strings.TrimPrefix(whereClause, " AND ")
+	}
 
-	// 全体件数を取得
 	var totalCount int
-	var countErr error
-	if query == "" {
-		countErr = s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM dlc_dictionary_entries`).Scan(&totalCount)
-	} else {
-		countErr = s.db.QueryRowContext(ctx, `
-			SELECT COUNT(*) FROM dlc_dictionary_entries
-			WHERE source_text LIKE ? OR dest_text LIKE ? OR edid LIKE ?
-		`, likePattern, likePattern, likePattern).Scan(&totalCount)
-	}
-	if countErr != nil {
-		return nil, fmt.Errorf("failed to count all entries: %w", countErr)
+	if err := s.db.QueryRowContext(ctx, countQuery, args...).Scan(&totalCount); err != nil {
+		return nil, fmt.Errorf("failed to count all entries: %w", err)
 	}
 
-	// ページ分のデータを取得（dlc_sources.file_name をJOINで付与）
-	var rows *sql.Rows
-	var err error
-	if query == "" {
-		rows, err = s.db.QueryContext(ctx, `
+	whereClauseWithPrefix, argsWithPrefix := buildMapSearchWhere(query, filters, "e.")
+	var queryStr string
+	if whereClauseWithPrefix == "" {
+		queryStr = `
 			SELECT e.id, e.source_id, s.file_name, e.edid, e.record_type, e.source_text, e.dest_text
 			FROM dlc_dictionary_entries e
 			JOIN dlc_sources s ON s.id = e.source_id
 			ORDER BY e.source_id, e.id
 			LIMIT ? OFFSET ?
-		`, limit, offset)
+		`
 	} else {
-		rows, err = s.db.QueryContext(ctx, `
+		queryStr = `
 			SELECT e.id, e.source_id, s.file_name, e.edid, e.record_type, e.source_text, e.dest_text
 			FROM dlc_dictionary_entries e
 			JOIN dlc_sources s ON s.id = e.source_id
-			WHERE e.source_text LIKE ? OR e.dest_text LIKE ? OR e.edid LIKE ?
+			WHERE ` + strings.TrimPrefix(whereClauseWithPrefix, " AND ") + `
 			ORDER BY e.source_id, e.id
 			LIMIT ? OFFSET ?
-		`, likePattern, likePattern, likePattern, limit, offset)
+		`
 	}
+
+	queryArgs := append(append([]interface{}{}, argsWithPrefix...), limit, offset)
+	rows, err := s.db.QueryContext(ctx, queryStr, queryArgs...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query all entries: %w", err)
 	}

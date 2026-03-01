@@ -98,12 +98,14 @@ const DictionaryBuilder: React.FC = () => {
     const [entryPage, setEntryPage] = useState(1);
     const [entryTotal, setEntryTotal] = useState(0);
     const [entryQuery, setEntryQuery] = useState('');
+    const [entryFilters, setEntryFilters] = useState<Record<string, string>>({});
 
     // 横断検索結果
     const [crossEntries, setCrossEntries] = useState<DictEntry[]>([]);
     const [crossPage, setCrossPage] = useState(1);
     const [crossTotal, setCrossTotal] = useState(0);
     const [crossQuery, setCrossQuery] = useState('');
+    const [crossFilters, setCrossFilters] = useState<Record<string, string>>({});
 
     // Wails からソース一覧を取得する
     const fetchSources = async () => {
@@ -171,10 +173,10 @@ const DictionaryBuilder: React.FC = () => {
     };
 
     // ── ページネーション付きエントリ取得 ────────────────
-    const fetchEntriesPaginated = async (idStr: string, page: number, query: string) => {
+    const fetchEntriesPaginated = async (idStr: string, page: number, query: string, filters: Record<string, string>) => {
         try {
             const idNum = parseInt(idStr, 10);
-            const result = await DictGetEntriesPaginated(idNum, query, page, PAGE_SIZE) as any;
+            const result = await DictGetEntriesPaginated(idNum, query, filters, page, PAGE_SIZE) as any;
             if (!result) {
                 setEntries([]);
                 setEntryTotal(0);
@@ -202,7 +204,7 @@ const DictionaryBuilder: React.FC = () => {
     const handleEntryPageChange = (page: number) => {
         if (!selectedRowId) return;
         setEntryPage(page);
-        fetchEntriesPaginated(selectedRowId, page, entryQuery);
+        fetchEntriesPaginated(selectedRowId, page, entryQuery, entryFilters);
     };
 
     const handleRowSelectAndFetch = (row: DictSourceRow | null, rowId: string | null) => {
@@ -211,14 +213,15 @@ const DictionaryBuilder: React.FC = () => {
         if (rowId) {
             setEntryPage(1);
             setEntryQuery('');
-            fetchEntriesPaginated(rowId, 1, '');
+            setEntryFilters({});
+            fetchEntriesPaginated(rowId, 1, '', {});
         }
     };
 
     // ── 横断検索 ─────────────────────────────────────────
-    const fetchCrossSearch = async (query: string, page: number) => {
+    const fetchCrossSearch = async (query: string, filters: Record<string, string>, page: number) => {
         try {
-            const result = await DictSearchAllEntriesPaginated(query, page, PAGE_SIZE) as any;
+            const result = await DictSearchAllEntriesPaginated(query, filters, page, PAGE_SIZE) as any;
             if (!result) {
                 setCrossEntries([]);
                 setCrossTotal(0);
@@ -244,15 +247,16 @@ const DictionaryBuilder: React.FC = () => {
 
     const handleCrossSearchExecute = (query: string) => {
         setCrossQuery(query);
+        setCrossFilters({});
         setCrossPage(1);
-        fetchCrossSearch(query, 1);
+        fetchCrossSearch(query, {}, 1);
         setShowCrossSearch(false);
         setView('cross-search');
     };
 
     const handleCrossPageChange = (page: number) => {
         setCrossPage(page);
-        fetchCrossSearch(crossQuery, page);
+        fetchCrossSearch(crossQuery, crossFilters, page);
     };
 
     const handleSelectFilesClick = async () => {
@@ -307,7 +311,7 @@ const DictionaryBuilder: React.FC = () => {
         }
         // 保存後にリフレッシュ
         if (selectedRowId) {
-            await fetchEntriesPaginated(selectedRowId, entryPage, entryQuery);
+            await fetchEntriesPaginated(selectedRowId, entryPage, entryQuery, entryFilters);
         }
     };
 
@@ -327,7 +331,7 @@ const DictionaryBuilder: React.FC = () => {
                 await DictDeleteEntry(e.id);
             } catch (err) { console.error('DeleteEntry failed:', err); }
         }
-        await fetchCrossSearch(crossQuery, crossPage);
+        await fetchCrossSearch(crossQuery, crossFilters, crossPage);
     };
 
     const sourceColumns = useMemo<ColumnDef<DictSourceRow, unknown>[]>(() => [
@@ -393,11 +397,11 @@ const DictionaryBuilder: React.FC = () => {
                 totalCount={entryTotal}
                 pageSize={PAGE_SIZE}
                 onPageChange={handleEntryPageChange}
-                onSearch={(q) => {
-                    setEntryQuery(q);
+                onSearch={(filters) => {
+                    setEntryFilters(filters);
                     setEntryPage(1);
                     if (selectedRowId) {
-                        fetchEntriesPaginated(selectedRowId, 1, q);
+                        fetchEntriesPaginated(selectedRowId, 1, entryQuery, filters);
                     }
                 }}
             />
@@ -417,10 +421,10 @@ const DictionaryBuilder: React.FC = () => {
                 totalCount={crossTotal}
                 pageSize={PAGE_SIZE}
                 onPageChange={handleCrossPageChange}
-                onSearch={(q) => {
-                    setCrossQuery(q);
+                onSearch={(filters) => {
+                    setCrossFilters(filters);
                     setCrossPage(1);
-                    fetchCrossSearch(q, 1);
+                    fetchCrossSearch(crossQuery, filters, 1);
                 }}
             />
         );

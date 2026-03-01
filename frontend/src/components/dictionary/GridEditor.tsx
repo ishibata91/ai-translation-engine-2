@@ -36,8 +36,8 @@ interface GridEditorProps<TData extends object> {
     onBack?: () => void;
     /** 「保存」コールバック */
     onSave: (modified: TData[], deleted: TData[]) => void;
-    /** 「検索」実行時のコールバック (サーバーサイド検索用) */
-    onSearch?: (query: string) => void;
+    /** 「検索」実行時のコールバック (サーバーサイド検索用)。各列ごとのフィルタ状態を渡す。 */
+    onSearch?: (filters: Record<string, string>) => void;
     /** 変更状態が変わったときのコールバック */
     onDirtyChange?: (isDirty: boolean) => void;
     // ── ページネーション (省略時はローカルフィルタのみ) ──
@@ -89,12 +89,7 @@ function GridEditor<TData extends object>({
 
         // onSearch が提供されている場合は、親(サーバー側)で検索を行う
         if (onSearch) {
-            // 全てのフィルタ値をスペース区切りで結合し、一つの検索クエリとする
-            const combinedQuery = Object.values(filterDraft)
-                .map((v) => v.trim())
-                .filter((v) => v !== '')
-                .join(' ');
-            onSearch(combinedQuery);
+            onSearch(filterDraft);
         }
     };
 
@@ -104,7 +99,7 @@ function GridEditor<TData extends object>({
         setAppliedFilters({});
         setEditingCell(null);
         if (onSearch) {
-            onSearch('');
+            onSearch({});
         }
     };
 

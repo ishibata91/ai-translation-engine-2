@@ -48,26 +48,26 @@ func (s *DictionaryService) GetEntries(ctx context.Context, sourceID int64) ([]D
 
 // GetEntriesPaginated は指定ソースのエントリをページネーション付きで返す。
 // page は1始まり、pageSize は取得件数（例: 500）。
-func (s *DictionaryService) GetEntriesPaginated(ctx context.Context, sourceID int64, query string, page, pageSize int) (*DictTermPage, error) {
-	s.logger.DebugContext(ctx, "ENTER DictionaryService.GetEntriesPaginated", "sourceID", sourceID, "query", query, "page", page, "pageSize", pageSize)
+func (s *DictionaryService) GetEntriesPaginated(ctx context.Context, sourceID int64, query string, filters map[string]string, page, pageSize int) (*DictTermPage, error) {
+	s.logger.DebugContext(ctx, "ENTER DictionaryService.GetEntriesPaginated", "sourceID", sourceID, "query", query, "filters", filters, "page", page, "pageSize", pageSize)
 	defer s.logger.DebugContext(ctx, "EXIT DictionaryService.GetEntriesPaginated")
 	if page < 1 {
 		page = 1
 	}
 	offset := (page - 1) * pageSize
-	return s.store.GetEntriesBySourceIDPaginated(ctx, sourceID, query, pageSize, offset)
+	return s.store.GetEntriesBySourceIDPaginated(ctx, sourceID, query, filters, pageSize, offset)
 }
 
 // SearchAll は全辞書ソースを横断してエントリを検索する。
 // page は1始まり、pageSize は取得件数。
-func (s *DictionaryService) SearchAll(ctx context.Context, query string, page, pageSize int) (*DictTermPage, error) {
-	s.logger.DebugContext(ctx, "ENTER DictionaryService.SearchAll", "query", query, "page", page, "pageSize", pageSize)
+func (s *DictionaryService) SearchAll(ctx context.Context, query string, filters map[string]string, page, pageSize int) (*DictTermPage, error) {
+	s.logger.DebugContext(ctx, "ENTER DictionaryService.SearchAll", "query", query, "filters", filters, "page", page, "pageSize", pageSize)
 	defer s.logger.DebugContext(ctx, "EXIT DictionaryService.SearchAll")
 	if page < 1 {
 		page = 1
 	}
 	offset := (page - 1) * pageSize
-	return s.store.SearchAllEntriesPaginated(ctx, query, pageSize, offset)
+	return s.store.SearchAllEntriesPaginated(ctx, query, filters, pageSize, offset)
 }
 
 // UpdateEntry は指定エントリの source_text / dest_text を更新する。

@@ -59,13 +59,13 @@ func (a *App) DictGetEntries(sourceID int64) ([]dictionary.DictTerm, error) {
 
 // DictGetEntriesPaginated は指定ソースのエントリをページネーション付きで返す。
 // page は1始まり、pageSize は取得件数（例: 500）、query は検索キーワード（空文字で全件）。
-func (a *App) DictGetEntriesPaginated(sourceID int64, query string, page, pageSize int) (*dictionary.DictTermPage, error) {
-	return a.dictService.GetEntriesPaginated(a.ctx, sourceID, query, page, pageSize)
+func (a *App) DictGetEntriesPaginated(sourceID int64, query string, filters map[string]string, page, pageSize int) (*dictionary.DictTermPage, error) {
+	return a.dictService.GetEntriesPaginated(a.ctx, sourceID, query, filters, page, pageSize)
 }
 
 // DictSearchAllEntriesPaginated は全辞書ソースを横断してエントリを検索する。
-func (a *App) DictSearchAllEntriesPaginated(query string, page, pageSize int) (*dictionary.DictTermPage, error) {
-	return a.dictService.SearchAll(a.ctx, query, page, pageSize)
+func (a *App) DictSearchAllEntriesPaginated(query string, filters map[string]string, page, pageSize int) (*dictionary.DictTermPage, error) {
+	return a.dictService.SearchAll(a.ctx, query, filters, page, pageSize)
 }
 
 // DictUpdateEntry は指定エントリの source_text / dest_text を更新する。
