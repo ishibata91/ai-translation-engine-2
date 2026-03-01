@@ -22,8 +22,17 @@ type DictSource struct {
 type DictTerm struct {
 	ID         int64  `json:"id"`
 	SourceID   int64  `json:"source_id"`
+	SourceName string `json:"source_name,omitempty"` // 横断検索時に付与
 	EDID       string `json:"edid"`
 	RecordType string `json:"record_type"`
 	Source     string `json:"source_text"`
 	Dest       string `json:"dest_text"`
+}
+
+// DictTermPage はページネーション付きエントリ取得の戻り値。
+// Entries には取得した件数分のエントリが格納され、
+// TotalCount には検索条件に合致する全件数が格納される。
+type DictTermPage struct {
+	Entries    []DictTerm `json:"entries"`
+	TotalCount int        `json:"totalCount"`
 }

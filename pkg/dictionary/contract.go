@@ -31,8 +31,16 @@ type DictionaryStore interface {
 
 	// --- 辞書エントリ管理 ---
 
-	// GetEntriesBySourceID は指定ソースに紐付く全エントリを返す。
+	// GetEntriesBySourceID は指定ソースに紐付く全エントリを返す（後方互換用）。
 	GetEntriesBySourceID(ctx context.Context, sourceID int64) ([]DictTerm, error)
+
+	// GetEntriesBySourceIDPaginated は指定ソースのエントリをページネーション付きで返す。
+	// query が空でない場合は source_text / dest_text / edid に対して LIKE 検索を行う。
+	GetEntriesBySourceIDPaginated(ctx context.Context, sourceID int64, query string, limit, offset int) (*DictTermPage, error)
+
+	// SearchAllEntriesPaginated は全ソースを横断してエントリを検索する。
+	// 各エントリには SourceName (dlc_sources.file_name) が付与される。
+	SearchAllEntriesPaginated(ctx context.Context, query string, limit, offset int) (*DictTermPage, error)
 
 	// SaveTerms は複数エントリをバッチで挿入する。
 	SaveTerms(ctx context.Context, terms []DictTerm) error

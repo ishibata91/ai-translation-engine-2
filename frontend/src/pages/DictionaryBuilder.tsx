@@ -4,6 +4,8 @@ import DataTable from '../components/DataTable';
 import DetailPane from '../components/dictionary/DetailPane';
 import GridEditor from '../components/dictionary/GridEditor';
 import type { GridColumnDef } from '../components/dictionary/GridEditor';
+import { HelpCircle } from 'lucide-react';
+import CrossSearchModal from '../components/dictionary/CrossSearchModal';
 
 // ── 型定義: dlc_sources ──────────────────────────────────
 type SourceStatus = '完了' | 'インポート中' | 'エラー';
@@ -25,6 +27,7 @@ interface DictSourceRow {
 interface DictEntry {
     id: number;
     sourceId: string;
+    sourceName?: string;
     edid: string;
     recordType: string;
     sourceText: string;
@@ -38,7 +41,6 @@ const STATUS_BADGE: Record<SourceStatus, string> = {
     'エラー': 'badge-error',
 };
 
-
 // ── GridEditor 用列定義 (dlc_dictionary_entries) ─────────
 const ENTRY_COLUMNS: GridColumnDef<DictEntry>[] = [
     { key: 'id', header: 'ID', editable: false, widthClass: 'w-16', type: 'number' },
@@ -48,16 +50,36 @@ const ENTRY_COLUMNS: GridColumnDef<DictEntry>[] = [
     { key: 'destText', header: '訳文 (日本語)', editable: true, widthClass: 'w-80' },
 ];
 
-// ── ソーステーブル列定義 ─────────────────────────────────
+// ── 横断検索用列定義 (sourceName列付き) ──────────────────
+const CROSS_ENTRY_COLUMNS: GridColumnDef<DictEntry>[] = [
+    { key: 'sourceName', header: '辞書ソース', editable: false, widthClass: 'w-40' },
+    { key: 'id', header: 'ID', editable: false, widthClass: 'w-16', type: 'number' },
+    { key: 'edid', header: 'Editor ID', editable: true, widthClass: 'w-48' },
+    { key: 'recordType', header: 'Record Type', editable: true, widthClass: 'w-32' },
+    { key: 'sourceText', header: '原文 (英語)', editable: true, widthClass: 'w-80' },
+    { key: 'destText', header: '訳文 (日本語)', editable: true, widthClass: 'w-80' },
+];
+
+// ── ビュー型 ─────────────────────────────────────────────
+type View = 'list' | 'entries' | 'cross-search';
+
 const showModal = (id: string) => {
     const modal = document.getElementById(id) as HTMLDialogElement;
     modal?.showModal();
 };
 
-// ── ビュー型 ─────────────────────────────────────────────
-type View = 'list' | 'entries';
+const PAGE_SIZE = 500;
 
-import { DictGetSources, DictStartImport, DictGetEntries, SelectFiles, DictDeleteSource } from '../wailsjs/go/main/App';
+import {
+    DictGetSources,
+    DictStartImport,
+    DictGetEntriesPaginated,
+    DictSearchAllEntriesPaginated,
+    DictUpdateEntry,
+    DictDeleteEntry,
+    SelectFiles,
+    DictDeleteSource,
+} from '../wailsjs/go/main/App';
 import * as Events from '../wailsjs/runtime/runtime';
 
 const DictionaryBuilder: React.FC = () => {
@@ -66,14 +88,22 @@ const DictionaryBuilder: React.FC = () => {
     const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
     const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
     const [isImporting, setIsImporting] = useState<boolean>(false);
-    // 進行中のインポートメッセージを保持する辞書 { CorrelationID: Message }
     const [importMessages, setImportMessages] = useState<Record<string, string>>({});
-    // 削除対象のソースID
     const [deletingRowId, setDeletingRowId] = useState<string | null>(null);
+    const [showCrossSearch, setShowCrossSearch] = useState(false);
 
     // 実データ保持用
     const [sources, setSources] = useState<DictSourceRow[]>([]);
-    const [entries, setEntries] = useState<Record<string, DictEntry[]>>({});
+    const [entries, setEntries] = useState<DictEntry[]>([]);
+    const [entryPage, setEntryPage] = useState(1);
+    const [entryTotal, setEntryTotal] = useState(0);
+    const [entryQuery, setEntryQuery] = useState('');
+
+    // 横断検索結果
+    const [crossEntries, setCrossEntries] = useState<DictEntry[]>([]);
+    const [crossPage, setCrossPage] = useState(1);
+    const [crossTotal, setCrossTotal] = useState(0);
+    const [crossQuery, setCrossQuery] = useState('');
 
     // Wails からソース一覧を取得する
     const fetchSources = async () => {
@@ -110,12 +140,11 @@ const DictionaryBuilder: React.FC = () => {
                         delete next[corrId];
                         return next;
                     });
-                    if (Object.keys(importMessages).length <= 1) setIsImporting(false);
+                    setIsImporting(false);
                     fetchSources();
                 } else {
                     setImportMessages(prev => ({ ...prev, [corrId]: payload.Message }));
                     setIsImporting(true);
-                    // 1000件ごとなどにテーブル側も更新
                     if (payload.Completed > 0 && payload.Completed % 1000 === 0) {
                         fetchSources();
                     }
@@ -130,7 +159,6 @@ const DictionaryBuilder: React.FC = () => {
     const handleImport = async () => {
         if (selectedFiles.length === 0) return;
         setIsImporting(true);
-
         for (const filePath of selectedFiles) {
             try {
                 const resultId = await DictStartImport(filePath);
@@ -142,36 +170,89 @@ const DictionaryBuilder: React.FC = () => {
         setSelectedFiles([]);
     };
 
-    const fetchEntries = async (idStr: string) => {
+    // ── ページネーション付きエントリ取得 ────────────────
+    const fetchEntriesPaginated = async (idStr: string, page: number, query: string) => {
         try {
             const idNum = parseInt(idStr, 10);
-            const result = await DictGetEntries(idNum) as any[];
+            const result = await DictGetEntriesPaginated(idNum, query, page, PAGE_SIZE) as any;
             if (!result) {
-                setEntries(prev => ({ ...prev, [idStr]: [] }));
+                setEntries([]);
+                setEntryTotal(0);
                 return;
             }
-            console.log("DictGetEntries result:", result.slice(0, 2)); // デバッグ用
-
-            const mapped = result.map(r => ({
-                id: r.id || r.ID,
-                sourceId: r.source_id || r.sourceId || r.SourceID,
-                edid: r.edid || r.EDID,
-                sourceText: r.source_text || r.sourceText || r.Source || r.source_text || "",
-                destText: r.dest_text || r.destText || r.Dest || r.dest_text || "",
-                recordType: r.record_type || r.recordType || r.RecordType || r.record_type || ""
+            const rawEntries: any[] = result.entries ?? result.Entries ?? [];
+            const total: number = result.totalCount ?? result.TotalCount ?? 0;
+            const mapped = rawEntries.map((r: any) => ({
+                id: r.id ?? r.ID,
+                sourceId: String(r.source_id ?? r.SourceID ?? ''),
+                sourceName: r.source_name ?? r.SourceName ?? '',
+                edid: r.edid ?? r.EDID ?? '',
+                sourceText: r.source_text ?? r.Source ?? '',
+                destText: r.dest_text ?? r.Dest ?? '',
+                recordType: r.record_type ?? r.RecordType ?? '',
             }));
-            setEntries(prev => ({ ...prev, [idStr]: mapped }));
+            setEntries(mapped);
+            setEntryTotal(total);
         } catch (e) {
-            console.error(e);
+            console.error('fetchEntriesPaginated failed:', e);
         }
+    };
+
+    // ページ変更
+    const handleEntryPageChange = (page: number) => {
+        if (!selectedRowId) return;
+        setEntryPage(page);
+        fetchEntriesPaginated(selectedRowId, page, entryQuery);
     };
 
     const handleRowSelectAndFetch = (row: DictSourceRow | null, rowId: string | null) => {
         setSelectedRow(row);
         setSelectedRowId(rowId);
         if (rowId) {
-            fetchEntries(rowId);
+            setEntryPage(1);
+            setEntryQuery('');
+            fetchEntriesPaginated(rowId, 1, '');
         }
+    };
+
+    // ── 横断検索 ─────────────────────────────────────────
+    const fetchCrossSearch = async (query: string, page: number) => {
+        try {
+            const result = await DictSearchAllEntriesPaginated(query, page, PAGE_SIZE) as any;
+            if (!result) {
+                setCrossEntries([]);
+                setCrossTotal(0);
+                return;
+            }
+            const rawEntries: any[] = result.entries ?? result.Entries ?? [];
+            const total: number = result.totalCount ?? result.TotalCount ?? 0;
+            const mapped = rawEntries.map((r: any) => ({
+                id: r.id ?? r.ID,
+                sourceId: String(r.source_id ?? r.SourceID ?? ''),
+                sourceName: r.source_name ?? r.SourceName ?? '',
+                edid: r.edid ?? r.EDID ?? '',
+                sourceText: r.source_text ?? r.Source ?? '',
+                destText: r.dest_text ?? r.Dest ?? '',
+                recordType: r.record_type ?? r.RecordType ?? '',
+            }));
+            setCrossEntries(mapped);
+            setCrossTotal(total);
+        } catch (e) {
+            console.error('fetchCrossSearch failed:', e);
+        }
+    };
+
+    const handleCrossSearchExecute = (query: string) => {
+        setCrossQuery(query);
+        setCrossPage(1);
+        fetchCrossSearch(query, 1);
+        setShowCrossSearch(false);
+        setView('cross-search');
+    };
+
+    const handleCrossPageChange = (page: number) => {
+        setCrossPage(page);
+        fetchCrossSearch(crossQuery, page);
     };
 
     const handleSelectFilesClick = async () => {
@@ -197,9 +278,7 @@ const DictionaryBuilder: React.FC = () => {
         if (!deletingRowId) return;
         try {
             await DictDeleteSource(parseInt(deletingRowId, 10));
-            // 削除成功したらリスト再取得
             await fetchSources();
-            // もし選択中だった行を削除した場合は選択解除
             if (selectedRowId === deletingRowId) {
                 handleRowSelectAndFetch(null, null);
             }
@@ -208,6 +287,47 @@ const DictionaryBuilder: React.FC = () => {
         } finally {
             setDeletingRowId(null);
         }
+    };
+
+    // ── GridEditor の保存ハンドラ (entries ビュー) ────────
+    const handleEntriesSave = async (modified: DictEntry[], deleted: DictEntry[]) => {
+        for (const e of modified) {
+            try {
+                await DictUpdateEntry({
+                    id: e.id, source_id: parseInt(e.sourceId, 10),
+                    edid: e.edid, record_type: e.recordType,
+                    source_text: e.sourceText, dest_text: e.destText,
+                } as any);
+            } catch (err) { console.error('UpdateEntry failed:', err); }
+        }
+        for (const e of deleted) {
+            try {
+                await DictDeleteEntry(e.id);
+            } catch (err) { console.error('DeleteEntry failed:', err); }
+        }
+        // 保存後にリフレッシュ
+        if (selectedRowId) {
+            await fetchEntriesPaginated(selectedRowId, entryPage, entryQuery);
+        }
+    };
+
+    // ── GridEditor の保存ハンドラ (cross-search ビュー) ───
+    const handleCrossSave = async (modified: DictEntry[], deleted: DictEntry[]) => {
+        for (const e of modified) {
+            try {
+                await DictUpdateEntry({
+                    id: e.id, source_id: parseInt(e.sourceId, 10),
+                    edid: e.edid, record_type: e.recordType,
+                    source_text: e.sourceText, dest_text: e.destText,
+                } as any);
+            } catch (err) { console.error('UpdateEntry failed:', err); }
+        }
+        for (const e of deleted) {
+            try {
+                await DictDeleteEntry(e.id);
+            } catch (err) { console.error('DeleteEntry failed:', err); }
+        }
+        await fetchCrossSearch(crossQuery, crossPage);
     };
 
     const sourceColumns = useMemo<ColumnDef<DictSourceRow, unknown>[]>(() => [
@@ -259,29 +379,52 @@ const DictionaryBuilder: React.FC = () => {
             ),
         },
     ], [isImporting]);
-    // tableHeaderActions は削除
-
-    // 選択ソースのエントリデータ
-    const currentEntries: DictEntry[] = selectedRow
-        ? (entries[selectedRow.id] ?? [])
-        : [];
 
     // ── entries ビュー ────────────────────────────────────
     if (view === 'entries' && selectedRow) {
         return (
             <GridEditor<DictEntry>
-                title={`エントリ編集: ${selectedRow.fileName} (${currentEntries.length.toLocaleString()} 件表示中)`}
-                initialData={currentEntries}
+                title={`エントリ編集: ${selectedRow.fileName}`}
+                initialData={entries}
                 columns={ENTRY_COLUMNS}
                 onBack={() => setView('list')}
-                onSave={async () => {
-                    console.log('[DictionaryBuilder] エントリ保存指示 (現在UI上での一括保存APIは未実装のためリストに戻ります)');
-                    setView('list');
+                onSave={handleEntriesSave}
+                currentPage={entryPage}
+                totalCount={entryTotal}
+                pageSize={PAGE_SIZE}
+                onPageChange={handleEntryPageChange}
+                onSearch={(q) => {
+                    setEntryQuery(q);
+                    setEntryPage(1);
+                    if (selectedRowId) {
+                        fetchEntriesPaginated(selectedRowId, 1, q);
+                    }
                 }}
             />
         );
     }
 
+    // ── cross-search ビュー ────────────────────────────────
+    if (view === 'cross-search') {
+        return (
+            <GridEditor<DictEntry>
+                title={`横断検索結果: "${crossQuery}" (${crossTotal.toLocaleString()} 件)`}
+                initialData={crossEntries}
+                columns={CROSS_ENTRY_COLUMNS}
+                onBack={() => setView('list')}
+                onSave={handleCrossSave}
+                currentPage={crossPage}
+                totalCount={crossTotal}
+                pageSize={PAGE_SIZE}
+                onPageChange={handleCrossPageChange}
+                onSearch={(q) => {
+                    setCrossQuery(q);
+                    setCrossPage(1);
+                    fetchCrossSearch(q, 1);
+                }}
+            />
+        );
+    }
 
     // ── list ビュー ───────────────────────────────────────
     return (
@@ -290,6 +433,18 @@ const DictionaryBuilder: React.FC = () => {
             <div className="navbar bg-base-100 rounded-box border border-base-200 shadow-sm px-4 shrink-0">
                 <div className="flex justify-between items-center w-full">
                     <span className="text-xl font-bold">辞書構築 (Dictionary Builder)</span>
+                    <div className="flex items-center gap-2">
+                        <div className="tooltip tooltip-left" data-tip="登録済み辞書ソースを横断して検索出来ます。">
+                            <HelpCircle size={18} className="text-base-content/40 cursor-help hover:text-primary transition-colors" />
+                        </div>
+                        {/* 横断検索ボタン (Task 3.4) */}
+                        <button
+                            className="btn btn-outline btn-sm gap-2"
+                            onClick={() => setShowCrossSearch(true)}
+                        >
+                            🔎 横断検索
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -314,76 +469,76 @@ const DictionaryBuilder: React.FC = () => {
             </details>
 
             <div className="flex flex-1 flex-col min-h-0 gap-4 relative">
-                {/* 上部パネル */}
+                {/* XMLインポートパネル (Task 3.1: コンパクト化) */}
                 <div className="shrink-0">
                     <div className="card bg-base-100 shadow-sm border border-base-200">
-                        <div className="card-body">
+                        <div className="card-body py-3 px-4">
                             <h2 className="card-title text-base">XMLインポート (xTranslator形式)</h2>
-                            <div className="flex flex-col gap-4 mt-2">
-                                <span className="text-sm">SSTXMLファイル、または公式DLCの翻訳XMLを選択してください。</span>
-                                <div className="flex gap-4">
+                            <div className="flex flex-col gap-3">
+                                <div className="flex items-center gap-3 flex-wrap">
+                                    <span className="text-sm text-base-content/70">SSTMLファイル、または公式翻訳XMLを選択してください。</span>
                                     <button
-                                        className="btn btn-outline btn-primary w-fit"
+                                        className="btn btn-outline btn-primary btn-sm w-fit"
                                         onClick={handleSelectFilesClick}
                                         disabled={isImporting}
                                     >
                                         ファイルを選択
                                     </button>
-                                </div>
-                                {selectedFiles.length > 0 && (
-                                    <div className="flex flex-col gap-2">
-                                        <span className="text-sm font-bold text-base-content/70">選択されたファイル ({selectedFiles.length}件):</span>
-                                        <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto p-2 bg-base-200/50 rounded-lg border border-base-300">
-                                            {selectedFiles.map(filePath => {
-                                                const fileName = filePath.split(/[\\/]/).pop() || filePath;
-                                                return (
-                                                    <div key={filePath} className="badge badge-primary badge-outline gap-1 py-3 px-2">
-                                                        <span className="truncate max-w-[200px] font-mono text-xs" title={filePath}>{fileName}</span>
-                                                        <button
-                                                            className="btn btn-ghost btn-xs btn-circle ml-1 opacity-70 hover:opacity-100"
-                                                            disabled={isImporting}
-                                                            onClick={() => removeSelectedFile(filePath)}
-                                                            title="リストから外す"
-                                                        >
-                                                            ✕
-                                                        </button>
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-                                    </div>
-                                )}
-                                {isImporting && Object.keys(importMessages).length > 0 && (
-                                    <div className="flex flex-col gap-3">
-                                        <span className="text-sm font-bold block border-b border-base-200 pb-1">インポート進捗</span>
-                                        {Object.entries(importMessages).map(([corrId, msg]) => (
-                                            <div key={corrId} className="flex flex-col gap-1">
-                                                <div className="flex justify-between text-xs">
-                                                    <span className="truncate max-w-full text-primary" title={msg}>{msg}</span>
-                                                </div>
-                                                <progress className="progress progress-primary w-full"></progress>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                                <div className="mt-2 flex justify-end">
                                     <button
-                                        className="btn btn-primary"
+                                        className="btn btn-primary btn-sm"
                                         disabled={selectedFiles.length === 0 || isImporting}
                                         onClick={() => {
                                             if (selectedFiles.length === 0) return;
-
-                                            // 実行開始時にソースファイル(既存行)の選択を解除
                                             handleRowSelectAndFetch(null, null);
                                             handleImport();
                                         }}
                                     >
-                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 mr-1">
+                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4 mr-1">
                                             <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" />
                                         </svg>
                                         {isImporting ? 'インポート実行中...' : '辞書構築を開始'}
                                     </button>
                                 </div>
+
+                                {/* 選択ファイル一覧 & 進捗: ファイル選択時のみ高さが拡張 */}
+                                {(selectedFiles.length > 0 || (isImporting && Object.keys(importMessages).length > 0)) && (
+                                    <div className="flex flex-col gap-2 transition-all">
+                                        {selectedFiles.length > 0 && (
+                                            <div className="flex flex-col gap-1">
+                                                <span className="text-xs font-bold text-base-content/70">選択ファイル ({selectedFiles.length}件):</span>
+                                                <div className="flex flex-wrap gap-2 max-h-24 overflow-y-auto p-2 bg-base-200/50 rounded-lg border border-base-300">
+                                                    {selectedFiles.map(filePath => {
+                                                        const fileName = filePath.split(/[\\\/]/).pop() || filePath;
+                                                        return (
+                                                            <div key={filePath} className="badge badge-primary badge-outline gap-1 py-3 px-2">
+                                                                <span className="truncate max-w-[200px] font-mono text-xs" title={filePath}>{fileName}</span>
+                                                                <button
+                                                                    className="btn btn-ghost btn-xs btn-circle ml-1 opacity-70 hover:opacity-100"
+                                                                    disabled={isImporting}
+                                                                    onClick={() => removeSelectedFile(filePath)}
+                                                                    title="リストから外す"
+                                                                >✕</button>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                        )}
+                                        {isImporting && Object.keys(importMessages).length > 0 && (
+                                            <div className="flex flex-col gap-2">
+                                                <span className="text-xs font-bold block border-b border-base-200 pb-1">インポート進捗</span>
+                                                {Object.entries(importMessages).map(([corrId, msg]) => (
+                                                    <div key={corrId} className="flex flex-col gap-1">
+                                                        <div className="flex justify-between text-xs">
+                                                            <span className="truncate max-w-full text-primary" title={msg}>{msg}</span>
+                                                        </div>
+                                                        <progress className="progress progress-primary w-full"></progress>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>
@@ -421,7 +576,6 @@ const DictionaryBuilder: React.FC = () => {
             >
                 {selectedRow && (
                     <div className="flex flex-col gap-4 text-sm">
-                        {/* アクションボタン群 */}
                         <div className="flex gap-2 shrink-0">
                             <button
                                 className="btn btn-primary btn-sm"
@@ -431,7 +585,6 @@ const DictionaryBuilder: React.FC = () => {
                             </button>
                         </div>
 
-                        {/* プレビューグリッド */}
                         <div className="grid grid-cols-2 gap-4">
                             <div className="flex flex-col gap-1">
                                 <span className="font-bold text-base-content/60 text-xs uppercase tracking-wide">ファイル名</span>
@@ -484,10 +637,17 @@ const DictionaryBuilder: React.FC = () => {
                     </div>
                 </div>
             </dialog>
+
+            {/* 横断検索モーダル */}
+            {showCrossSearch && (
+                <CrossSearchModal
+                    sources={sources}
+                    onSearch={handleCrossSearchExecute}
+                    onClose={() => setShowCrossSearch(false)}
+                />
+            )}
         </div>
     );
 };
 
 export default DictionaryBuilder;
-
-

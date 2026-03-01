@@ -144,7 +144,7 @@ func (s *sqliteDictionaryStore) DeleteSource(ctx context.Context, id int64) erro
 
 // ─── 辞書エントリ管理 ─────────────────────────────────────────────────────────
 
-// GetEntriesBySourceID は指定ソースに紐付く全エントリを返す。
+// GetEntriesBySourceID は指定ソースに紐付く全エントリを返す（後方互換用）。
 func (s *sqliteDictionaryStore) GetEntriesBySourceID(ctx context.Context, sourceID int64) ([]DictTerm, error) {
 	slog.DebugContext(ctx, "ENTER DictionaryStore.GetEntriesBySourceID", "sourceID", sourceID)
 	defer slog.DebugContext(ctx, "EXIT DictionaryStore.GetEntriesBySourceID")
@@ -169,6 +169,137 @@ func (s *sqliteDictionaryStore) GetEntriesBySourceID(ctx context.Context, source
 		entries = append(entries, e)
 	}
 	return entries, rows.Err()
+}
+
+// GetEntriesBySourceIDPaginated は指定ソースのエントリをページネーション付きで返す。
+func (s *sqliteDictionaryStore) GetEntriesBySourceIDPaginated(ctx context.Context, sourceID int64, query string, limit, offset int) (*DictTermPage, error) {
+	slog.DebugContext(ctx, "ENTER DictionaryStore.GetEntriesBySourceIDPaginated", "sourceID", sourceID, "query", query, "limit", limit, "offset", offset)
+	defer slog.DebugContext(ctx, "EXIT DictionaryStore.GetEntriesBySourceIDPaginated")
+
+	likePattern := "%" + query + "%"
+
+	// 全体件数を取得
+	var totalCount int
+	var countErr error
+	if query == "" {
+		countErr = s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM dlc_dictionary_entries WHERE source_id = ?`, sourceID).Scan(&totalCount)
+	} else {
+		countErr = s.db.QueryRowContext(ctx, `
+			SELECT COUNT(*) FROM dlc_dictionary_entries
+			WHERE source_id = ?
+			  AND (source_text LIKE ? OR dest_text LIKE ? OR edid LIKE ?)
+		`, sourceID, likePattern, likePattern, likePattern).Scan(&totalCount)
+	}
+	if countErr != nil {
+		return nil, fmt.Errorf("failed to count entries: %w", countErr)
+	}
+
+	// ページ分のデータを取得
+	var rows *sql.Rows
+	var err error
+	if query == "" {
+		rows, err = s.db.QueryContext(ctx, `
+			SELECT id, source_id, edid, record_type, source_text, dest_text
+			FROM dlc_dictionary_entries
+			WHERE source_id = ?
+			ORDER BY id
+			LIMIT ? OFFSET ?
+		`, sourceID, limit, offset)
+	} else {
+		rows, err = s.db.QueryContext(ctx, `
+			SELECT id, source_id, edid, record_type, source_text, dest_text
+			FROM dlc_dictionary_entries
+			WHERE source_id = ?
+			  AND (source_text LIKE ? OR dest_text LIKE ? OR edid LIKE ?)
+			ORDER BY id
+			LIMIT ? OFFSET ?
+		`, sourceID, likePattern, likePattern, likePattern, limit, offset)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to query entries paginated: %w", err)
+	}
+	defer rows.Close()
+
+	var entries []DictTerm
+	for rows.Next() {
+		var e DictTerm
+		if err := rows.Scan(&e.ID, &e.SourceID, &e.EDID, &e.RecordType, &e.Source, &e.Dest); err != nil {
+			return nil, fmt.Errorf("failed to scan entry row: %w", err)
+		}
+		entries = append(entries, e)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if entries == nil {
+		entries = []DictTerm{}
+	}
+	return &DictTermPage{Entries: entries, TotalCount: totalCount}, nil
+}
+
+// SearchAllEntriesPaginated は全ソースを横断してエントリを検索する。
+func (s *sqliteDictionaryStore) SearchAllEntriesPaginated(ctx context.Context, query string, limit, offset int) (*DictTermPage, error) {
+	slog.DebugContext(ctx, "ENTER DictionaryStore.SearchAllEntriesPaginated", "query", query, "limit", limit, "offset", offset)
+	defer slog.DebugContext(ctx, "EXIT DictionaryStore.SearchAllEntriesPaginated")
+
+	likePattern := "%" + query + "%"
+
+	// 全体件数を取得
+	var totalCount int
+	var countErr error
+	if query == "" {
+		countErr = s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM dlc_dictionary_entries`).Scan(&totalCount)
+	} else {
+		countErr = s.db.QueryRowContext(ctx, `
+			SELECT COUNT(*) FROM dlc_dictionary_entries
+			WHERE source_text LIKE ? OR dest_text LIKE ? OR edid LIKE ?
+		`, likePattern, likePattern, likePattern).Scan(&totalCount)
+	}
+	if countErr != nil {
+		return nil, fmt.Errorf("failed to count all entries: %w", countErr)
+	}
+
+	// ページ分のデータを取得（dlc_sources.file_name をJOINで付与）
+	var rows *sql.Rows
+	var err error
+	if query == "" {
+		rows, err = s.db.QueryContext(ctx, `
+			SELECT e.id, e.source_id, s.file_name, e.edid, e.record_type, e.source_text, e.dest_text
+			FROM dlc_dictionary_entries e
+			JOIN dlc_sources s ON s.id = e.source_id
+			ORDER BY e.source_id, e.id
+			LIMIT ? OFFSET ?
+		`, limit, offset)
+	} else {
+		rows, err = s.db.QueryContext(ctx, `
+			SELECT e.id, e.source_id, s.file_name, e.edid, e.record_type, e.source_text, e.dest_text
+			FROM dlc_dictionary_entries e
+			JOIN dlc_sources s ON s.id = e.source_id
+			WHERE e.source_text LIKE ? OR e.dest_text LIKE ? OR e.edid LIKE ?
+			ORDER BY e.source_id, e.id
+			LIMIT ? OFFSET ?
+		`, likePattern, likePattern, likePattern, limit, offset)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to query all entries: %w", err)
+	}
+	defer rows.Close()
+
+	var entries []DictTerm
+	for rows.Next() {
+		var e DictTerm
+		if err := rows.Scan(&e.ID, &e.SourceID, &e.SourceName, &e.EDID, &e.RecordType, &e.Source, &e.Dest); err != nil {
+			return nil, fmt.Errorf("failed to scan entry row: %w", err)
+		}
+		entries = append(entries, e)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if entries == nil {
+		entries = []DictTerm{}
+	}
+	return &DictTermPage{Entries: entries, TotalCount: totalCount}, nil
 }
 
 // SaveTerms は複数エントリをバッチで挿入する。
