@@ -31,12 +31,6 @@ interface DictEntry {
     destText: string;
 }
 
-// ── モックデータ: dlc_sources ────────────────────────────
-const DICT_SOURCES: DictSourceRow[] = [];
-
-// ── モックデータ: dlc_dictionary_entries (Skyrim.esm のサンプル) ──
-const DICT_ENTRIES: Record<string, DictEntry[]> = {};
-
 // ── ステータスバッジ ──────────────────────────────────────
 const STATUS_BADGE: Record<SourceStatus, string> = {
     '完了': 'badge-success',
@@ -60,51 +54,6 @@ const showModal = (id: string) => {
     modal?.showModal();
 };
 
-const SOURCE_COLUMNS: ColumnDef<DictSourceRow, unknown>[] = [
-    {
-        accessorKey: 'fileName',
-        header: 'ソース名 (ファイル名)',
-        cell: (info) => <span className="font-mono text-sm">{info.getValue() as string}</span>,
-    },
-    {
-        accessorKey: 'format',
-        header: '形式',
-        cell: (info) => (
-            <div className="badge badge-outline badge-sm font-mono">{info.getValue() as string}</div>
-        ),
-    },
-    {
-        accessorKey: 'entryCount',
-        header: 'エントリ数',
-        cell: (info) => (
-            <span className="font-mono text-right block">
-                {(info.getValue() as number).toLocaleString()}
-            </span>
-        ),
-    },
-    { accessorKey: 'updatedAt', header: '最終更新日時' },
-    {
-        accessorKey: 'status',
-        header: 'ステータス',
-        cell: (info) => {
-            const s = info.getValue() as SourceStatus;
-            return <div className={`badge badge-sm ${STATUS_BADGE[s]}`}>{s}</div>;
-        },
-    },
-    {
-        id: 'actions',
-        header: 'アクション',
-        cell: () => (
-            <button
-                className="btn btn-ghost btn-xs text-error"
-                onClick={(e) => { e.stopPropagation(); showModal('delete_modal'); }}
-            >
-                削除
-            </button>
-        ),
-    },
-];
-
 // ── ビュー型 ─────────────────────────────────────────────
 type View = 'list' | 'entries';
 
@@ -116,6 +65,10 @@ const DictionaryBuilder: React.FC = () => {
     const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
     const [isImporting, setIsImporting] = useState<boolean>(false);
     const [fileProgresses, setFileProgresses] = useState<Record<string, number>>({});
+
+    // 実データ保持用 (後ほど Wails 経由で取得)
+    const [sources, setSources] = useState<DictSourceRow[]>([]);
+    const [entries, setEntries] = useState<Record<string, DictEntry[]>>({});
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (!e.target.files) return;
@@ -138,15 +91,65 @@ const DictionaryBuilder: React.FC = () => {
         setSelectedRowId(rowId);
     };
 
+    const sourceColumns = useMemo<ColumnDef<DictSourceRow, unknown>[]>(() => [
+        {
+            accessorKey: 'fileName',
+            header: 'ソース名 (ファイル名)',
+            cell: (info) => <span className="font-mono text-sm">{info.getValue() as string}</span>,
+        },
+        {
+            accessorKey: 'format',
+            header: '形式',
+            cell: (info) => (
+                <div className="badge badge-outline badge-sm font-mono">{info.getValue() as string}</div>
+            ),
+        },
+        {
+            accessorKey: 'entryCount',
+            header: 'エントリ数',
+            cell: (info) => (
+                <span className="font-mono text-right block">
+                    {(info.getValue() as number).toLocaleString()}
+                </span>
+            ),
+        },
+        { accessorKey: 'updatedAt', header: '最終更新日時' },
+        {
+            accessorKey: 'status',
+            header: 'ステータス',
+            cell: (info) => {
+                const s = info.getValue() as SourceStatus;
+                return <div className={`badge badge-sm ${STATUS_BADGE[s]}`}>{s}</div>;
+            },
+        },
+        {
+            id: 'actions',
+            header: 'アクション',
+            cell: () => (
+                <button
+                    className="btn btn-ghost btn-xs text-error"
+                    disabled={isImporting}
+                    onClick={(e) => { e.stopPropagation(); showModal('delete_modal'); }}
+                >
+                    削除
+                </button>
+            ),
+        },
+    ], [isImporting]);
+
     const tableHeaderActions = useMemo(() => (
-        <button className="btn btn-outline btn-error btn-sm" onClick={() => showModal('delete_all_modal')}>
+        <button
+            className="btn btn-outline btn-error btn-sm"
+            disabled={isImporting}
+            onClick={() => showModal('delete_all_modal')}
+        >
             全て削除
         </button>
-    ), []);
+    ), [isImporting]);
 
     // 選択ソースのエントリデータ
     const currentEntries: DictEntry[] = selectedRow
-        ? (DICT_ENTRIES[selectedRow.id] ?? [])
+        ? (entries[selectedRow.id] ?? [])
         : [];
 
     // ── entries ビュー ────────────────────────────────────
@@ -232,6 +235,7 @@ const DictionaryBuilder: React.FC = () => {
                                                     <span className="truncate max-w-[200px] font-mono text-xs" title={f.name}>{f.name}</span>
                                                     <button
                                                         className="btn btn-ghost btn-xs btn-circle ml-1 opacity-70 hover:opacity-100"
+                                                        disabled={isImporting}
                                                         onClick={() => removeSelectedFile(f.name)}
                                                         title="リストから外す"
                                                     >
@@ -261,11 +265,20 @@ const DictionaryBuilder: React.FC = () => {
                                         className="btn btn-primary"
                                         disabled={selectedFiles.length === 0 || isImporting}
                                         onClick={() => {
+                                            if (selectedFiles.length === 0) return;
+
+                                            // 実行開始時にソースファイル(既存行)の選択を解除
+                                            handleRowSelect(null, null);
                                             setIsImporting(true);
+
                                             const initProg: Record<string, number> = {};
                                             selectedFiles.forEach(f => { initProg[f.name] = 0; });
                                             setFileProgresses(initProg);
-                                            console.log('Starting dictionary build with:', selectedFiles);
+
+                                            console.log('Starting dictionary build with:', selectedFiles.map(f => f.name));
+
+                                            // TODO: Wails Bridge 経由でのバックエンド呼び出しをここで行う
+                                            // StartDictionaryBuildTask(selectedFiles.map(f => f.path)) など
                                         }}
                                     >
                                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 mr-1">
@@ -298,8 +311,8 @@ const DictionaryBuilder: React.FC = () => {
                 {/* ソーステーブル */}
                 <div className="flex-1 min-h-0 flex flex-col relative">
                     <DataTable
-                        columns={SOURCE_COLUMNS}
-                        data={DICT_SOURCES}
+                        columns={sourceColumns}
+                        data={sources}
                         title="登録済み辞書ソース一覧"
                         selectedRowId={selectedRowId}
                         onRowSelect={handleRowSelect}
