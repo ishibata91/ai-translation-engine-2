@@ -5,7 +5,9 @@ import "context"
 // LLMClient defines the core interface for LLM request execution.
 // All LLM providers (Gemini, OpenAI, Local/GGUF, etc.) implement this interface.
 type LLMClient interface {
+	ListModels(ctx context.Context) ([]ModelInfo, error)
 	Complete(ctx context.Context, req Request) (Response, error)
+	GenerateStructured(ctx context.Context, req Request) (Response, error)
 	StreamComplete(ctx context.Context, req Request) (StreamResponse, error)
 	GetEmbedding(ctx context.Context, text string) ([]float32, error)
 	HealthCheck(ctx context.Context) error

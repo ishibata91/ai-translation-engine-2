@@ -1,5 +1,7 @@
 package llm
 
+import "strings"
+
 // Request represents a request to an LLM provider.
 type Request struct {
 	SystemPrompt   string                 `json:"system_prompt"`
@@ -9,6 +11,14 @@ type Request struct {
 	ResponseSchema map[string]interface{} `json:"response_schema,omitempty"`
 	StopSequences  []string               `json:"stop_sequences,omitempty"`
 	Metadata       map[string]interface{} `json:"metadata,omitempty"`
+}
+
+// ModelInfo is the normalized model information returned by providers.
+type ModelInfo struct {
+	ID               string `json:"id"`
+	DisplayName      string `json:"display_name"`
+	MaxContextLength int    `json:"max_context_length,omitempty"`
+	Loaded           bool   `json:"loaded"`
 }
 
 // Response represents a response from an LLM provider.
@@ -42,6 +52,11 @@ const (
 const (
 	// LLMConfigNamespace is the Config namespace for LLM-related settings.
 	LLMConfigNamespace = "llm"
+	// LLMDefaultProviderKey is the config key for active provider.
+	LLMDefaultProviderKey = "default_provider"
+	// LLMModelIDKeySuffix is the suffix appended to provider to build model key.
+	// Example: "lmstudio_model_id".
+	LLMModelIDKeySuffix = "model_id"
 	// LLMBulkStrategyKey is the Config key for the bulk processing strategy.
 	// Values: "batch" or "sync".
 	LLMBulkStrategyKey = "bulk_strategy"
@@ -53,8 +68,8 @@ const (
 // DefaultConcurrency returns the default concurrency for a given provider.
 // Local LLM providers default to 1; cloud providers default to 5.
 func DefaultConcurrency(provider string) int {
-	switch provider {
-	case "local":
+	switch NormalizeProvider(provider) {
+	case "lmstudio":
 		return 1
 	default:
 		return 5
@@ -84,4 +99,14 @@ type BatchStatus struct {
 	ID       string  `json:"id"`
 	State    string  `json:"state"`
 	Progress float32 `json:"progress"`
+}
+
+// NormalizeProvider maps legacy provider names to canonical identifiers.
+func NormalizeProvider(provider string) string {
+	switch strings.ToLower(strings.TrimSpace(provider)) {
+	case "local", "local-llm", "lmstudio":
+		return "lmstudio"
+	default:
+		return strings.ToLower(strings.TrimSpace(provider))
+	}
 }

@@ -55,6 +55,38 @@ func NewXAIClient(logger *slog.Logger, config LLMConfig) LLMClient {
 	}
 }
 
+func (c *xaiClient) ListModels(ctx context.Context) ([]ModelInfo, error) {
+	url := xaiBaseURL + xaiModelsEndpoint
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("xai: ListModels request creation failed: %w", err)
+	}
+	httpReq.Header.Set("Authorization", "Bearer "+c.config.APIKey)
+
+	httpResp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("xai: ListModels request failed: %w", err)
+	}
+	defer httpResp.Body.Close()
+	body, _ := io.ReadAll(httpResp.Body)
+	if httpResp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("xai: ListModels status %d: %s", httpResp.StatusCode, string(body))
+	}
+	var raw struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return nil, fmt.Errorf("xai: ListModels unmarshal failed: %w", err)
+	}
+	models := make([]ModelInfo, 0, len(raw.Data))
+	for _, m := range raw.Data {
+		models = append(models, ModelInfo{ID: m.ID, DisplayName: m.ID})
+	}
+	return models, nil
+}
+
 // Complete はテキスト生成リクエストを実行し、結果を返す。
 func (c *xaiClient) Complete(ctx context.Context, req Request) (Response, error) {
 	defer telemetry.StartSpan(ctx, telemetry.ActionLLMRequest)()
@@ -83,6 +115,10 @@ func (c *xaiClient) Complete(ctx context.Context, req Request) (Response, error)
 		slog.Int("total_tokens", resp.Usage.TotalTokens),
 	)
 	return resp, nil
+}
+
+func (c *xaiClient) GenerateStructured(ctx context.Context, req Request) (Response, error) {
+	return Response{}, ErrStructuredOutputNotSupported
 }
 
 // StreamComplete はストリーミングレスポンスを返す（フォールバック）。

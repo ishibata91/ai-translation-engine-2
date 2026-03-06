@@ -23,8 +23,8 @@ func TestLLMManager_GetClient(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:    "正常系: Local クライアントが返る",
-			config:  LLMConfig{Provider: "local", Endpoint: "http://localhost:11434", Model: "llama3"},
+			name:    "正常系: LM Studio クライアントが返る",
+			config:  LLMConfig{Provider: "lmstudio", Endpoint: "http://localhost:1234", Model: "llama3"},
 			wantErr: false,
 		},
 		{
@@ -38,8 +38,8 @@ func TestLLMManager_GetClient(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:    "異常系: 空のプロバイダーはエラー",
-			config:  LLMConfig{},
+			name:    "異常系: モデル未指定はエラー",
+			config:  LLMConfig{Provider: "gemini"},
 			wantErr: true,
 		},
 	}
@@ -84,8 +84,8 @@ func TestLLMManager_GetBatchClient(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:    "異常系: local は Batch 非対応",
-			config:  LLMConfig{Provider: "local", Endpoint: "http://localhost:11434", Model: "llama3"},
+			name:    "異常系: lmstudio は Batch 非対応",
+			config:  LLMConfig{Provider: "lmstudio", Endpoint: "http://localhost:1234", Model: "llama3"},
 			wantErr: true,
 		},
 		{

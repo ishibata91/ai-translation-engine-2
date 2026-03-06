@@ -17,8 +17,14 @@ type mockLLMClient struct {
 	delay   time.Duration
 	failIdx int
 	count   int
+	loadErr error
+	loadCnt int
+	unloadCnt int
 }
 
+func (m *mockLLMClient) ListModels(ctx context.Context) ([]llm.ModelInfo, error) {
+	return []llm.ModelInfo{{ID: "mock-model", DisplayName: "mock-model"}}, nil
+}
 func (m *mockLLMClient) Complete(ctx context.Context, req llm.Request) (llm.Response, error) {
 	m.count++
 	if m.delay > 0 {
@@ -29,6 +35,9 @@ func (m *mockLLMClient) Complete(ctx context.Context, req llm.Request) (llm.Resp
 	}
 	return llm.Response{Success: true, Content: "mock response"}, nil
 }
+func (m *mockLLMClient) GenerateStructured(ctx context.Context, req llm.Request) (llm.Response, error) {
+	return m.Complete(ctx, req)
+}
 func (m *mockLLMClient) StreamComplete(ctx context.Context, req llm.Request) (llm.StreamResponse, error) {
 	return nil, nil
 }
@@ -36,6 +45,17 @@ func (m *mockLLMClient) GetEmbedding(ctx context.Context, text string) ([]float3
 	return nil, nil
 }
 func (m *mockLLMClient) HealthCheck(ctx context.Context) error { return nil }
+func (m *mockLLMClient) LoadModel(ctx context.Context, model string, contextLength int) (string, error) {
+	m.loadCnt++
+	if m.loadErr != nil {
+		return "", m.loadErr
+	}
+	return "instance-1", nil
+}
+func (m *mockLLMClient) UnloadModel(ctx context.Context, instanceID string) error {
+	m.unloadCnt++
+	return nil
+}
 
 type mockBatchClient struct {
 	status string
@@ -54,9 +74,11 @@ func (m *mockBatchClient) GetBatchResults(ctx context.Context, id llm.BatchJobID
 type mockLLMManager struct {
 	client      *mockLLMClient
 	batchClient *mockBatchClient
+	lastConfig  llm.LLMConfig
 }
 
 func (m *mockLLMManager) GetClient(ctx context.Context, config llm.LLMConfig) (llm.LLMClient, error) {
+	m.lastConfig = config
 	return m.client, nil
 }
 func (m *mockLLMManager) GetBatchClient(ctx context.Context, config llm.LLMConfig) (llm.BatchClient, error) {
@@ -72,7 +94,16 @@ func (m *mockConfigStore) Get(ctx context.Context, ns, key string) (string, erro
 	if key == llm.LLMBulkStrategyKey {
 		return "sync", nil
 	}
-	return "mock", nil
+	switch key {
+	case llm.LLMDefaultProviderKey:
+		return "lmstudio", nil
+	case "lmstudio_model_id":
+		return "mock-model", nil
+	case "lmstudio_endpoint":
+		return "http://localhost:1234", nil
+	default:
+		return "mock", nil
+	}
 }
 func (m *mockConfigStore) Set(ctx context.Context, ns, key, val string) error { return nil }
 func (m *mockConfigStore) Delete(ctx context.Context, ns, key string) error   { return nil }
@@ -184,5 +215,99 @@ func TestJobQueue_BatchPolling(t *testing.T) {
 	results, _ := q.GetJobsByStatus(ctx, processID, StatusCompleted)
 	if len(results) != 1 {
 		t.Errorf("Expected 1 completed job from batch, got %d", len(results))
+	}
+}
+
+func TestJobQueue_LoadFailNoRetryAndUnloadOnce(t *testing.T) {
+	ctx := context.Background()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	q, _ := NewQueue(ctx, ":memory:", logger)
+	defer q.Close()
+
+	processID := "load-fail"
+	_ = q.SubmitJobs(ctx, processID, []any{llm.Request{UserPrompt: "q"}})
+
+	client := &mockLLMClient{loadErr: context.DeadlineExceeded}
+	worker := NewWorker(q, &mockLLMManager{client: client}, &mockConfigStore{}, &mockSecretStore{}, progress.NewNoopNotifier(), logger)
+	err := worker.ProcessProcessID(ctx, processID)
+	if err == nil {
+		t.Fatalf("expected error on load failure")
+	}
+	if client.loadCnt != 1 {
+		t.Fatalf("expected load called once, got %d", client.loadCnt)
+	}
+	if client.unloadCnt != 0 {
+		t.Fatalf("expected unload not called on failed load, got %d", client.unloadCnt)
+	}
+}
+
+func TestJobQueue_ResumeUsesStoredProviderModel(t *testing.T) {
+	ctx := context.Background()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	q, _ := NewQueue(ctx, ":memory:", logger)
+	defer q.Close()
+
+	processID := "resume-ok"
+	_ = q.SubmitJobs(ctx, processID, []any{llm.Request{UserPrompt: "q"}})
+	_ = q.UpdateProcessMetadata(ctx, processID, "lmstudio", "stored-model")
+
+	client := &mockLLMClient{}
+	manager := &mockLLMManager{client: client}
+	worker := NewWorker(q, manager, &mockConfigStore{}, &mockSecretStore{}, progress.NewNoopNotifier(), logger)
+
+	if err := worker.ProcessProcessID(ctx, processID); err != nil {
+		t.Fatalf("ProcessProcessID failed: %v", err)
+	}
+	if manager.lastConfig.Provider != "lmstudio" || manager.lastConfig.Model != "stored-model" {
+		t.Fatalf("expected stored provider/model, got %s/%s", manager.lastConfig.Provider, manager.lastConfig.Model)
+	}
+}
+
+func TestJobQueue_ResumeFailsWhenMetadataMissing(t *testing.T) {
+	ctx := context.Background()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	q, _ := NewQueue(ctx, ":memory:", logger)
+	defer q.Close()
+
+	processID := "resume-missing"
+	_ = q.SubmitJobs(ctx, processID, []any{llm.Request{UserPrompt: "q"}})
+	_, _ = q.db.ExecContext(ctx, "UPDATE llm_jobs SET provider = 'lmstudio', model = '' WHERE process_id = ?", processID)
+
+	client := &mockLLMClient{}
+	manager := &mockLLMManager{client: client}
+	worker := NewWorker(q, manager, &mockConfigStore{}, &mockSecretStore{}, progress.NewNoopNotifier(), logger)
+
+	err := worker.ProcessProcessID(ctx, processID)
+	if err == nil {
+		t.Fatalf("expected metadata missing error")
+	}
+}
+
+func TestQueue_NullMetadataColumnsCanBeScanned(t *testing.T) {
+	ctx := context.Background()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	q, _ := NewQueue(ctx, ":memory:", logger)
+	defer q.Close()
+
+	processID := "legacy-null"
+	if _, err := q.db.ExecContext(ctx, `
+		INSERT INTO llm_jobs (
+			id, process_id, request_json, status,
+			provider, model, request_fingerprint, structured_output_schema_version,
+			created_at, updated_at
+		) VALUES (?, ?, ?, ?, NULL, NULL, NULL, NULL, datetime('now'), datetime('now'))
+	`, "job-1", processID, `{"user_prompt":"x"}`, StatusPending); err != nil {
+		t.Fatalf("insert legacy row failed: %v", err)
+	}
+
+	jobs, err := q.GetJobsByStatus(ctx, processID, StatusPending)
+	if err != nil {
+		t.Fatalf("GetJobsByStatus failed: %v", err)
+	}
+	if len(jobs) != 1 {
+		t.Fatalf("expected 1 row, got %d", len(jobs))
+	}
+	if jobs[0].Provider != "" || jobs[0].Model != "" || jobs[0].RequestFingerprint != "" || jobs[0].StructuredOutputSchemaVersion != "" {
+		t.Fatalf("expected nullable metadata to be normalized to empty strings, got %+v", jobs[0])
 	}
 }
