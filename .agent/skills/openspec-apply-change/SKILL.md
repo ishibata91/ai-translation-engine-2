@@ -29,7 +29,7 @@ Implement tasks from an OpenSpec change.
    Always announce: "Using change: <name>" and how to override (e.g., `/opsx:apply <other>`).
 
 2. **Check status to understand the schema**
-   ```bash
+   ```powershell
    npx openspec status --change "<name>" --json
    ```
    Parse the JSON to understand:
@@ -38,7 +38,7 @@ Implement tasks from an OpenSpec change.
 
 3. **Get apply instructions**
 
-   ```bash
+   ```powershell
    npx openspec instructions apply --change "<name>" --json
    ```
 
@@ -158,3 +158,4 @@ This skill supports the "actions on a change" model:
 
 - **Can be invoked anytime**: Before all artifacts are done (if tasks exist), after partial implementation, interleaved with other actions
 - **Allows artifact updates**: If implementation reveals design issues, suggest updating artifacts - not phase-locked, work fluidly
+

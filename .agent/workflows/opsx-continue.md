@@ -23,7 +23,7 @@ Continue working on a change by creating the next artifact.
    **IMPORTANT**: Do NOT guess or auto-select a change. Always let the user choose.
 
 2. **Check current status**
-   ```bash
+   ```powershell
    openspec status --change "<name>" --json
    ```
    Parse the JSON to understand current state. The response includes:
@@ -46,7 +46,7 @@ Continue working on a change by creating the next artifact.
    **If artifacts are ready to create** (status shows artifacts with `status: "ready"`):
    - Pick the FIRST artifact with `status: "ready"` from the status output
    - Get its instructions:
-     ```bash
+     ```powershell
      openspec instructions <artifact-id> --change "<name>" --json
      ```
    - Parse the JSON. The key fields are:
@@ -71,7 +71,7 @@ Continue working on a change by creating the next artifact.
    - Show status and suggest checking for issues
 
 4. **After creating an artifact, show progress**
-   ```bash
+   ```powershell
    openspec status --change "<name>"
    ```
 
@@ -109,3 +109,4 @@ For other schemas, follow the `instruction` field from the CLI output.
 - **IMPORTANT**: `context` and `rules` are constraints for YOU, not content for the file
   - Do NOT copy `<context>`, `<rules>`, `<project_context>` blocks into the artifact
   - These guide what you write, but should never appear in the output
+

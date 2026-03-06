@@ -29,13 +29,13 @@ Fast-forward through artifact creation - generate everything needed to start imp
    **IMPORTANT**: Do NOT proceed without understanding what the user wants to build.
 
 2. **Create the change directory**
-   ```bash
+   ```powershell
    npx openspec new change "<name>"
    ```
    This creates a scaffolded change at `openspec/changes/<name>/`.
 
 3. **Get the artifact build order**
-   ```bash
+   ```powershell
    npx openspec status --change "<name>" --json
    ```
    Parse the JSON to get:
@@ -50,7 +50,7 @@ Fast-forward through artifact creation - generate everything needed to start imp
 
    a. **For each artifact that is `ready` (dependencies satisfied)**:
       - Get instructions:
-        ```bash
+        ```powershell
         npx openspec instructions <artifact-id> --change "<name>" --json
         ```
       - The instructions JSON includes:
@@ -75,7 +75,7 @@ Fast-forward through artifact creation - generate everything needed to start imp
       - Then continue with creation
 
 5. **Show final status**
-   ```bash
+   ```powershell
    npx openspec status --change "<name>"
    ```
 
@@ -103,3 +103,4 @@ After completing all artifacts, summarize:
 - If context is critically unclear, ask the user - but prefer making reasonable decisions to keep momentum
 - If a change with that name already exists, suggest continuing that change instead
 - Verify each artifact file exists after writing before proceeding to next
+

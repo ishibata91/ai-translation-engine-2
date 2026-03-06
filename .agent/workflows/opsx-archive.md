@@ -61,8 +61,8 @@ Archive a completed change in the experimental workflow.
 5. **Perform the archive**
 
    Create the archive directory if it doesn't exist:
-   ```bash
-   mkdir -p openspec/changes/archive
+   ```powershell
+   New-Item -ItemType Directory -Path "openspec/changes/archive" -Force
    ```
 
    Generate target name using current date: `YYYY-MM-DD-<change-name>`
@@ -71,8 +71,8 @@ Archive a completed change in the experimental workflow.
    - If yes: Fail with error, suggest renaming existing archive or using different date
    - If no: Move the change directory to archive
 
-   ```bash
-   mv openspec/changes/<name> openspec/changes/archive/YYYY-MM-DD-<name>
+   ```powershell
+   Move-Item -Path "openspec/changes/<name>" -Destination "openspec/changes/archive/YYYY-MM-DD-<name>"
    ```
 
 6. **Display summary**
@@ -152,3 +152,4 @@ Target archive directory already exists.
 - Show clear summary of what happened
 - If sync is requested, use /opsx:sync approach (agent-driven)
 - If delta specs exist, always run the sync assessment and show the combined summary before prompting
+

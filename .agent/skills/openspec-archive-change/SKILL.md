@@ -73,7 +73,7 @@ Archive a completed change in the experimental workflow.
 
    Create the archive directory if it doesn't exist. **Note**: Use OS-specific commands (e.g., `mkdir` on Windows cmd.exe without `-p`, or PowerShell).
 
-   ```bash
+   ```powershell
    # Windows cmd.exe example
    if not exist "openspec\changes\archive" mkdir "openspec\changes\archive"
    ```
@@ -84,7 +84,7 @@ Archive a completed change in the experimental workflow.
    - If yes: Fail with error, suggest renaming existing archive or using different date
    - If no: Move the change directory to archive. **Note**: Use OS-specific move command.
 
-   ```bash
+   ```powershell
    # Windows cmd.exe example
    move "openspec\changes\<name>" "openspec\changes\archive\YYYY-MM-DD-<name>"
    ```
@@ -119,3 +119,4 @@ All artifacts complete. All tasks complete.
 - Show clear summary of what happened
 - If sync is requested, use openspec-sync-specs approach (agent-driven)
 - If delta specs exist, always run the sync assessment and show the combined summary before prompting
+

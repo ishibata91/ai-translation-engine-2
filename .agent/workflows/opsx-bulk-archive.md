@@ -120,9 +120,9 @@ This skill allows you to batch-archive changes, handling spec conflicts intellig
       - Track if sync was done
 
    b. **Perform the archive**:
-      ```bash
-      mkdir -p openspec/changes/archive
-      mv openspec/changes/<name> openspec/changes/archive/YYYY-MM-DD-<name>
+      ```powershell
+      New-Item -ItemType Directory -Path "openspec/changes/archive" -Force
+      Move-Item -Path "openspec/changes/<name>" -Destination "openspec/changes/archive/YYYY-MM-DD-<name>"
       ```
 
    c. **Track outcome** for each change:
@@ -238,3 +238,4 @@ No active changes found. Use `/opsx:new` to create a new change.
 - Preserve .openspec.yaml when moving to archive
 - Archive directory target uses current date: YYYY-MM-DD-<name>
 - If archive target exists, fail that change but continue with others
+

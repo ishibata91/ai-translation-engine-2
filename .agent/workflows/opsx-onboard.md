@@ -10,7 +10,7 @@ Guide the user through their first complete OpenSpec workflow cycle. This is a t
 
 Before starting, check if OpenSpec is initialized:
 
-```bash
+```powershell
 openspec status --json 2>&1 || echo "NOT_INITIALIZED"
 ```
 
@@ -59,7 +59,7 @@ Scan the codebase for small improvement opportunities. Look for:
 6. **Missing validation** - User input handlers without validation
 
 Also check recent git activity:
-```bash
+```powershell
 git log --oneline -10 2>/dev/null || echo "No git history"
 ```
 
@@ -160,7 +160,7 @@ Let me create one for our task.
 ```
 
 **DO:** Create the change with a derived kebab-case name:
-```bash
+```powershell
 openspec new change "<derived-name>"
 ```
 
@@ -229,7 +229,7 @@ Does this capture the intent? I can adjust before we save it.
 **PAUSE** - Wait for user approval/feedback.
 
 After approval, save the proposal:
-```bash
+```powershell
 openspec instructions proposal --change "<name>" --json
 ```
 Then write the content to `openspec/changes/<name>/proposal.md`.
@@ -254,8 +254,8 @@ For a small task like this, we might only need one spec file.
 ```
 
 **DO:** Create the spec file:
-```bash
-mkdir -p openspec/changes/<name>/specs/<capability-name>
+```powershell
+New-Item -ItemType Directory -Path "openspec/changes/<name>/specs/<capability-name>" -Force
 ```
 
 Draft the spec content:
@@ -415,7 +415,7 @@ Archived changes become your project's decision history—you can always find th
 ```
 
 **DO:**
-```bash
+```powershell
 openspec archive "<name>"
 ```
 
@@ -520,3 +520,4 @@ Exit gracefully.
 - **Handle exits gracefully**—never pressure the user to continue
 - **Use real codebase tasks**—don't simulate or use fake examples
 - **Adjust scope gently**—guide toward smaller tasks but respect user choice
+
