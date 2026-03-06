@@ -70,7 +70,7 @@ classDiagram
     }
 
     class TaskBridge {
-      +StartPersonaPrepareTask(input) Task
+      +StartMasterPersonTask(input) Task
     }
 
     class NPCPersonaGenerator {
@@ -111,7 +111,7 @@ sequenceDiagram
     participant Log as slog + telemetry
     participant Viewer as LogViewer
 
-    UI->>Task: StartPersonaPrepareTask(input)
+    UI->>Task: StartMasterPersonTask(input)
     Task->>Task: create taskId / trace context
     Task->>Gen: PreparePrompts(ctx, personaInput)
     Gen-->>Task: []llm.Request
@@ -146,6 +146,14 @@ sequenceDiagram
 4. 成功時に `info` ログ（件数・サマリ）を出力、失敗時に `error` ログを出力する。
 5. `wails dev` で「開始押下 -> task更新 -> log-viewerでinfo確認」を手動検証する。
 6. ロールバック時は、追加したタスク起動エントリとUI接続を元に戻す（DB変更なしのためデータ移行不要）。
+
+## Log Viewer確認手順（Section 3.3）
+
+1. プロジェクトルートで `wails dev` を起動する。
+2. アプリの `MasterPersona` 画面で JSON を選択し、`開始` を押下する。
+3. 右ペインの `Telemetry Logs` を開き、レベルフィルターを `INFO以上` に設定する。
+4. `persona.requests.generated` が表示され、`request_count` / `npc_count` / `task_id` 属性が確認できることを確認する。
+5. エラーケースでは `persona.requests.failed` が `ERROR` で表示され、`task_id` と `reason` が確認できることを確認する。
 
 ## Open Questions
 

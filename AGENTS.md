@@ -11,7 +11,7 @@
 
 ## 進め方
 - openspecが指定された場合は必ず従う。勝手に実装を始めない。
-- [architecture.md](specs/architecture.md) を常に参照して実装・提案を行う。
+- [architecture.md](openspec/specs/architecture.md) を常に参照して実装・提案を行う。
 - 仕様書など資料の図はmermaidで出力する。
 
 ## 設計・提案

@@ -1,9 +1,29 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
 import ModelSettings from '../components/ModelSettings';
 import DataTable from '../components/DataTable';
 import PersonaDetail from '../components/PersonaDetail';
 import { type NpcRow, type NpcStatus, STATUS_BADGE } from '../types/npc';
+import { SelectJSONFile } from '../wailsjs/go/main/App';
+import { StartMasterPersonTask } from '../wailsjs/go/task/Bridge';
+import type { PhaseCompletedEvent, FrontendTask } from '../types/task';
+import * as Events from '../wailsjs/runtime/runtime';
+
+type PersonaProgressStatus = 'IN_PROGRESS' | 'COMPLETED' | 'FAILED';
+
+interface PersonaProgressEvent {
+    CorrelationID: string;
+    Total: number;
+    Completed: number;
+    Failed: number;
+    Status: PersonaProgressStatus;
+    Message: string;
+}
+
+interface PersonaRequestSummary {
+    request_count: number;
+    npc_count: number;
+}
 
 // ── 列定義 ───────────────────────────────────────────────
 const NPC_COLUMNS: ColumnDef<NpcRow, unknown>[] = [
@@ -41,12 +61,100 @@ const MasterPersona: React.FC = () => {
     const [selectedRow, setSelectedRow] = useState<NpcRow | null>(null);
     const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
     const [isGenerating, setIsGenerating] = useState<boolean>(false);
+    const [jsonPath, setJsonPath] = useState<string>('');
+    const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
+    const [progressPercent, setProgressPercent] = useState<number>(0);
+    const [statusMessage, setStatusMessage] = useState<string>('待機中');
+    const [errorMessage, setErrorMessage] = useState<string>('');
+    const [summary, setSummary] = useState<PersonaRequestSummary | null>(null);
 
     const handleRowSelect = (row: NpcRow | null, rowId: string | null) => {
         setSelectedRow(row);
         setSelectedRowId(rowId);
     };
 
+    const handlePickJson = async () => {
+        const selected = await SelectJSONFile();
+        if (!selected) {
+            return;
+        }
+        setJsonPath(selected);
+        setErrorMessage('');
+    };
+
+    const handleStart = async () => {
+        if (!jsonPath || isGenerating) {
+            return;
+        }
+        setIsGenerating(true);
+        setErrorMessage('');
+        setSummary(null);
+        setProgressPercent(0);
+        setStatusMessage('タスクを開始しています...');
+
+        try {
+            const taskID = await StartMasterPersonTask({ source_json_path: jsonPath });
+            setActiveTaskId(taskID);
+        } catch (error) {
+            setIsGenerating(false);
+            setStatusMessage('タスク開始に失敗しました');
+            setErrorMessage(error instanceof Error ? error.message : '不明なエラーが発生しました');
+        }
+    };
+
+    useEffect(() => {
+        const offProgress = Events.EventsOn('persona:progress', (event: PersonaProgressEvent) => {
+            if (activeTaskId && event.CorrelationID !== activeTaskId) {
+                return;
+            }
+
+            if (event.Total > 0) {
+                setProgressPercent(Math.min(100, Math.max(0, (event.Completed / event.Total) * 100)));
+            }
+            setStatusMessage(event.Message || '処理中');
+
+            if (event.Status === 'FAILED') {
+                setIsGenerating(false);
+                setErrorMessage(event.Message || '生成に失敗しました');
+            }
+            if (event.Status === 'COMPLETED') {
+                setIsGenerating(false);
+            }
+        });
+
+        const offTaskUpdated = Events.EventsOn('task:updated', (task: FrontendTask) => {
+            if (!activeTaskId || task.id !== activeTaskId) {
+                return;
+            }
+            if (task.status === 'failed') {
+                setIsGenerating(false);
+                setErrorMessage(task.error_msg || 'タスク実行に失敗しました');
+            }
+            if (task.status === 'request_generated') {
+                setIsGenerating(false);
+            }
+        });
+
+        const offPhaseCompleted = Events.EventsOn('task:phase_completed', (payload: PhaseCompletedEvent) => {
+            if (!activeTaskId || payload.taskId !== activeTaskId || payload.phase !== 'REQUEST_GENERATED') {
+                return;
+            }
+            const nextSummary = payload.summary as PersonaRequestSummary;
+            setSummary({
+                request_count: nextSummary.request_count ?? 0,
+                npc_count: nextSummary.npc_count ?? 0,
+            });
+            setStatusMessage('REQUEST_GENERATED');
+            setProgressPercent(100);
+            setIsGenerating(false);
+        });
+
+        return () => {
+            offProgress();
+            offTaskUpdated();
+            offPhaseCompleted();
+        };
+    }, [activeTaskId]);
 
     return (
         <div className="flex flex-col w-full h-full p-4 gap-4">
@@ -71,12 +179,14 @@ const MasterPersona: React.FC = () => {
                         <div className="flex flex-col gap-4 mt-2">
                             <span className="text-sm">xEditスクリプト <code>extractData.pas</code> によって抽出された、マスターファイルのJSONデータを選択し、ペルソナ生成を開始します。</span>
                             <div className="flex gap-4 items-center">
-                                <input type="file" accept=".json" className="file-input file-input-bordered file-input-primary w-full max-w-xs" />
-                                <button className="btn btn-primary">アップロード</button>
+                                <input type="text" readOnly value={jsonPath} placeholder="JSONファイルを選択してください" className="input input-bordered w-full max-w-xl font-mono text-xs" />
+                                <button className="btn btn-outline btn-primary" onClick={handlePickJson}>JSON選択</button>
                             </div>
                             <div>
                                 <span className="mt-2 mb-1 block text-sm text-base-content/70 font-bold">全体進捗</span>
-                                <progress className="progress progress-primary w-full" value="0" max="100"></progress>
+                                <progress className="progress progress-primary w-full" value={progressPercent} max="100"></progress>
+                                <span className="text-xs text-base-content/70 mt-1 block">{statusMessage}</span>
+                                {errorMessage && <span className="text-xs text-error mt-1 block">{errorMessage}</span>}
                             </div>
                         </div>
                     </div>
@@ -89,11 +199,11 @@ const MasterPersona: React.FC = () => {
                         <div className="grid grid-cols-2 gap-4 mt-2">
                             <div className="stat p-0">
                                 <div className="stat-title text-sm">登録済みNPC数</div>
-                                <div className="stat-value text-primary font-mono text-3xl">0</div>
+                                <div className="stat-value text-primary font-mono text-3xl">{summary?.npc_count ?? 0}</div>
                             </div>
                             <div className="stat p-0">
-                                <div className="stat-title text-sm">生成エラー</div>
-                                <div className="stat-value text-error font-mono text-3xl">0</div>
+                                <div className="stat-title text-sm">生成リクエスト数</div>
+                                <div className="stat-value text-secondary font-mono text-3xl">{summary?.request_count ?? 0}</div>
                             </div>
                         </div>
                     </div>
@@ -139,9 +249,10 @@ const MasterPersona: React.FC = () => {
                 <div className="flex gap-2">
                     <button
                         className={`btn btn-sm ${isGenerating ? 'btn-ghost' : 'btn-outline'}`}
-                        onClick={() => setIsGenerating(!isGenerating)}
+                        onClick={handleStart}
+                        disabled={isGenerating || !jsonPath}
                     >
-                        {isGenerating ? '一時停止' : '開始'}
+                        {isGenerating ? '生成中...' : '開始'}
                     </button>
                     <button className="btn btn-primary btn-sm" disabled={isGenerating}>
                         生成データを確定

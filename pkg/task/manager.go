@@ -156,13 +156,26 @@ func (m *Manager) Initialize(ctx context.Context) error {
 }
 
 func (m *Manager) AddTask(name string, ttype TaskType, phase string, metadata TaskMetadata, runner func(ctx context.Context, update func(phase string, progress float64)) error) (string, error) {
+	return m.AddTaskWithCompletionStatus(name, ttype, phase, metadata, StatusCompleted, func(ctx context.Context, _ string, update func(phase string, progress float64)) error {
+		return runner(ctx, update)
+	})
+}
+
+func (m *Manager) AddTaskWithCompletionStatus(
+	name string,
+	ttype TaskType,
+	phase string,
+	metadata TaskMetadata,
+	completionStatus TaskStatus,
+	runner func(ctx context.Context, taskID string, update func(phase string, progress float64)) error,
+) (string, error) {
 	defer telemetry.StartSpan(m.ctx, telemetry.ActionTaskManagement)()
 	id := uuid.New().String()
 	task := &Task{
 		ID:        id,
 		Name:      name,
 		Type:      ttype,
-		Status:    StatusRunning,
+		Status:    StatusPending,
 		Phase:     phase,
 		Progress:  0,
 		Metadata:  metadata,
@@ -190,8 +203,9 @@ func (m *Manager) AddTask(name string, ttype TaskType, phase string, metadata Ta
 
 	go func() {
 		m.emitTaskUpdate(task)
+		m.markTaskRunning(id)
 
-		err := runner(taskCtx, func(p string, prog float64) {
+		err := runner(taskCtx, id, func(p string, prog float64) {
 			m.UpdateTaskProgress(id, p, prog)
 		})
 
@@ -202,11 +216,26 @@ func (m *Manager) AddTask(name string, ttype TaskType, phase string, metadata Ta
 				m.handleTaskFailure(id, err)
 			}
 		} else {
-			m.handleTaskCompletion(id)
+			m.handleTaskCompletionWithStatus(id, completionStatus)
 		}
 	}()
 
 	return id, nil
+}
+
+func (m *Manager) markTaskRunning(id string) {
+	m.mu.Lock()
+	task, ok := m.activeTasks[id]
+	if !ok {
+		m.mu.Unlock()
+		return
+	}
+	task.Status = StatusRunning
+	task.UpdatedAt = time.Now().UTC()
+	m.mu.Unlock()
+
+	_ = m.store.UpdateTask(context.Background(), task.ID, task.Status, task.Phase, task.Progress, "")
+	m.emitTaskUpdate(task)
 }
 
 func (m *Manager) UpdateTaskProgress(id string, phase string, progress float64) {
@@ -252,13 +281,17 @@ func (m *Manager) throttleDBUpdate(task *Task) {
 }
 
 func (m *Manager) handleTaskCompletion(id string) {
+	m.handleTaskCompletionWithStatus(id, StatusCompleted)
+}
+
+func (m *Manager) handleTaskCompletionWithStatus(id string, status TaskStatus) {
 	m.mu.Lock()
 	task, ok := m.activeTasks[id]
 	if !ok {
 		m.mu.Unlock()
 		return
 	}
-	task.Status = StatusCompleted
+	task.Status = status
 	task.Progress = 100.0
 	task.UpdatedAt = time.Now().UTC()
 	delete(m.cancelFuncs, id)

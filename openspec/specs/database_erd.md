@@ -2,6 +2,12 @@
 
 Interface-First AIDD v2アーキテクチャおよびVertical Slice Architecture (VSA)に従った、各Sliceのデータベース設計を以下に示します。各Sliceは独自の責務範囲に応じて、独立したコンテキスト（ファイル・テーブル群）として管理されます。
 
+## DB配置方針
+
+- すべてのSQLite DBは **プロセスのカレントディレクトリ（ワークスペースルート）配下の `db/`** に配置する。
+- 例: ワークスペースが `F:\ai translation engine 2` の場合、DBは `F:\ai translation engine 2\db\*.db`。
+- VSA原則に従い、スライスごとにDBファイルを分離する（例: `config.db`, `dictionary.db`, `task.db`）。
+
 ## config (設定・レイアウト保存)
 
 共通の設定やUI状態を永続化するインフラストラクチャ層のコンテキストです。
@@ -315,7 +321,7 @@ erDiagram
 ## frontend_tasks (UIタスク・進捗管理)
 
 フロントエンドと連携する非同期タスク（辞書構築、ペルソナ抽出、翻訳プロジェクト等）のメタデータと進捗状態を永続化し、クラッシュリカバーやフェーズに応じた画面遷移を可能にするコンテキストです。
-**データベース名:** `frontend_tasks.db` (管理用データベース)
+**データベース名:** `task.db` (タスクスライス専用データベース)
 
 ```mermaid
 %%{init: {'theme': 'dark', 'themeVariables': {
