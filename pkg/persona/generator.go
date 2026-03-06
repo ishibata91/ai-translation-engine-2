@@ -121,7 +121,7 @@ func (g *DefaultPersonaGenerator) PreparePrompts(
 		}
 		sb.WriteString("\nFormat Requirement: Output the persona summary strictly within TL: |...| format.")
 
-		requests = append(requests, llm.Request{
+		request := llm.Request{
 			SystemPrompt: personaSystemPrompt,
 			UserPrompt:   sb.String(),
 			MaxTokens:    config.MaxOutputTokens,
@@ -132,7 +132,17 @@ func (g *DefaultPersonaGenerator) PreparePrompts(
 				"race":       npcData.Race,
 				"editor_id":  npcData.EditorID,
 			},
-		})
+		}
+		requests = append(requests, request)
+
+		slog.DebugContext(ctx, "persona request prepared",
+			slog.String("speaker_id", npcData.SpeakerID),
+			slog.String("npc_name", npcData.NPCName),
+			slog.String("system_prompt", request.SystemPrompt),
+			slog.String("user_prompt", request.UserPrompt),
+			slog.Int("max_tokens", request.MaxTokens),
+			slog.Float64("temperature", float64(request.Temperature)),
+		)
 	}
 
 	slog.InfoContext(ctx, "persona prompt preparation completed",

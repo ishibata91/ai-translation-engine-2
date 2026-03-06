@@ -6,23 +6,21 @@ import (
 	"strings"
 	"time"
 	"unicode"
-
-	"github.com/jdkato/prose/v2"
 )
 
-// DefaultScorer implements ImportanceScorer based on nouns and emotion heuristics.
+// DefaultScorer implements ImportanceScorer using lightweight heuristics.
 type DefaultScorer struct {
-	WeightNoun    int
-	WeightEmotion int
-	BasePriority  int
+	WeightUppercasePhrase int
+	WeightEmotion         int
+	BasePriority          int
 }
 
 // NewDefaultScorer creates a new DefaultScorer with standard weights.
 func NewDefaultScorer() *DefaultScorer {
 	return &DefaultScorer{
-		WeightNoun:    2,
-		WeightEmotion: 1,
-		BasePriority:  1, // Default base priority if not quest event
+		WeightUppercasePhrase: 4,
+		WeightEmotion:         1,
+		BasePriority:          1, // Default base priority if not quest event
 	}
 }
 
@@ -56,14 +54,18 @@ func (s *DefaultScorer) Score(ctx context.Context, englishText string, questID *
 		score += s.WeightEmotion
 	}
 
-	// 2. Noun heuristic using full NLP library
-	properNounCount := countProperNounsProse(ctx, englishText)
-	score += properNounCount * s.WeightNoun
+	isJapanese := isLikelyJapanese(englishText)
+	uppercasePhraseRatio := 0.0
+	if !isJapanese {
+		uppercasePhraseRatio = countUppercasePhraseRatio(englishText)
+		score += int(uppercasePhraseRatio * 100.0 * float64(s.WeightUppercasePhrase))
+	}
 
 	slog.DebugContext(ctx, "EXIT Score",
 		slog.String("slice", "Persona"),
 		slog.Int("score", score),
-		slog.Int("noun_count", properNounCount),
+		slog.Bool("is_japanese", isJapanese),
+		slog.Float64("uppercase_phrase_ratio", uppercasePhraseRatio),
 		slog.Duration("elapsed", time.Since(start)),
 	)
 
@@ -84,30 +86,60 @@ func isAllCaps(text string) bool {
 	return hasLetter
 }
 
-// countProperNounsProse uses the prose NLP library to count proper nouns.
-func countProperNounsProse(ctx context.Context, text string) int {
-	// prose is an English NLP library.
-	if text == "" {
+func isLikelyJapanese(text string) bool {
+	for _, r := range text {
+		if isJapaneseRune(r) {
+			return true
+		}
+	}
+	return false
+}
+
+func isJapaneseRune(r rune) bool {
+	return (r >= 0x3040 && r <= 0x309F) || // Hiragana
+		(r >= 0x30A0 && r <= 0x30FF) || // Katakana
+		(r >= 0x4E00 && r <= 0x9FFF) // CJK Unified Ideographs
+}
+
+func countUppercasePhraseRatio(text string) float64 {
+	tokens := strings.Fields(text)
+	if len(tokens) == 0 {
 		return 0
 	}
 
-	doc, err := prose.NewDocument(text)
-	if err != nil {
-		slog.WarnContext(ctx, "prose NLP failed to parse document, falling back to 0 proper nouns",
-			slog.String("slice", "Persona"),
-			slog.String("error", err.Error()),
-		)
-		return 0
-	}
+	totalAlphaTokens := 0
+	uppercaseTokens := 0
+	for _, raw := range tokens {
+		token := strings.Trim(raw, ".,!?;:\"'()[]{}")
+		if token == "" {
+			continue
+		}
 
-	count := 0
-	for _, tok := range doc.Tokens() {
-		// NNP = Proper noun, singular
-		// NNPS = Proper noun, plural
-		if tok.Tag == "NNP" || tok.Tag == "NNPS" {
-			count++
+		hasLetter := false
+		isUpper := true
+		for _, r := range token {
+			if !unicode.IsLetter(r) {
+				continue
+			}
+			hasLetter = true
+			if !unicode.IsUpper(r) {
+				isUpper = false
+				break
+			}
+		}
+
+		if !hasLetter {
+			continue
+		}
+		totalAlphaTokens++
+		if isUpper {
+			uppercaseTokens++
 		}
 	}
 
-	return count
+	if totalAlphaTokens == 0 {
+		return 0
+	}
+
+	return float64(uppercaseTokens) / float64(totalAlphaTokens)
 }

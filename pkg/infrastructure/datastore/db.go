@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"runtime"
 
 	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/telemetry"
 
@@ -38,15 +37,15 @@ func NewSQLiteDB(ctx context.Context, filename string) (*sql.DB, func(), error) 
 	return openAndConfigureDB(ctx, dbPath)
 }
 
-// resolveDBPath determines the database file path based on the OS.
+// resolveDBPath determines the database file path under "<current working directory>/db".
 func resolveDBPath(ctx context.Context, filename string) (string, error) {
-	dbDir, err := getAppDataDir()
+	dbDir, err := getWorkspaceDBDir()
 	if err != nil {
-		return "", fmt.Errorf("failed to get app data dir: %w", err)
+		return "", fmt.Errorf("failed to resolve workspace db dir: %w", err)
 	}
 
 	if err := os.MkdirAll(dbDir, 0755); err != nil {
-		return "", fmt.Errorf("failed to create app data dir: %w", err)
+		return "", fmt.Errorf("failed to create db dir: %w", err)
 	}
 
 	path := filepath.Join(dbDir, filename)
@@ -80,27 +79,10 @@ func openAndConfigureDB(ctx context.Context, dbPath string) (*sql.DB, func(), er
 	return db, cleanup, nil
 }
 
-func getAppDataDir() (string, error) {
-	appName := "ai-translation-engine-2"
-
-	switch runtime.GOOS {
-	case "windows":
-		appData := os.Getenv("APPDATA")
-		if appData == "" {
-			return "", fmt.Errorf("APPDATA environment variable not set")
-		}
-		return filepath.Join(appData, appName), nil
-	case "darwin":
-		home := os.Getenv("HOME")
-		if home == "" {
-			return "", fmt.Errorf("HOME environment variable not set")
-		}
-		return filepath.Join(home, "Library", "Application Support", appName), nil
-	default: // Linux and others
-		home := os.Getenv("HOME")
-		if home == "" {
-			return "", fmt.Errorf("HOME environment variable not set")
-		}
-		return filepath.Join(home, ".config", appName), nil
+func getWorkspaceDBDir() (string, error) {
+	wd, err := os.Getwd()
+	if err != nil {
+		return "", err
 	}
+	return filepath.Join(wd, "db"), nil
 }

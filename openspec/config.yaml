@@ -1,5 +1,5 @@
 schema: spec-driven
-specsPath: specs/
+specsPath: openspec/specs/
 context: |
   # ドキュメントの参照先
   - データベース構造を変更する場合は、必ず `specs/database_erd.md` を参照および更新すること。

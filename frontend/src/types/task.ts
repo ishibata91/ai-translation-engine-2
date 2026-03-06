@@ -1,4 +1,4 @@
-export type TaskStatus = 'running' | 'paused' | 'completed' | 'failed' | 'cancelled';
+export type TaskStatus = 'pending' | 'running' | 'paused' | 'completed' | 'request_generated' | 'failed' | 'cancelled';
 
 export type TaskType = 'dictionary_build' | 'persona_extraction' | 'translation_project';
 

@@ -109,3 +109,14 @@ func (a *App) SelectFiles() ([]string, error) {
 		},
 	})
 }
+
+// SelectJSONFile は JSON ファイル選択ダイアログを開き、選択された単一ファイルの絶対パスを返す。
+func (a *App) SelectJSONFile() (string, error) {
+	return runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
+		Title: "JSONファイルを選択",
+		Filters: []runtime.FileFilter{
+			{DisplayName: "JSON Files (*.json)", Pattern: "*.json"},
+			{DisplayName: "All Files (*.*)", Pattern: "*.*"},
+		},
+	})
+}

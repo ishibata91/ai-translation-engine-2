@@ -8,11 +8,13 @@ import (
 type TaskStatus string
 
 const (
-	StatusRunning   TaskStatus = "running"
-	StatusPaused    TaskStatus = "paused"
-	StatusCompleted TaskStatus = "completed"
-	StatusFailed    TaskStatus = "failed"
-	StatusCancelled TaskStatus = "cancelled"
+	StatusPending          TaskStatus = "pending"
+	StatusRunning          TaskStatus = "running"
+	StatusPaused           TaskStatus = "paused"
+	StatusCompleted        TaskStatus = "completed"
+	StatusRequestGenerated TaskStatus = "request_generated"
+	StatusFailed           TaskStatus = "failed"
+	StatusCancelled        TaskStatus = "cancelled"
 )
 
 type TaskType string
