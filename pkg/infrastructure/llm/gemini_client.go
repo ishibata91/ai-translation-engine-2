@@ -43,6 +43,38 @@ func NewGeminiClient(logger *slog.Logger, config LLMConfig) LLMClient {
 	}
 }
 
+func (c *geminiClient) ListModels(ctx context.Context) ([]ModelInfo, error) {
+	url := fmt.Sprintf("%s/%s/models?key=%s", geminiBaseURL, geminiAPIVersion, c.config.APIKey)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("gemini: ListModels request creation failed: %w", err)
+	}
+	httpResp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("gemini: ListModels request failed: %w", err)
+	}
+	defer httpResp.Body.Close()
+	body, _ := io.ReadAll(httpResp.Body)
+	if httpResp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("gemini: ListModels status %d: %s", httpResp.StatusCode, string(body))
+	}
+	var raw struct {
+		Models []struct {
+			Name         string `json:"name"`
+			DisplayName  string `json:"displayName"`
+			InputToken   int    `json:"inputTokenLimit"`
+		} `json:"models"`
+	}
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return nil, fmt.Errorf("gemini: ListModels unmarshal failed: %w", err)
+	}
+	out := make([]ModelInfo, 0, len(raw.Models))
+	for _, m := range raw.Models {
+		out = append(out, ModelInfo{ID: m.Name, DisplayName: m.DisplayName, MaxContextLength: m.InputToken, Loaded: false})
+	}
+	return out, nil
+}
+
 // Complete はテキスト生成リクエストを実行し、結果を返す。
 func (c *geminiClient) Complete(ctx context.Context, req Request) (Response, error) {
 	defer telemetry.StartSpan(ctx, telemetry.ActionLLMRequest)()
@@ -71,6 +103,10 @@ func (c *geminiClient) Complete(ctx context.Context, req Request) (Response, err
 		slog.Int("total_tokens", resp.Usage.TotalTokens),
 	)
 	return resp, nil
+}
+
+func (c *geminiClient) GenerateStructured(ctx context.Context, req Request) (Response, error) {
+	return Response{}, ErrStructuredOutputNotSupported
 }
 
 // StreamComplete はストリーミングレスポンスを返す（現在は非ストリーミングフォールバック）。

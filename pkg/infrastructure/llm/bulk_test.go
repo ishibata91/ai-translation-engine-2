@@ -21,6 +21,10 @@ type mockLLMClient struct {
 	current     atomic.Int64
 }
 
+func (m *mockLLMClient) ListModels(ctx context.Context) ([]ModelInfo, error) {
+	return []ModelInfo{{ID: "mock-model", DisplayName: "mock-model"}}, nil
+}
+
 func (m *mockLLMClient) Complete(ctx context.Context, req Request) (Response, error) {
 	m.callCount.Add(1)
 	cur := m.current.Add(1)
@@ -44,6 +48,10 @@ func (m *mockLLMClient) Complete(ctx context.Context, req Request) (Response, er
 		Content: fmt.Sprintf("ok:%s", req.UserPrompt),
 		Success: true,
 	}, nil
+}
+
+func (m *mockLLMClient) GenerateStructured(ctx context.Context, req Request) (Response, error) {
+	return m.Complete(ctx, req)
 }
 
 func (m *mockLLMClient) StreamComplete(ctx context.Context, req Request) (StreamResponse, error) {

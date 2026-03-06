@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -99,8 +100,21 @@ func (w *Worker) processSync(ctx context.Context, processID string, llmConfig ll
 		return nil
 	}
 
+	resolvedProvider, resolvedModel, err := w.resolveResumeProviderModel(ctx, jobs, llmConfig.Provider, llmConfig.Model)
+	if err != nil {
+		return err
+	}
+	llmConfig.Provider = resolvedProvider
+	llmConfig.Model = resolvedModel
+	if err := w.queue.UpdateProcessMetadata(ctx, processID, resolvedProvider, resolvedModel); err != nil {
+		return err
+	}
+
 	var reqs []llm.Request
 	for _, job := range jobs {
+		if job.RequestFingerprint == "" || job.StructuredOutputSchemaVersion == "" {
+			return fmt.Errorf("job %s missing required metadata fields for resume", job.ID)
+		}
 		var req llm.Request
 		if err := json.Unmarshal([]byte(job.RequestJSON), &req); err != nil {
 			return fmt.Errorf("failed to unmarshal request: %w", err)
@@ -114,6 +128,32 @@ func (w *Worker) processSync(ctx context.Context, processID string, llmConfig ll
 	client, err := w.llmManager.GetClient(ctx, llmConfig)
 	if err != nil {
 		return fmt.Errorf("failed to get llm client: %w", err)
+	}
+	if llmConfig.Model == "" {
+		return llm.ErrModelRequired
+	}
+
+	// Load model once per job process.
+	instanceID := ""
+	if lifecycleClient, ok := client.(llm.ModelLifecycleClient); ok {
+		ctxLen := 0
+		if v, ok := llmConfig.Parameters["context_length"]; ok {
+			switch n := v.(type) {
+			case int:
+				ctxLen = n
+			case float64:
+				ctxLen = int(n)
+			}
+		}
+		instanceID, err = lifecycleClient.LoadModel(ctx, llmConfig.Model, ctxLen)
+		if err != nil {
+			return fmt.Errorf("failed to load model: %w", err)
+		}
+		defer func() {
+			if unloadErr := lifecycleClient.UnloadModel(context.Background(), instanceID); unloadErr != nil {
+				w.logger.ErrorContext(ctx, "failed to unload model", slog.String("instance_id", instanceID), slog.String("error", unloadErr.Error()))
+			}
+		}()
 	}
 
 	// Wrap the client to report progress periodically
@@ -316,13 +356,40 @@ func (c *progressReportingClient) Complete(ctx context.Context, req llm.Request)
 }
 
 func (w *Worker) fetchLLMConfig(ctx context.Context) (llm.LLMConfig, error) {
-	provider := w.getConfigString(ctx, llm.LLMConfigNamespace, "default_provider", "gemini")
-	model := w.getConfigString(ctx, llm.LLMConfigNamespace, provider+"_default_model", "")
+	rawProvider := w.getConfigString(ctx, llm.LLMConfigNamespace, llm.LLMDefaultProviderKey, "gemini")
+	provider := llm.NormalizeProvider(rawProvider)
+	model := w.getConfigString(ctx, llm.LLMConfigNamespace, provider+"_"+llm.LLMModelIDKeySuffix, "")
+	if model == "" {
+		model = w.getConfigString(ctx, llm.LLMConfigNamespace, provider+"_default_model", "")
+	}
+	// legacy compatibility
+	if provider == "lmstudio" && model == "" {
+		model = w.getConfigString(ctx, llm.LLMConfigNamespace, "local_default_model", "")
+		if model == "" {
+			model = w.getConfigString(ctx, llm.LLMConfigNamespace, "local-llm_default_model", "")
+		}
+	}
 	endpoint := w.getConfigString(ctx, llm.LLMConfigNamespace, provider+"_endpoint", "")
+	if provider == "lmstudio" && endpoint == "" {
+		endpoint = w.getConfigString(ctx, llm.LLMConfigNamespace, "local_endpoint", "")
+		if endpoint == "" {
+			endpoint = w.getConfigString(ctx, llm.LLMConfigNamespace, "local-llm_endpoint", "")
+		}
+	}
 
 	apiKey := ""
 	if val, err := w.secretStore.GetSecret(ctx, llm.LLMConfigNamespace, provider+"_api_key"); err == nil {
 		apiKey = val
+	}
+	if provider == "lmstudio" && apiKey == "" {
+		if val, err := w.secretStore.GetSecret(ctx, llm.LLMConfigNamespace, "local_api_key"); err == nil {
+			apiKey = val
+		}
+		if apiKey == "" {
+			if val, err := w.secretStore.GetSecret(ctx, llm.LLMConfigNamespace, "local-llm_api_key"); err == nil {
+				apiKey = val
+			}
+		}
 	}
 
 	strConcurrency := w.getConfigString(ctx, llm.LLMConfigNamespace, llm.LLMSyncConcurrencyKeySuffix+"."+provider, "")
@@ -333,6 +400,9 @@ func (w *Worker) fetchLLMConfig(ctx context.Context) (llm.LLMConfig, error) {
 	if concurrency <= 0 {
 		concurrency = llm.DefaultConcurrency(provider)
 	}
+	if strings.TrimSpace(model) == "" {
+		return llm.LLMConfig{}, llm.ErrModelRequired
+	}
 
 	return llm.LLMConfig{
 		Provider:    provider,
@@ -341,6 +411,39 @@ func (w *Worker) fetchLLMConfig(ctx context.Context) (llm.LLMConfig, error) {
 		Model:       model,
 		Concurrency: concurrency,
 	}, nil
+}
+
+func (w *Worker) resolveResumeProviderModel(ctx context.Context, jobs []JobRequest, defaultProvider, defaultModel string) (string, string, error) {
+	allEmpty := true
+	for _, job := range jobs {
+		if job.Provider != "" || job.Model != "" {
+			allEmpty = false
+			break
+		}
+	}
+	if allEmpty {
+		if defaultProvider == "" || defaultModel == "" {
+			return "", "", llm.ErrModelRequired
+		}
+		return llm.NormalizeProvider(defaultProvider), defaultModel, nil
+	}
+
+	var provider string
+	var model string
+	for _, job := range jobs {
+		if job.Provider == "" || job.Model == "" {
+			return "", "", fmt.Errorf("job %s missing provider/model metadata; resume is not allowed", job.ID)
+		}
+		if provider == "" {
+			provider = llm.NormalizeProvider(job.Provider)
+			model = job.Model
+			continue
+		}
+		if provider != llm.NormalizeProvider(job.Provider) || model != job.Model {
+			return "", "", fmt.Errorf("inconsistent provider/model metadata in process jobs")
+		}
+	}
+	return provider, model, nil
 }
 
 func (w *Worker) getConfigString(ctx context.Context, ns, key, defaultVal string) string {
