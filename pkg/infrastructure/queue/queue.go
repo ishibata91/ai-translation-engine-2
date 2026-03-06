@@ -2,13 +2,16 @@ package queue
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/llm"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/telemetry"
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -27,6 +30,10 @@ type JobRequest struct {
 	ProcessID    string
 	RequestJSON  string
 	Status       string
+	Provider     string
+	Model        string
+	RequestFingerprint            string
+	StructuredOutputSchemaVersion string
 	BatchJobID   *string
 	ResponseJSON *string
 	ErrorMessage *string
@@ -123,6 +130,31 @@ func runMigrations(ctx context.Context, db *sql.DB) error {
 			return err
 		}
 	}
+	if version < 2 {
+		tx, err := db.BeginTx(ctx, nil)
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback()
+
+		ddl := []string{
+			`ALTER TABLE llm_jobs ADD COLUMN provider TEXT;`,
+			`ALTER TABLE llm_jobs ADD COLUMN model TEXT;`,
+			`ALTER TABLE llm_jobs ADD COLUMN request_fingerprint TEXT;`,
+			`ALTER TABLE llm_jobs ADD COLUMN structured_output_schema_version TEXT;`,
+		}
+		for _, q := range ddl {
+			if _, err := tx.ExecContext(ctx, q); err != nil && !isDuplicateColumnError(err) {
+				return err
+			}
+		}
+		if _, err := tx.ExecContext(ctx, "INSERT INTO schema_version (version, applied_at) VALUES (2, ?)", time.Now().UTC()); err != nil {
+			return err
+		}
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+	}
 
 	return nil
 }
@@ -147,8 +179,12 @@ func (q *Queue) SubmitJobs(ctx context.Context, processID string, reqs []any) er
 	defer tx.Rollback()
 
 	stmt, err := tx.PrepareContext(ctx, `
-		INSERT INTO llm_jobs (id, process_id, request_json, status, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?)
+		INSERT INTO llm_jobs (
+			id, process_id, request_json, status,
+			provider, model, request_fingerprint, structured_output_schema_version,
+			created_at, updated_at
+		)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
 		return fmt.Errorf("SubmitJobs prepare failed: %w", err)
@@ -162,8 +198,22 @@ func (q *Queue) SubmitJobs(ctx context.Context, processID string, reqs []any) er
 			return fmt.Errorf("failed to marshal request at index %d: %w", i, err)
 		}
 
+		fingerprint := hashRequest(string(data))
+		schemaVersion := extractSchemaVersion(req)
 		jobID := uuid.New().String()
-		if _, err := stmt.ExecContext(ctx, jobID, processID, string(data), StatusPending, now, now); err != nil {
+		if _, err := stmt.ExecContext(
+			ctx,
+			jobID,
+			processID,
+			string(data),
+			StatusPending,
+			"",
+			"",
+			fingerprint,
+			schemaVersion,
+			now,
+			now,
+		); err != nil {
 			return fmt.Errorf("failed to insert job %s: %w", jobID, err)
 		}
 	}
@@ -186,7 +236,10 @@ func (q *Queue) GetResults(ctx context.Context, processID string) ([]JobRequest,
 	q.logger.DebugContext(ctx, "fetching job results", slog.String("process_id", processID))
 
 	rows, err := q.db.QueryContext(ctx, `
-		SELECT id, process_id, request_json, status, batch_job_id, response_json, error_message, created_at, updated_at
+		SELECT
+			id, process_id, request_json, status,
+			provider, model, request_fingerprint, structured_output_schema_version,
+			batch_job_id, response_json, error_message, created_at, updated_at
 		FROM llm_jobs
 		WHERE process_id = ?
 	`, processID)
@@ -203,6 +256,7 @@ func (q *Queue) GetResults(ctx context.Context, processID string) ([]JobRequest,
 
 		if err := rows.Scan(
 			&job.ID, &job.ProcessID, &job.RequestJSON, &job.Status,
+			&job.Provider, &job.Model, &job.RequestFingerprint, &job.StructuredOutputSchemaVersion,
 			&batchJobID, &responseJSON, &errorMsg,
 			&job.CreatedAt, &job.UpdatedAt,
 		); err != nil {
@@ -247,7 +301,10 @@ func (q *Queue) GetJobsByStatus(ctx context.Context, processID string, status st
 	q.logger.DebugContext(ctx, "fetching jobs by status", slog.String("process_id", processID), slog.String("status", status))
 
 	rows, err := q.db.QueryContext(ctx, `
-		SELECT id, process_id, request_json, status, batch_job_id, response_json, error_message, created_at, updated_at
+		SELECT
+			id, process_id, request_json, status,
+			provider, model, request_fingerprint, structured_output_schema_version,
+			batch_job_id, response_json, error_message, created_at, updated_at
 		FROM llm_jobs
 		WHERE process_id = ? AND status = ?
 	`, processID, status)
@@ -264,6 +321,7 @@ func (q *Queue) GetJobsByStatus(ctx context.Context, processID string, status st
 
 		if err := rows.Scan(
 			&job.ID, &job.ProcessID, &job.RequestJSON, &job.Status,
+			&job.Provider, &job.Model, &job.RequestFingerprint, &job.StructuredOutputSchemaVersion,
 			&batchJobID, &responseJSON, &errorMsg,
 			&job.CreatedAt, &job.UpdatedAt,
 		); err != nil {
@@ -310,4 +368,43 @@ func (q *Queue) UpdateJob(ctx context.Context, jobID string, status string, resp
 		slog.Int64("affected_rows", affected),
 	)
 	return nil
+}
+
+// UpdateProcessMetadata stores provider/model for all jobs in the process.
+func (q *Queue) UpdateProcessMetadata(ctx context.Context, processID, provider, model string) error {
+	_, err := q.db.ExecContext(ctx, `
+		UPDATE llm_jobs
+		SET provider = ?, model = ?, updated_at = ?
+		WHERE process_id = ?
+	`, provider, model, time.Now().UTC(), processID)
+	if err != nil {
+		return fmt.Errorf("UpdateProcessMetadata failed: %w", err)
+	}
+	return nil
+}
+
+func hashRequest(raw string) string {
+	sum := sha256.Sum256([]byte(raw))
+	return fmt.Sprintf("%x", sum[:])
+}
+
+func extractSchemaVersion(req any) string {
+	if typed, ok := req.(llm.Request); ok {
+		if len(typed.ResponseSchema) == 0 {
+			return "none"
+		}
+		if v, ok := typed.Metadata["structured_output_schema_version"].(string); ok && strings.TrimSpace(v) != "" {
+			return v
+		}
+	}
+	// Schema version is optional at request stage; "none" means non-structured request.
+	return "none"
+}
+
+func isDuplicateColumnError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "duplicate column name")
 }

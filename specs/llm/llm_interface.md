@@ -13,7 +13,7 @@ Interface-First AIDD 原則に基づき、具体的なLLMプロバイダー（Op
 ## 3. 主要コンポーネント (Components)
 - `LLMClient`: LLMへのリクエスト送信を担当するコアインターフェース。
 - `LLMProvider`: 特定のプロバイダー（Gemini, OpenAI等）の実装。
-- `LLMManager`: 利用可能なプロバイダーを管理するファクトリ。`Config`（またはそこから抽出された設定情報）を受け取り、現在選択されているプロバイダー（Gemini, Local, xAI 等）およびその設定（APIキー、エンドポイント等）に基づいて、適切な `LLMClient` インスタンスを提供する。
+- `LLMManager`: 利用可能なプロバイダーを管理するファクトリ。`Config`（またはそこから抽出された設定情報）を受け取り、現在選択されているプロバイダー（Gemini, LM Studio, xAI 等）およびその設定（APIキー、エンドポイント等）に基づいて、適切な `LLMClient` インスタンスを提供する。
 - `BatchHandler`: 非同期バッチAPIのジョブ管理と結果取得を抽象化する。
 
 ### BatchClient プロバイダーサポート状況
@@ -22,7 +22,28 @@ Interface-First AIDD 原則に基づき、具体的なLLMプロバイダー（Op
 | -------------- | ---------------- | -------------------- | ------------------------------- |
 | Gemini         | ✅                | ✅                    | OpenAI互換フロー                |
 | xAI (Grok)     | ✅                | ✅                    | **独自フォーマット** — 下記参照 |
-| Local (Ollama) | ✅                | ❌                    | バッチ非対応                    |
+| LM Studio      | ✅                | ❌                    | `/api/v1/models/*` を利用       |
+
+## 3.1 LLMClient 共通契約 (必須)
+`LLMClient` は以下を必須契約とする。
+- `ListModels(ctx) ([]ModelInfo, error)`
+- `Complete(ctx, req)`
+- `GenerateStructured(ctx, req)`
+- `StreamComplete(ctx, req)`
+- `GetEmbedding(ctx, text)`
+- `HealthCheck(ctx)`
+
+Structured Output 未実装プロバイダーは `ErrStructuredOutputNotSupported` を返す。
+モデル未指定時は `ErrModelRequired` を返し、自動選択は行わない。
+
+## 3.2 LM Studio API 契約
+- モデル一覧: `GET /api/v1/models`
+- モデルロード: `POST /api/v1/models/load`
+- モデルアンロード: `POST /api/v1/models/unload`
+- 構造化出力: `POST /v1/chat/completions` + `response_format.type=json_schema` + `response_format.json_schema.strict=true`
+
+## 3.3 互換プロバイダー名
+設定上の `local` / `local-llm` は内部的に `lmstudio` へ正規化して扱う。
 
 > [!IMPORTANT]
 > **xAI Batch API は OpenAI Batch API と非互換**。以下の独自仕様を持つ：

@@ -120,8 +120,14 @@ func (m *mockLLMManagerForPM) ResolveBulkStrategy(ctx context.Context, strategy 
 
 type mockClientForPM struct{}
 
+func (c *mockClientForPM) ListModels(ctx context.Context) ([]llm.ModelInfo, error) {
+	return []llm.ModelInfo{{ID: "mock-model", DisplayName: "mock-model"}}, nil
+}
 func (c *mockClientForPM) Complete(ctx context.Context, req llm.Request) (llm.Response, error) {
 	return llm.Response{Success: true, Content: "done"}, nil
+}
+func (c *mockClientForPM) GenerateStructured(ctx context.Context, req llm.Request) (llm.Response, error) {
+	return c.Complete(ctx, req)
 }
 func (c *mockClientForPM) StreamComplete(ctx context.Context, req llm.Request) (llm.StreamResponse, error) {
 	return nil, nil
@@ -130,10 +136,27 @@ func (c *mockClientForPM) GetEmbedding(ctx context.Context, text string) ([]floa
 	return nil, nil
 }
 func (c *mockClientForPM) HealthCheck(ctx context.Context) error { return nil }
+func (c *mockClientForPM) LoadModel(ctx context.Context, model string, contextLength int) (string, error) {
+	return "instance-1", nil
+}
+func (c *mockClientForPM) UnloadModel(ctx context.Context, instanceID string) error { return nil }
 
 type mockCfgForPM struct{}
 
-func (m *mockCfgForPM) Get(ctx context.Context, ns, key string) (string, error) { return "sync", nil }
+func (m *mockCfgForPM) Get(ctx context.Context, ns, key string) (string, error) {
+	switch key {
+	case llm.LLMBulkStrategyKey:
+		return "sync", nil
+	case llm.LLMDefaultProviderKey:
+		return "lmstudio", nil
+	case "lmstudio_model_id":
+		return "mock-model", nil
+	case "lmstudio_endpoint":
+		return "http://localhost:1234", nil
+	default:
+		return "", nil
+	}
+}
 func (m *mockCfgForPM) Set(ctx context.Context, ns, key, val string) error      { return nil }
 func (m *mockCfgForPM) Delete(ctx context.Context, ns, key string) error        { return nil }
 func (m *mockCfgForPM) GetAll(ctx context.Context, ns string) (map[string]string, error) {

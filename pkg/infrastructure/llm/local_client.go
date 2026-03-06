@@ -14,207 +14,325 @@ import (
 )
 
 const (
-	localDefaultEndpoint = "http://localhost:11434"
-	localDefaultTimeout  = 120 * time.Second
+	lmStudioDefaultEndpoint = "http://localhost:1234"
+	lmStudioDefaultTimeout  = 120 * time.Second
 )
 
-// localClient は Ollama 互換 Local LLM の LLMClient 実装。
-type localClient struct {
+// ModelLifecycleClient provides LM Studio model load/unload lifecycle hooks.
+type ModelLifecycleClient interface {
+	LoadModel(ctx context.Context, model string, contextLength int) (string, error)
+	UnloadModel(ctx context.Context, instanceID string) error
+}
+
+// lmStudioClient is LM Studio/OpenAI-compatible LLM client implementation.
+type lmStudioClient struct {
 	config     LLMConfig
 	httpClient *http.Client
 	logger     *slog.Logger
 	retryCfg   RetryConfig
 }
 
-// NewLocalClient は Local (Ollama互換) client を返す。
-func NewLocalClient(logger *slog.Logger, config LLMConfig) LLMClient {
+// NewLMStudioClient returns LM Studio client.
+func NewLMStudioClient(logger *slog.Logger, config LLMConfig) LLMClient {
 	endpoint := config.Endpoint
 	if endpoint == "" {
-		endpoint = localDefaultEndpoint
+		endpoint = lmStudioDefaultEndpoint
 	}
 	config.Endpoint = endpoint
-	return &localClient{
+	return &lmStudioClient{
 		config:     config,
-		httpClient: &http.Client{Timeout: localDefaultTimeout},
-		logger:     logger.With("component", "local_client", "endpoint", endpoint),
+		httpClient: &http.Client{Timeout: lmStudioDefaultTimeout},
+		logger:     logger.With("component", "lmstudio_client", "endpoint", endpoint),
 		retryCfg:   DefaultRetryConfig(),
 	}
 }
 
-// Complete はテキスト生成リクエストを実行し、結果を返す。
-func (c *localClient) Complete(ctx context.Context, req Request) (Response, error) {
+// NewLocalClient is a legacy alias kept for compatibility.
+func NewLocalClient(logger *slog.Logger, config LLMConfig) LLMClient {
+	return NewLMStudioClient(logger, config)
+}
+
+func (c *lmStudioClient) ListModels(ctx context.Context) ([]ModelInfo, error) {
+	url := fmt.Sprintf("%s/api/v1/models", c.config.Endpoint)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("lmstudio: list models request creation failed: %w", err)
+	}
+	c.setAuthHeader(httpReq)
+
+	httpResp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("lmstudio: list models request failed: %w", err)
+	}
+	defer httpResp.Body.Close()
+
+	body, err := io.ReadAll(httpResp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("lmstudio: list models read failed: %w", err)
+	}
+	if httpResp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("lmstudio: list models error %d: %s", httpResp.StatusCode, string(body))
+	}
+
+	var raw struct {
+		Models []struct {
+			Type             string `json:"type"`
+			Key              string `json:"key"`
+			DisplayName      string `json:"display_name"`
+			MaxContextLength int    `json:"max_context_length"`
+			LoadedInstances  []struct {
+				ID string `json:"id"`
+			} `json:"loaded_instances"`
+		} `json:"models"`
+	}
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return nil, fmt.Errorf("lmstudio: list models unmarshal failed: %w", err)
+	}
+
+	models := make([]ModelInfo, 0, len(raw.Models))
+	for _, m := range raw.Models {
+		if m.Type != "llm" {
+			continue
+		}
+		models = append(models, ModelInfo{
+			ID:               m.Key,
+			DisplayName:      m.DisplayName,
+			MaxContextLength: m.MaxContextLength,
+			Loaded:           len(m.LoadedInstances) > 0,
+		})
+	}
+	return models, nil
+}
+
+// Complete performs plain text completion.
+func (c *lmStudioClient) Complete(ctx context.Context, req Request) (Response, error) {
 	defer telemetry.StartSpan(ctx, telemetry.ActionLLMRequest)()
-	c.logger.DebugContext(ctx, "local request start",
-		slog.Int("system_prompt_len", len(req.SystemPrompt)),
-		slog.Int("user_prompt_len", len(req.UserPrompt)),
-	)
+	if c.config.Model == "" {
+		return Response{}, ErrModelRequired
+	}
 
 	var resp Response
 	err := RetryWithBackoff(ctx, c.retryCfg, func() error {
 		var innerErr error
-		resp, innerErr = c.doComplete(ctx, req)
+		resp, innerErr = c.doChatCompletion(ctx, req, false)
 		return innerErr
 	})
 	if err != nil {
-		c.logger.ErrorContext(ctx, "local request failed", telemetry.ErrorAttrs(err)...)
 		return Response{}, err
 	}
-
-	c.logger.InfoContext(ctx, "local request completed",
-		slog.Int("content_len", len(resp.Content)),
-		slog.Int("total_tokens", resp.Usage.TotalTokens),
-	)
+	resp.Metadata = req.Metadata
 	return resp, nil
 }
 
-// StreamComplete はストリーミングレスポンスを返す（現在は非ストリーミングフォールバック）。
-func (c *localClient) StreamComplete(ctx context.Context, req Request) (StreamResponse, error) {
-	c.logger.DebugContext(ctx, "ENTER StreamComplete (non-streaming fallback)")
+// GenerateStructured performs OpenAI-compatible json_schema completion.
+func (c *lmStudioClient) GenerateStructured(ctx context.Context, req Request) (Response, error) {
+	defer telemetry.StartSpan(ctx, telemetry.ActionLLMRequest)()
+	if c.config.Model == "" {
+		return Response{}, ErrModelRequired
+	}
+	if len(req.ResponseSchema) == 0 {
+		return Response{}, fmt.Errorf("lmstudio: response schema is required for structured generation")
+	}
+	resp, err := c.doChatCompletion(ctx, req, true)
+	if err != nil {
+		return Response{}, err
+	}
+	resp.Metadata = req.Metadata
+	return resp, nil
+}
+
+func (c *lmStudioClient) StreamComplete(ctx context.Context, req Request) (StreamResponse, error) {
 	resp, err := c.Complete(ctx, req)
 	if err != nil {
 		return nil, err
 	}
-	c.logger.DebugContext(ctx, "EXIT StreamComplete")
 	return &localStreamResponse{resp: resp}, nil
 }
 
-// GetEmbedding はテキストの埋め込みベクトルを返す（スタブ）。
-func (c *localClient) GetEmbedding(_ context.Context, _ string) ([]float32, error) {
-	return nil, fmt.Errorf("local: GetEmbedding not implemented")
+func (c *lmStudioClient) GetEmbedding(_ context.Context, _ string) ([]float32, error) {
+	return nil, fmt.Errorf("lmstudio: GetEmbedding not implemented")
 }
 
-// HealthCheck は Local LLM サーバーへの疎通確認を行う。
-func (c *localClient) HealthCheck(ctx context.Context) error {
-	c.logger.DebugContext(ctx, "ENTER HealthCheck")
-	url := fmt.Sprintf("%s/api/tags", c.config.Endpoint)
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return fmt.Errorf("local: HealthCheck request creation failed: %w", err)
+func (c *lmStudioClient) HealthCheck(ctx context.Context) error {
+	_, err := c.ListModels(ctx)
+	return err
+}
+
+func (c *lmStudioClient) LoadModel(ctx context.Context, model string, contextLength int) (string, error) {
+	if model == "" {
+		return "", ErrModelRequired
 	}
+	payload := map[string]interface{}{
+		"model": model,
+	}
+	if contextLength > 0 {
+		payload["context_length"] = contextLength
+	}
+	bodyBytes, _ := json.Marshal(payload)
+
+	url := fmt.Sprintf("%s/api/v1/models/load", c.config.Endpoint)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(bodyBytes))
+	if err != nil {
+		return "", fmt.Errorf("lmstudio: load request creation failed: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	c.setAuthHeader(httpReq)
+
 	httpResp, err := c.httpClient.Do(httpReq)
 	if err != nil {
-		return fmt.Errorf("local: HealthCheck request failed: %w", err)
+		return "", fmt.Errorf("lmstudio: load request failed: %w", err)
 	}
 	defer httpResp.Body.Close()
 
+	respBody, _ := io.ReadAll(httpResp.Body)
 	if httpResp.StatusCode != http.StatusOK {
-		return fmt.Errorf("local: HealthCheck returned status %d", httpResp.StatusCode)
+		return "", fmt.Errorf("lmstudio: load error %d: %s", httpResp.StatusCode, string(respBody))
 	}
-	c.logger.DebugContext(ctx, "EXIT HealthCheck", "status", httpResp.StatusCode)
+
+	var raw struct {
+		InstanceID string `json:"instance_id"`
+	}
+	if err := json.Unmarshal(respBody, &raw); err != nil {
+		return "", fmt.Errorf("lmstudio: load unmarshal failed: %w", err)
+	}
+	if raw.InstanceID == "" {
+		return "", fmt.Errorf("lmstudio: load response missing instance_id")
+	}
+	return raw.InstanceID, nil
+}
+
+func (c *lmStudioClient) UnloadModel(ctx context.Context, instanceID string) error {
+	if instanceID == "" {
+		return nil
+	}
+	payload := map[string]string{"instance_id": instanceID}
+	bodyBytes, _ := json.Marshal(payload)
+
+	url := fmt.Sprintf("%s/api/v1/models/unload", c.config.Endpoint)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(bodyBytes))
+	if err != nil {
+		return fmt.Errorf("lmstudio: unload request creation failed: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	c.setAuthHeader(httpReq)
+
+	httpResp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return fmt.Errorf("lmstudio: unload request failed: %w", err)
+	}
+	defer httpResp.Body.Close()
+	if httpResp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(httpResp.Body)
+		return fmt.Errorf("lmstudio: unload error %d: %s", httpResp.StatusCode, string(body))
+	}
 	return nil
 }
 
-// doComplete は1回分の HTTPリクエストを実行する。
-func (c *localClient) doComplete(ctx context.Context, req Request) (Response, error) {
-	httpReq, err := c.buildRequest(ctx, req)
-	if err != nil {
-		return Response{}, err
+func (c *lmStudioClient) doChatCompletion(ctx context.Context, req Request, structured bool) (Response, error) {
+	type message struct {
+		Role    string `json:"role"`
+		Content string `json:"content"`
 	}
-
-	start := time.Now()
-	httpResp, err := c.httpClient.Do(httpReq)
-	if err != nil {
-		return Response{}, fmt.Errorf("local: HTTP request failed: %w", err)
+	type responseFormat struct {
+		Type       string                 `json:"type"`
+		JSONSchema map[string]interface{} `json:"json_schema,omitempty"`
 	}
-	defer httpResp.Body.Close()
-	elapsed := time.Since(start)
-
-	body, err := io.ReadAll(httpResp.Body)
-	if err != nil {
-		return Response{}, fmt.Errorf("local: failed to read response body: %w", err)
-	}
-
-	if IsRetryableStatusCode(httpResp.StatusCode) {
-		return Response{}, &RetryableError{
-			StatusCode: httpResp.StatusCode,
-			Message:    string(body),
-		}
-	}
-	if httpResp.StatusCode != http.StatusOK {
-		return Response{}, fmt.Errorf("local: API error %d: %s", httpResp.StatusCode, string(body))
-	}
-
-	c.logger.DebugContext(ctx, "local HTTP response",
-		"status", httpResp.StatusCode,
-		"elapsed_ms", elapsed.Milliseconds(),
-	)
-	return c.parseResponse(ctx, body)
-}
-
-// buildRequest は Ollama API 形式の *http.Request を構築する。
-func (c *localClient) buildRequest(ctx context.Context, req Request) (*http.Request, error) {
-	c.logger.DebugContext(ctx, "ENTER buildRequest", "model", c.config.Model)
-
-	url := fmt.Sprintf("%s/api/generate", c.config.Endpoint)
-
-	// system_promptとuser_promptを結合してpromptとして送信
-	prompt := req.UserPrompt
-	if req.SystemPrompt != "" {
-		prompt = req.SystemPrompt + "\n\n" + req.UserPrompt
-	}
-
 	type requestBody struct {
-		Model       string  `json:"model"`
-		Prompt      string  `json:"prompt"`
-		Stream      bool    `json:"stream"`
-		Temperature float32 `json:"temperature,omitempty"`
+		Model          string         `json:"model"`
+		Messages       []message      `json:"messages"`
+		Temperature    float32        `json:"temperature,omitempty"`
+		MaxTokens      int            `json:"max_tokens,omitempty"`
+		Stream         bool           `json:"stream"`
+		ResponseFormat *responseFormat `json:"response_format,omitempty"`
 	}
+
+	msgs := make([]message, 0, 2)
+	if req.SystemPrompt != "" {
+		msgs = append(msgs, message{Role: "system", Content: req.SystemPrompt})
+	}
+	msgs = append(msgs, message{Role: "user", Content: req.UserPrompt})
 
 	body := requestBody{
 		Model:       c.config.Model,
-		Prompt:      prompt,
-		Stream:      false,
+		Messages:    msgs,
 		Temperature: req.Temperature,
+		MaxTokens:   req.MaxTokens,
+		Stream:      false,
+	}
+	if structured {
+		body.ResponseFormat = &responseFormat{
+			Type: "json_schema",
+			JSONSchema: map[string]interface{}{
+				"name":   "structured_output",
+				"strict": true,
+				"schema": req.ResponseSchema,
+			},
+		}
 	}
 
 	bodyBytes, err := json.Marshal(body)
 	if err != nil {
-		return nil, fmt.Errorf("local: failed to marshal request: %w", err)
+		return Response{}, fmt.Errorf("lmstudio: marshal request failed: %w", err)
 	}
 
+	url := fmt.Sprintf("%s/v1/chat/completions", c.config.Endpoint)
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(bodyBytes))
 	if err != nil {
-		return nil, fmt.Errorf("local: failed to create request: %w", err)
+		return Response{}, fmt.Errorf("lmstudio: request creation failed: %w", err)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
+	c.setAuthHeader(httpReq)
 
-	c.logger.DebugContext(ctx, "EXIT buildRequest", "url", url)
-	return httpReq, nil
-}
+	httpResp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return Response{}, fmt.Errorf("lmstudio: request failed: %w", err)
+	}
+	defer httpResp.Body.Close()
+	respBody, _ := io.ReadAll(httpResp.Body)
 
-// parseResponse は Ollama API のレスポンスボディをパースして Response を返す。
-func (c *localClient) parseResponse(ctx context.Context, body []byte) (Response, error) {
-	c.logger.DebugContext(ctx, "ENTER parseResponse", "body_len", len(body))
+	if IsRetryableStatusCode(httpResp.StatusCode) {
+		return Response{}, &RetryableError{StatusCode: httpResp.StatusCode, Message: string(respBody)}
+	}
+	if httpResp.StatusCode != http.StatusOK {
+		return Response{}, fmt.Errorf("lmstudio: chat completions error %d: %s", httpResp.StatusCode, string(respBody))
+	}
 
 	var raw struct {
-		Response        string `json:"response"`
-		Done            bool   `json:"done"`
-		PromptEvalCount int    `json:"prompt_eval_count"`
-		EvalCount       int    `json:"eval_count"`
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+		Usage struct {
+			PromptTokens     int `json:"prompt_tokens"`
+			CompletionTokens int `json:"completion_tokens"`
+			TotalTokens      int `json:"total_tokens"`
+		} `json:"usage"`
 	}
-
-	if err := json.Unmarshal(body, &raw); err != nil {
-		return Response{}, fmt.Errorf("local: failed to unmarshal response: %w", err)
+	if err := json.Unmarshal(respBody, &raw); err != nil {
+		return Response{}, fmt.Errorf("lmstudio: response unmarshal failed: %w", err)
 	}
-
-	resp := Response{
-		Content: raw.Response,
+	if len(raw.Choices) == 0 {
+		return Response{}, fmt.Errorf("lmstudio: empty choices in response")
+	}
+	return Response{
+		Content: raw.Choices[0].Message.Content,
 		Success: true,
 		Usage: TokenUsage{
-			PromptTokens:     raw.PromptEvalCount,
-			CompletionTokens: raw.EvalCount,
-			TotalTokens:      raw.PromptEvalCount + raw.EvalCount,
+			PromptTokens:     raw.Usage.PromptTokens,
+			CompletionTokens: raw.Usage.CompletionTokens,
+			TotalTokens:      raw.Usage.TotalTokens,
 		},
-	}
-
-	c.logger.DebugContext(ctx, "EXIT parseResponse",
-		"content_len", len(raw.Response),
-		"total_tokens", resp.Usage.TotalTokens,
-	)
-	return resp, nil
+	}, nil
 }
 
-// localStreamResponse — フォールバック用
+func (c *lmStudioClient) setAuthHeader(req *http.Request) {
+	if c.config.APIKey != "" {
+		req.Header.Set("Authorization", "Bearer "+c.config.APIKey)
+	}
+}
+
+// localStreamResponse is a fallback stream wrapper.
 type localStreamResponse struct {
 	resp Response
 	done bool
