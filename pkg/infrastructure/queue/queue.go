@@ -252,16 +252,21 @@ func (q *Queue) GetResults(ctx context.Context, processID string) ([]JobRequest,
 	var jobs []JobRequest
 	for rows.Next() {
 		var job JobRequest
+		var provider, model, requestFingerprint, schemaVersion sql.NullString
 		var batchJobID, responseJSON, errorMsg sql.NullString
 
 		if err := rows.Scan(
 			&job.ID, &job.ProcessID, &job.RequestJSON, &job.Status,
-			&job.Provider, &job.Model, &job.RequestFingerprint, &job.StructuredOutputSchemaVersion,
+			&provider, &model, &requestFingerprint, &schemaVersion,
 			&batchJobID, &responseJSON, &errorMsg,
 			&job.CreatedAt, &job.UpdatedAt,
 		); err != nil {
 			return nil, fmt.Errorf("failed to scan job: %w", err)
 		}
+		job.Provider = nullableString(provider)
+		job.Model = nullableString(model)
+		job.RequestFingerprint = nullableString(requestFingerprint)
+		job.StructuredOutputSchemaVersion = nullableString(schemaVersion)
 
 		if batchJobID.Valid {
 			job.BatchJobID = &batchJobID.String
@@ -317,16 +322,21 @@ func (q *Queue) GetJobsByStatus(ctx context.Context, processID string, status st
 	var jobs []JobRequest
 	for rows.Next() {
 		var job JobRequest
+		var provider, model, requestFingerprint, schemaVersion sql.NullString
 		var batchJobID, responseJSON, errorMsg sql.NullString
 
 		if err := rows.Scan(
 			&job.ID, &job.ProcessID, &job.RequestJSON, &job.Status,
-			&job.Provider, &job.Model, &job.RequestFingerprint, &job.StructuredOutputSchemaVersion,
+			&provider, &model, &requestFingerprint, &schemaVersion,
 			&batchJobID, &responseJSON, &errorMsg,
 			&job.CreatedAt, &job.UpdatedAt,
 		); err != nil {
 			return nil, fmt.Errorf("failed to scan job: %w", err)
 		}
+		job.Provider = nullableString(provider)
+		job.Model = nullableString(model)
+		job.RequestFingerprint = nullableString(requestFingerprint)
+		job.StructuredOutputSchemaVersion = nullableString(schemaVersion)
 
 		if batchJobID.Valid {
 			job.BatchJobID = &batchJobID.String
@@ -407,4 +417,11 @@ func isDuplicateColumnError(err error) bool {
 	}
 	msg := err.Error()
 	return strings.Contains(msg, "duplicate column name")
+}
+
+func nullableString(v sql.NullString) string {
+	if !v.Valid {
+		return ""
+	}
+	return v.String
 }

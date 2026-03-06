@@ -282,3 +282,32 @@ func TestJobQueue_ResumeFailsWhenMetadataMissing(t *testing.T) {
 		t.Fatalf("expected metadata missing error")
 	}
 }
+
+func TestQueue_NullMetadataColumnsCanBeScanned(t *testing.T) {
+	ctx := context.Background()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	q, _ := NewQueue(ctx, ":memory:", logger)
+	defer q.Close()
+
+	processID := "legacy-null"
+	if _, err := q.db.ExecContext(ctx, `
+		INSERT INTO llm_jobs (
+			id, process_id, request_json, status,
+			provider, model, request_fingerprint, structured_output_schema_version,
+			created_at, updated_at
+		) VALUES (?, ?, ?, ?, NULL, NULL, NULL, NULL, datetime('now'), datetime('now'))
+	`, "job-1", processID, `{"user_prompt":"x"}`, StatusPending); err != nil {
+		t.Fatalf("insert legacy row failed: %v", err)
+	}
+
+	jobs, err := q.GetJobsByStatus(ctx, processID, StatusPending)
+	if err != nil {
+		t.Fatalf("GetJobsByStatus failed: %v", err)
+	}
+	if len(jobs) != 1 {
+		t.Fatalf("expected 1 row, got %d", len(jobs))
+	}
+	if jobs[0].Provider != "" || jobs[0].Model != "" || jobs[0].RequestFingerprint != "" || jobs[0].StructuredOutputSchemaVersion != "" {
+		t.Fatalf("expected nullable metadata to be normalized to empty strings, got %+v", jobs[0])
+	}
+}

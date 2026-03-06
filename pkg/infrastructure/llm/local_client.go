@@ -133,7 +133,12 @@ func (c *lmStudioClient) GenerateStructured(ctx context.Context, req Request) (R
 	if len(req.ResponseSchema) == 0 {
 		return Response{}, fmt.Errorf("lmstudio: response schema is required for structured generation")
 	}
-	resp, err := c.doChatCompletion(ctx, req, true)
+	var resp Response
+	err := RetryWithBackoff(ctx, c.retryCfg, func() error {
+		var innerErr error
+		resp, innerErr = c.doChatCompletion(ctx, req, true)
+		return innerErr
+	})
 	if err != nil {
 		return Response{}, err
 	}
