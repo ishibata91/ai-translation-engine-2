@@ -13,13 +13,17 @@ Archive multiple completed changes in a single operation.
 
 This skill allows you to batch-archive changes, handling spec conflicts intelligently by checking the codebase to determine what's actually implemented.
 
+**Working Directory Requirement (Critical)**
+- `npx openspec` を必ずプロジェクトのワークスペースフォルダ（ローカル依存がある場所）で実行する。
+- グローバル `openspec` は使わない。サンドボックス環境では解決できず失敗しやすいため、常に `npx openspec ...` を使う。
+- 現在位置がワークスペースルート（`openspec/` ディレクトリがあるフォルダ）でない場合は、先に移動してから実行する。
 **Input**: None required (prompts for selection)
 
 **Steps**
 
 1. **Get active changes**
 
-   Run `openspec list --json` to get all active changes.
+   Run `npx openspec list --json` to get all active changes.
 
    If no active changes exist, inform user and stop.
 
@@ -36,7 +40,7 @@ This skill allows you to batch-archive changes, handling spec conflicts intellig
 
    For each selected change, collect:
 
-   a. **Artifact status** - Run `openspec status --change "<name>" --json`
+   a. **Artifact status** - Run `npx openspec status --change "<name>" --json`
       - Parse `schemaName` and `artifacts` list
       - Note which artifacts are `done` vs other states
 

@@ -11,6 +11,10 @@ metadata:
 
 Enter explore mode. Think deeply. Visualize freely. Follow the conversation wherever it goes.
 
+**Working Directory Requirement (Critical)**
+- `npx openspec` を必ずプロジェクトのワークスペースフォルダ（ローカル依存がある場所）で実行する。
+- グローバル `openspec` は使わない。サンドボックス環境では解決できず失敗しやすいため、常に `npx openspec ...` を使う。
+- 現在位置がワークスペースルート（`openspec/` ディレクトリがあるフォルダ）でない場合は、先に移動してから実行する。
 **IMPORTANT: Explore mode is for thinking, not implementing.** You may read files, search code, and investigate the codebase, but you must NEVER write code or implement features. If the user asks you to implement something, remind them to exit explore mode first (e.g., start a change with `/opsx:new` or `/opsx:ff`). You MAY create OpenSpec artifacts (proposals, designs, specs) if the user asks—that's capturing thinking, not implementing.
 
 **This is a stance, not a workflow.** There are no fixed steps, no required sequence, no mandatory outputs. You're a thinking partner helping the user explore.
@@ -83,7 +87,7 @@ You have full context of the OpenSpec system. Use it naturally, don't force it.
 
 At the start, quickly check what exists:
 ```bash
-openspec list --json
+npx openspec list --json
 ```
 
 This tells you:

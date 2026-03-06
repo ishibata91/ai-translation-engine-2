@@ -11,13 +11,17 @@ metadata:
 
 Archive a completed change in the experimental workflow.
 
+**Working Directory Requirement (Critical)**
+- `npx openspec` を必ずプロジェクトのワークスペースフォルダ（ローカル依存がある場所）で実行する。
+- グローバル `openspec` は使わない。サンドボックス環境では解決できず失敗しやすいため、常に `npx openspec ...` を使う。
+- 現在位置がワークスペースルート（`openspec/` ディレクトリがあるフォルダ）でない場合は、先に移動してから実行する。
 **Input**: Optionally specify a change name. If omitted, check if it can be inferred from conversation context. If vague or ambiguous you MUST prompt for available changes.
 
 **Steps**
 
 1. **If no change name provided, prompt for selection**
 
-   Run `openspec list --json` to get available changes. Use the **AskUserQuestion tool** to let the user select.
+   Run `npx openspec list --json` to get available changes. Use the **AskUserQuestion tool** to let the user select.
 
    Show only active changes (not already archived).
    Include the schema used for each change if available.
@@ -26,7 +30,7 @@ Archive a completed change in the experimental workflow.
 
 2. **Check artifact completion status**
 
-   Run `openspec status --change "<name>" --json` to check artifact completion.
+   Run `npx openspec status --change "<name>" --json` to check artifact completion.
 
    Parse the JSON to understand:
    - `schemaName`: The workflow being used
@@ -67,19 +71,22 @@ Archive a completed change in the experimental workflow.
 
 5. **Perform the archive**
 
-   Create the archive directory if it doesn't exist:
+   Create the archive directory if it doesn't exist. **Note**: Use OS-specific commands (e.g., `mkdir` on Windows cmd.exe without `-p`, or PowerShell).
+
    ```bash
-   mkdir -p openspec/changes/archive
+   # Windows cmd.exe example
+   if not exist "openspec\changes\archive" mkdir "openspec\changes\archive"
    ```
 
    Generate target name using current date: `YYYY-MM-DD-<change-name>`
 
    **Check if target already exists:**
    - If yes: Fail with error, suggest renaming existing archive or using different date
-   - If no: Move the change directory to archive
+   - If no: Move the change directory to archive. **Note**: Use OS-specific move command.
 
    ```bash
-   mv openspec/changes/<name> openspec/changes/archive/YYYY-MM-DD-<name>
+   # Windows cmd.exe example
+   move "openspec\changes\<name>" "openspec\changes\archive\YYYY-MM-DD-<name>"
    ```
 
 6. **Display summary**

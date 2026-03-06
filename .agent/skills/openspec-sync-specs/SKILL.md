@@ -13,13 +13,17 @@ Sync delta specs from a change to main specs.
 
 This is an **agent-driven** operation - you will read delta specs and directly edit main specs to apply the changes. This allows intelligent merging (e.g., adding a scenario without copying the entire requirement).
 
+**Working Directory Requirement (Critical)**
+- `npx openspec` を必ずプロジェクトのワークスペースフォルダ（ローカル依存がある場所）で実行する。
+- グローバル `openspec` は使わない。サンドボックス環境では解決できず失敗しやすいため、常に `npx openspec ...` を使う。
+- 現在位置がワークスペースルート（`openspec/` ディレクトリがあるフォルダ）でない場合は、先に移動してから実行する。
 **Input**: Optionally specify a change name. If omitted, check if it can be inferred from conversation context. If vague or ambiguous you MUST prompt for available changes.
 
 **Steps**
 
 1. **If no change name provided, prompt for selection**
 
-   Run `openspec list --json` to get available changes. Use the **AskUserQuestion tool** to let the user select.
+   Run `npx openspec list --json` to get available changes. Use the **AskUserQuestion tool** to let the user select.
 
    Show changes that have delta specs (under `specs/` directory).
 
@@ -41,20 +45,18 @@ This is an **agent-driven** operation - you will read delta specs and directly e
 
    For each capability with a delta spec at `openspec/changes/<name>/specs/<capability>/spec.md`:
 
-   a. **First, determine the main specs path** by reading `openspec/config.yaml` and extracting the `specsPath` value (e.g., `specs/`, but it could be something else like `openspec/specs/`).
+   a. **Read the delta spec** to understand the intended changes
 
-   b. **Read the delta spec** to understand the intended changes
+   b. **Read the main spec** at `openspec/specs/<capability>/spec.md` (may not exist yet)
 
-   c. **Read the main spec** at `<specsPath>/<capability>/spec.md` (may not exist yet)
-      - **IMPORTANT:** 既存のspecがある場合は、ファイルを作成し直すのではなく必ずその既存ファイルを開いて、そこに追加された要件や変更をマージすること。
+   c. **Apply changes intelligently**:
 
-   d. **Apply changes intelligently to the existing main spec**:
       **ADDED Requirements:**
-      - If requirement doesn't exist in the existing main spec → add it
-      - If requirement already exists the existing main spec → update it to match (treat as implicit MODIFIED)
+      - If requirement doesn't exist in main spec → add it
+      - If requirement already exists → update it to match (treat as implicit MODIFIED)
 
       **MODIFIED Requirements:**
-      - Find the requirement in the existing main spec
+      - Find the requirement in main spec
       - Apply the changes - this can be:
         - Adding new scenarios (don't need to copy existing ones)
         - Modifying existing scenarios
@@ -62,13 +64,13 @@ This is an **agent-driven** operation - you will read delta specs and directly e
       - Preserve scenarios/content not mentioned in the delta
 
       **REMOVED Requirements:**
-      - Remove the entire requirement block from the main spec
+      - Remove the entire requirement block from main spec
 
       **RENAMED Requirements:**
       - Find the FROM requirement, rename to TO
 
-   e. **Create new main spec** if capability doesn't exist yet:
-      - Create `<specsPath>/<capability>/spec.md`
+   d. **Create new main spec** if capability doesn't exist yet:
+      - Create `openspec/specs/<capability>/spec.md`
       - Add Purpose section (can be brief, mark as TBD)
       - Add Requirements section with the ADDED requirements
 

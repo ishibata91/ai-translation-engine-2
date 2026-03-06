@@ -4,6 +4,7 @@
 .roo
 .roomodes
 .clinerules
+/node_modules
 
 # Wails build artifacts
 build/bin/

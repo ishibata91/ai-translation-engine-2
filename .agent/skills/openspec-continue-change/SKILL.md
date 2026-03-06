@@ -11,13 +11,17 @@ metadata:
 
 Continue working on a change by creating the next artifact.
 
+**Working Directory Requirement (Critical)**
+- `npx openspec` を必ずプロジェクトのワークスペースフォルダ（ローカル依存がある場所）で実行する。
+- グローバル `openspec` は使わない。サンドボックス環境では解決できず失敗しやすいため、常に `npx openspec ...` を使う。
+- 現在位置がワークスペースルート（`openspec/` ディレクトリがあるフォルダ）でない場合は、先に移動してから実行する。
 **Input**: Optionally specify a change name. If omitted, check if it can be inferred from conversation context. If vague or ambiguous you MUST prompt for available changes.
 
 **Steps**
 
 1. **If no change name provided, prompt for selection**
 
-   Run `openspec list --json` to get available changes sorted by most recently modified. Then use the **AskUserQuestion tool** to let the user select which change to work on.
+   Run `npx openspec list --json` to get available changes sorted by most recently modified. Then use the **AskUserQuestion tool** to let the user select which change to work on.
 
    Present the top 3-4 most recently modified changes as options, showing:
    - Change name
@@ -31,7 +35,7 @@ Continue working on a change by creating the next artifact.
 
 2. **Check current status**
    ```bash
-   openspec status --change "<name>" --json
+   npx openspec status --change "<name>" --json
    ```
    Parse the JSON to understand current state. The response includes:
    - `schemaName`: The workflow schema being used (e.g., "spec-driven")
@@ -54,7 +58,7 @@ Continue working on a change by creating the next artifact.
    - Pick the FIRST artifact with `status: "ready"` from the status output
    - Get its instructions:
      ```bash
-     openspec instructions <artifact-id> --change "<name>" --json
+     npx openspec instructions <artifact-id> --change "<name>" --json
      ```
    - Parse the JSON. The key fields are:
      - `context`: Project background (constraints for you - do NOT include in output)
@@ -79,7 +83,7 @@ Continue working on a change by creating the next artifact.
 
 4. **After creating an artifact, show progress**
    ```bash
-   openspec status --change "<name>"
+   npx openspec status --change "<name>"
    ```
 
 **Output**
