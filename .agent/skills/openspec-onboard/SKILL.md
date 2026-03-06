@@ -10,13 +10,14 @@ metadata:
 ---
 
 Guide the user through their first complete OpenSpec workflow cycle. This is a teaching experience—you'll do real work in their codebase while explaining each step.
-
-
 **Working Directory Requirement (Critical)**
 - `npx openspec` を必ずプロジェクトのワークスペースフォルダ（ローカル依存がある場所）で実行する。
 - グローバル `openspec` は使わない。サンドボックス環境では解決できず失敗しやすいため、常に `npx openspec ...` を使う。
 - 現在位置がワークスペースルート（`openspec/` ディレクトリがあるフォルダ）でない場合は、先に移動してから実行する。
-Preflight
+
+---
+
+## Preflight
 
 Before starting, check if OpenSpec is initialized:
 
@@ -29,12 +30,9 @@ npx openspec status --json 2>&1 || echo "NOT_INITIALIZED"
 
 Stop here if not initialized.
 
+---
 
-**Working Directory Requirement (Critical)**
-- `npx openspec` を必ずプロジェクトのワークスペースフォルダ（ローカル依存がある場所）で実行する。
-- グローバル `openspec` は使わない。サンドボックス環境では解決できず失敗しやすいため、常に `npx openspec ...` を使う。
-- 現在位置がワークスペースルート（`openspec/` ディレクトリがあるフォルダ）でない場合は、先に移動してから実行する。
-Phase 1: Welcome
+## Phase 1: Welcome
 
 Display:
 
@@ -56,12 +54,9 @@ I'll walk you through a complete change cycle—from idea to implementation—us
 Let's start by finding something to work on.
 ```
 
+---
 
-**Working Directory Requirement (Critical)**
-- `npx openspec` を必ずプロジェクトのワークスペースフォルダ（ローカル依存がある場所）で実行する。
-- グローバル `openspec` は使わない。サンドボックス環境では解決できず失敗しやすいため、常に `npx openspec ...` を使う。
-- 現在位置がワークスペースルート（`openspec/` ディレクトリがあるフォルダ）でない場合は、先に移動してから実行する。
-Phase 2: Task Selection
+## Phase 2: Task Selection
 
 ### Codebase Analysis
 
@@ -131,12 +126,9 @@ What would you prefer?
 
 Let the user override if they insist—this is a soft guardrail.
 
+---
 
-**Working Directory Requirement (Critical)**
-- `npx openspec` を必ずプロジェクトのワークスペースフォルダ（ローカル依存がある場所）で実行する。
-- グローバル `openspec` は使わない。サンドボックス環境では解決できず失敗しやすいため、常に `npx openspec ...` を使う。
-- 現在位置がワークスペースルート（`openspec/` ディレクトリがあるフォルダ）でない場合は、先に移動してから実行する。
-Phase 3: Explore Demo
+## Phase 3: Explore Demo
 
 Once a task is selected, briefly demonstrate explore mode:
 
@@ -165,12 +157,9 @@ Now let's create a change to hold our work.
 
 **PAUSE** - Wait for user acknowledgment before proceeding.
 
+---
 
-**Working Directory Requirement (Critical)**
-- `npx openspec` を必ずプロジェクトのワークスペースフォルダ（ローカル依存がある場所）で実行する。
-- グローバル `openspec` は使わない。サンドボックス環境では解決できず失敗しやすいため、常に `npx openspec ...` を使う。
-- 現在位置がワークスペースルート（`openspec/` ディレクトリがあるフォルダ）でない場合は、先に移動してから実行する。
-Phase 4: Create the Change
+## Phase 4: Create the Change
 
 **EXPLAIN:**
 ```
@@ -202,12 +191,9 @@ openspec/changes/<name>/
 Now let's fill in the first artifact—the proposal.
 ```
 
+---
 
-**Working Directory Requirement (Critical)**
-- `npx openspec` を必ずプロジェクトのワークスペースフォルダ（ローカル依存がある場所）で実行する。
-- グローバル `openspec` は使わない。サンドボックス環境では解決できず失敗しやすいため、常に `npx openspec ...` を使う。
-- 現在位置がワークスペースルート（`openspec/` ディレクトリがあるフォルダ）でない場合は、先に移動してから実行する。
-Phase 5: Proposal
+## Phase 5: Proposal
 
 **EXPLAIN:**
 ```
@@ -223,12 +209,9 @@ I'll draft one based on our task.
 ```
 Here's a draft proposal:
 
+---
 
-**Working Directory Requirement (Critical)**
-- `npx openspec` を必ずプロジェクトのワークスペースフォルダ（ローカル依存がある場所）で実行する。
-- グローバル `openspec` は使わない。サンドボックス環境では解決できず失敗しやすいため、常に `npx openspec ...` を使う。
-- 現在位置がワークスペースルート（`openspec/` ディレクトリがあるフォルダ）でない場合は、先に移動してから実行する。
-Why
+## Why
 
 [1-2 sentences explaining the problem/opportunity]
 
@@ -268,12 +251,9 @@ Proposal saved. This is your "why" document—you can always come back and refin
 Next up: specs.
 ```
 
+---
 
-**Working Directory Requirement (Critical)**
-- `npx openspec` を必ずプロジェクトのワークスペースフォルダ（ローカル依存がある場所）で実行する。
-- グローバル `openspec` は使わない。サンドボックス環境では解決できず失敗しやすいため、常に `npx openspec ...` を使う。
-- 現在位置がワークスペースルート（`openspec/` ディレクトリがあるフォルダ）でない場合は、先に移動してから実行する。
-Phase 6: Specs
+## Phase 6: Specs
 
 **EXPLAIN:**
 ```
@@ -294,12 +274,9 @@ Draft the spec content:
 ```
 Here's the spec:
 
+---
 
-**Working Directory Requirement (Critical)**
-- `npx openspec` を必ずプロジェクトのワークスペースフォルダ（ローカル依存がある場所）で実行する。
-- グローバル `openspec` は使わない。サンドボックス環境では解決できず失敗しやすいため、常に `npx openspec ...` を使う。
-- 現在位置がワークスペースルート（`openspec/` ディレクトリがあるフォルダ）でない場合は、先に移動してから実行する。
-ADDED Requirements
+## ADDED Requirements
 
 ### Requirement: <Name>
 
@@ -318,12 +295,9 @@ This format—WHEN/THEN/AND—makes requirements testable. You can literally rea
 
 Save to `openspec/changes/<name>/specs/<capability>/spec.md`.
 
+---
 
-**Working Directory Requirement (Critical)**
-- `npx openspec` を必ずプロジェクトのワークスペースフォルダ（ローカル依存がある場所）で実行する。
-- グローバル `openspec` は使わない。サンドボックス環境では解決できず失敗しやすいため、常に `npx openspec ...` を使う。
-- 現在位置がワークスペースルート（`openspec/` ディレクトリがあるフォルダ）でない場合は、先に移動してから実行する。
-Phase 7: Design
+## Phase 7: Design
 
 **EXPLAIN:**
 ```
@@ -339,12 +313,9 @@ For small changes, this might be brief. That's fine—not every change needs dee
 ```
 Here's the design:
 
+---
 
-**Working Directory Requirement (Critical)**
-- `npx openspec` を必ずプロジェクトのワークスペースフォルダ（ローカル依存がある場所）で実行する。
-- グローバル `openspec` は使わない。サンドボックス環境では解決できず失敗しやすいため、常に `npx openspec ...` を使う。
-- 現在位置がワークスペースルート（`openspec/` ディレクトリがあるフォルダ）でない場合は、先に移動してから実行する。
-Context
+## Context
 
 [Brief context about the current state]
 
@@ -369,12 +340,9 @@ For a small task, this captures the key decisions without over-engineering.
 
 Save to `openspec/changes/<name>/design.md`.
 
+---
 
-**Working Directory Requirement (Critical)**
-- `npx openspec` を必ずプロジェクトのワークスペースフォルダ（ローカル依存がある場所）で実行する。
-- グローバル `openspec` は使わない。サンドボックス環境では解決できず失敗しやすいため、常に `npx openspec ...` を使う。
-- 現在位置がワークスペースルート（`openspec/` ディレクトリがあるフォルダ）でない場合は、先に移動してから実行する。
-Phase 8: Tasks
+## Phase 8: Tasks
 
 **EXPLAIN:**
 ```
@@ -390,12 +358,9 @@ These should be small, clear, and in logical order.
 ```
 Here are the implementation tasks:
 
+---
 
-**Working Directory Requirement (Critical)**
-- `npx openspec` を必ずプロジェクトのワークスペースフォルダ（ローカル依存がある場所）で実行する。
-- グローバル `openspec` は使わない。サンドボックス環境では解決できず失敗しやすいため、常に `npx openspec ...` を使う。
-- 現在位置がワークスペースルート（`openspec/` ディレクトリがあるフォルダ）でない場合は、先に移動してから実行する。
-1. [Category or file]
+## 1. [Category or file]
 
 - [ ] 1.1 [Specific task]
 - [ ] 1.2 [Specific task]
@@ -413,12 +378,9 @@ Each checkbox becomes a unit of work in the apply phase. Ready to implement?
 
 Save to `openspec/changes/<name>/tasks.md`.
 
+---
 
-**Working Directory Requirement (Critical)**
-- `npx openspec` を必ずプロジェクトのワークスペースフォルダ（ローカル依存がある場所）で実行する。
-- グローバル `openspec` は使わない。サンドボックス環境では解決できず失敗しやすいため、常に `npx openspec ...` を使う。
-- 現在位置がワークスペースルート（`openspec/` ディレクトリがあるフォルダ）でない場合は、先に移動してから実行する。
-Phase 9: Apply (Implementation)
+## Phase 9: Apply (Implementation)
 
 **EXPLAIN:**
 ```
@@ -450,12 +412,9 @@ All tasks done:
 The change is implemented! One more step—let's archive it.
 ```
 
+---
 
-**Working Directory Requirement (Critical)**
-- `npx openspec` を必ずプロジェクトのワークスペースフォルダ（ローカル依存がある場所）で実行する。
-- グローバル `openspec` は使わない。サンドボックス環境では解決できず失敗しやすいため、常に `npx openspec ...` を使う。
-- 現在位置がワークスペースルート（`openspec/` ディレクトリがあるフォルダ）でない場合は、先に移動してから実行する。
-Phase 10: Archive
+## Phase 10: Archive
 
 **EXPLAIN:**
 ```
@@ -478,12 +437,9 @@ Archived to: `openspec/changes/archive/YYYY-MM-DD-<name>/`
 The change is now part of your project's history. The code is in your codebase, the decision record is preserved.
 ```
 
+---
 
-**Working Directory Requirement (Critical)**
-- `npx openspec` を必ずプロジェクトのワークスペースフォルダ（ローカル依存がある場所）で実行する。
-- グローバル `openspec` は使わない。サンドボックス環境では解決できず失敗しやすいため、常に `npx openspec ...` を使う。
-- 現在位置がワークスペースルート（`openspec/` ディレクトリがあるフォルダ）でない場合は、先に移動してから実行する。
-Phase 11: Recap & Next Steps
+## Phase 11: Recap & Next Steps
 
 ```
 ## Congratulations!
@@ -501,12 +457,9 @@ You just completed a full OpenSpec cycle:
 
 This same rhythm works for any size change—a small fix or a major feature.
 
+---
 
-**Working Directory Requirement (Critical)**
-- `npx openspec` を必ずプロジェクトのワークスペースフォルダ（ローカル依存がある場所）で実行する。
-- グローバル `openspec` は使わない。サンドボックス環境では解決できず失敗しやすいため、常に `npx openspec ...` を使う。
-- 現在位置がワークスペースルート（`openspec/` ディレクトリがあるフォルダ）でない場合は、先に移動してから実行する。
-Command Reference
+## Command Reference
 
 | Command | What it does |
 |---------|--------------|
@@ -518,22 +471,16 @@ Command Reference
 | `/opsx:verify` | Verify implementation matches artifacts |
 | `/opsx:archive` | Archive a completed change |
 
+---
 
-**Working Directory Requirement (Critical)**
-- `npx openspec` を必ずプロジェクトのワークスペースフォルダ（ローカル依存がある場所）で実行する。
-- グローバル `openspec` は使わない。サンドボックス環境では解決できず失敗しやすいため、常に `npx openspec ...` を使う。
-- 現在位置がワークスペースルート（`openspec/` ディレクトリがあるフォルダ）でない場合は、先に移動してから実行する。
-What's Next?
+## What's Next?
 
 Try `/opsx:new` or `/opsx:ff` on something you actually want to build. You've got the rhythm now!
 ```
 
+---
 
-**Working Directory Requirement (Critical)**
-- `npx openspec` を必ずプロジェクトのワークスペースフォルダ（ローカル依存がある場所）で実行する。
-- グローバル `openspec` は使わない。サンドボックス環境では解決できず失敗しやすいため、常に `npx openspec ...` を使う。
-- 現在位置がワークスペースルート（`openspec/` ディレクトリがあるフォルダ）でない場合は、先に移動してから実行する。
-Graceful Exit Handling
+## Graceful Exit Handling
 
 ### User wants to stop mid-way
 
@@ -573,12 +520,9 @@ Try `/opsx:new` to start your first change, or `/opsx:ff` if you want to move fa
 
 Exit gracefully.
 
+---
 
-**Working Directory Requirement (Critical)**
-- `npx openspec` を必ずプロジェクトのワークスペースフォルダ（ローカル依存がある場所）で実行する。
-- グローバル `openspec` は使わない。サンドボックス環境では解決できず失敗しやすいため、常に `npx openspec ...` を使う。
-- 現在位置がワークスペースルート（`openspec/` ディレクトリがあるフォルダ）でない場合は、先に移動してから実行する。
-Guardrails
+## Guardrails
 
 - **Follow the EXPLAIN → DO → SHOW → PAUSE pattern** at key transitions (after explore, after proposal draft, after tasks, after archive)
 - **Keep narration light** during implementation—teach without lecturing
