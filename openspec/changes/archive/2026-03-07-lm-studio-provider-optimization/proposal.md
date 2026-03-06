@@ -16,8 +16,7 @@
 ## Capabilities
 
 ### New Capabilities
-- `llm-model-discovery`: llm モジュール共通のモデル一覧取得インターフェースと、プロバイダ別モデル列挙の標準契約を定義する。
-- `lmstudio-provider-lifecycle`: LM Studio 向けのモデルロード/アンロード、Structured Output先行実装、実行ライフサイクル要件を定義する。
+- `llm`: llm モジュール共通のモデル一覧取得インターフェース、LM Studio 向けのモデルロード/アンロード、Structured Output先行実装を含む統合契約を定義する。
 
 ### Modified Capabilities
 - `queue`: LLMジョブの中断・再開時に、モデルロード状態と処理状態を復元可能にする再開性要件へ拡張する。
