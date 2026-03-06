@@ -87,6 +87,7 @@ const MasterPersona: React.FC = () => {
             return;
         }
         setIsGenerating(true);
+        setActiveTaskId(null);
         setErrorMessage('');
         setSummary(null);
         setProgressPercent(0);
@@ -104,7 +105,13 @@ const MasterPersona: React.FC = () => {
 
     useEffect(() => {
         const offProgress = Events.EventsOn('persona:progress', (event: PersonaProgressEvent) => {
-            if (activeTaskId && event.CorrelationID !== activeTaskId) {
+            const currentTaskId = activeTaskId ?? (isGenerating ? event.CorrelationID : null);
+
+            if (!activeTaskId && currentTaskId) {
+                setActiveTaskId(currentTaskId);
+            }
+
+            if (currentTaskId && event.CorrelationID !== currentTaskId) {
                 return;
             }
 
@@ -123,7 +130,13 @@ const MasterPersona: React.FC = () => {
         });
 
         const offTaskUpdated = Events.EventsOn('task:updated', (task: FrontendTask) => {
-            if (!activeTaskId || task.id !== activeTaskId) {
+            const currentTaskId = activeTaskId ?? (isGenerating ? task.id : null);
+
+            if (!activeTaskId && currentTaskId) {
+                setActiveTaskId(currentTaskId);
+            }
+
+            if (!currentTaskId || task.id !== currentTaskId) {
                 return;
             }
             if (task.status === 'failed') {
@@ -136,7 +149,13 @@ const MasterPersona: React.FC = () => {
         });
 
         const offPhaseCompleted = Events.EventsOn('task:phase_completed', (payload: PhaseCompletedEvent) => {
-            if (!activeTaskId || payload.taskId !== activeTaskId || payload.phase !== 'REQUEST_GENERATED') {
+            const currentTaskId = activeTaskId ?? (isGenerating ? payload.taskId : null);
+
+            if (!activeTaskId && currentTaskId) {
+                setActiveTaskId(currentTaskId);
+            }
+
+            if (!currentTaskId || payload.taskId !== currentTaskId || payload.phase !== 'REQUEST_GENERATED') {
                 return;
             }
             const nextSummary = payload.summary as PersonaRequestSummary;
@@ -154,7 +173,7 @@ const MasterPersona: React.FC = () => {
             offTaskUpdated();
             offPhaseCompleted();
         };
-    }, [activeTaskId]);
+    }, [activeTaskId, isGenerating]);
 
     return (
         <div className="flex flex-col w-full h-full p-4 gap-4">
