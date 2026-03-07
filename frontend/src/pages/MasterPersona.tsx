@@ -23,11 +23,6 @@ interface PersonaProgressEvent {
     Message: string;
 }
 
-interface PersonaRequestSummary {
-    request_count: number;
-    npc_count: number;
-}
-
 const MASTER_PERSONA_LLM_NAMESPACE = 'master_persona.llm';
 const SELECTED_PROVIDER_KEY = 'selected_provider';
 
@@ -133,7 +128,6 @@ const MasterPersona: React.FC = () => {
     const [statusMessage, setStatusMessage] = useState<string>('待機中');
     const [errorMessage, setErrorMessage] = useState<string>('');
     const [progressCounts, setProgressCounts] = useState<{ current: number; total: number }>({ current: 0, total: 0 });
-    const [summary, setSummary] = useState<PersonaRequestSummary | null>(null);
     const [activeTaskStatus, setActiveTaskStatus] = useState<FrontendTask['status'] | null>(null);
     const [llmConfig, setLLMConfig] = useState<MasterPersonaLLMConfig>(DEFAULT_MASTER_PERSONA_LLM_CONFIG);
     const [isLLMConfigHydrated, setIsLLMConfigHydrated] = useState<boolean>(false);
@@ -192,7 +186,6 @@ const MasterPersona: React.FC = () => {
         setIsGenerating(true);
         setActiveTaskId(null);
         setErrorMessage('');
-        setSummary(null);
         setProgressPercent(0);
         setProgressCounts({ current: 0, total: 0 });
         setStatusMessage('タスクを開始しています...');
@@ -217,10 +210,6 @@ const MasterPersona: React.FC = () => {
         setErrorMessage(task.error_msg || '');
         setIsGenerating(task.status === 'running');
         const requestCount = Number(task.metadata?.request_count ?? 0);
-        const npcCount = Number(task.metadata?.npc_count ?? 0);
-        if (requestCount > 0 || npcCount > 0) {
-            setSummary({ request_count: requestCount, npc_count: npcCount });
-        }
         const resumeCursor = Number(task.metadata?.resume_cursor ?? 0);
         setProgressCounts({
             current: Number.isFinite(resumeCursor) ? resumeCursor : 0,
@@ -559,11 +548,6 @@ const MasterPersona: React.FC = () => {
             if (!currentTaskId || payload.taskId !== currentTaskId || payload.phase !== 'REQUEST_GENERATED') {
                 return;
             }
-            const nextSummary = payload.summary as PersonaRequestSummary;
-            setSummary({
-                request_count: nextSummary.request_count ?? 0,
-                npc_count: nextSummary.npc_count ?? 0,
-            });
             setStatusMessage('リクエスト生成完了。実行を開始します...');
             startQueuedExecution(payload.taskId);
         });
@@ -590,7 +574,7 @@ const MasterPersona: React.FC = () => {
             </div>
 
             {/* 上部パネル */}
-            <div className="grid grid-cols-2 gap-4 shrink-0">
+            <div className="grid grid-cols-1 gap-4 shrink-0">
                 {/* 生成設定カード */}
                 <div className="card bg-base-100 border border-base-200 shadow-sm">
                     <div className="card-body">
@@ -611,23 +595,6 @@ const MasterPersona: React.FC = () => {
                                 )}
                                 <span className="text-xs text-base-content/70 mt-1 block">{statusMessage}</span>
                                 {errorMessage && <span className="text-xs text-error mt-1 block">{errorMessage}</span>}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                {/* 統計カード */}
-                <div className="card bg-base-100 border border-base-200 shadow-sm">
-                    <div className="card-body">
-                        <h2 className="card-title text-base">ペルソナDB ステータス</h2>
-                        <div className="grid grid-cols-2 gap-4 mt-2">
-                            <div className="stat p-0">
-                                <div className="stat-title text-sm">登録済みNPC数</div>
-                                <div className="stat-value text-primary font-mono text-3xl">{summary?.npc_count ?? 0}</div>
-                            </div>
-                            <div className="stat p-0">
-                                <div className="stat-title text-sm">生成リクエスト数</div>
-                                <div className="stat-value text-secondary font-mono text-3xl">{summary?.request_count ?? 0}</div>
                             </div>
                         </div>
                     </div>

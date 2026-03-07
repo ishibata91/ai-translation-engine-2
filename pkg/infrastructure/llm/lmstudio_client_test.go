@@ -108,6 +108,38 @@ func TestLMStudioClient_LoadUnloadAndStructured(t *testing.T) {
 	}
 }
 
+func TestLMStudioClient_Complete_ReturnsMessageContentAsIs(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/chat/completions" {
+			http.NotFound(w, r)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"choices": []map[string]any{{
+				"message": map[string]any{
+					"content": "TL: |Persona text|",
+				},
+			}},
+			"usage": map[string]any{"prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3},
+		})
+	}))
+	defer srv.Close()
+
+	client := NewLMStudioClient(slog.New(slog.NewTextHandler(os.Stdout, nil)), LLMConfig{
+		Provider: "lmstudio",
+		Endpoint: srv.URL,
+		Model:    "m1",
+	})
+	resp, err := client.Complete(context.Background(), Request{UserPrompt: "test"})
+	if err != nil {
+		t.Fatalf("Complete failed: %v", err)
+	}
+	if resp.Content != "TL: |Persona text|" {
+		t.Fatalf("expected message.content to be returned as is, got: %q", resp.Content)
+	}
+}
+
 func TestStructuredOutputNotSupportedProviders(t *testing.T) {
 	t.Parallel()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))

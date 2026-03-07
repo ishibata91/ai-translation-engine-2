@@ -303,7 +303,7 @@ func (c *lmStudioClient) doChatCompletion(ctx context.Context, req Request, stru
 	var raw struct {
 		Choices []struct {
 			Message struct {
-				Content string `json:"content"`
+				Content json.RawMessage `json:"content"`
 			} `json:"message"`
 		} `json:"choices"`
 		Usage struct {
@@ -318,8 +318,12 @@ func (c *lmStudioClient) doChatCompletion(ctx context.Context, req Request, stru
 	if len(raw.Choices) == 0 {
 		return Response{}, fmt.Errorf("lmstudio: empty choices in response")
 	}
+	var content string
+	if err := json.Unmarshal(raw.Choices[0].Message.Content, &content); err != nil {
+		return Response{}, fmt.Errorf("lmstudio: response content decode failed: %w", err)
+	}
 	return Response{
-		Content: raw.Choices[0].Message.Content,
+		Content: content,
 		Success: true,
 		Usage: TokenUsage{
 			PromptTokens:     raw.Usage.PromptTokens,

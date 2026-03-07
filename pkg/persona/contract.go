@@ -42,6 +42,17 @@ type NPCPersonaGenerator interface {
 	SaveResults(ctx context.Context, responses []llm.Response) error
 }
 
+// SaveResultsSummary reports phase-2 persistence outcomes.
+type SaveResultsSummary struct {
+	SuccessCount int `json:"success_count"`
+	FailCount    int `json:"fail_count"`
+}
+
+// SaveResultsReporter optionally exposes detailed save summary for orchestration.
+type SaveResultsReporter interface {
+	SaveResultsWithSummary(ctx context.Context, responses []llm.Response) (SaveResultsSummary, error)
+}
+
 // DialogueCollector collects per-NPC dialogue data from PersonaGenInput,
 // applying importance scoring to select the top dialogues.
 type DialogueCollector interface {

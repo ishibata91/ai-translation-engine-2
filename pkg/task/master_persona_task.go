@@ -2,16 +2,19 @@ package task
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"math"
+	"sort"
 	"strings"
 
 	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/llm"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/progress"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/queue"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/telemetry"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/persona"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/pipeline"
 )
 
@@ -19,9 +22,12 @@ type StartMasterPersonTaskInput struct {
 	SourceJSONPath string `json:"source_json_path"`
 }
 
-type PersonaRequestSummary struct {
-	RequestCount int `json:"request_count"`
-	NPCCount     int `json:"npc_count"`
+type personaSaveSummary struct {
+	Attempted          int
+	Saved              int
+	Failed             int
+	SkippedAlreadySave int
+	SavedRequestIDs    []string
 }
 
 func (b *Bridge) StartMasterPersonTask(input StartMasterPersonTaskInput) (string, error) {
@@ -73,17 +79,11 @@ func (b *Bridge) StartMasterPersonTask(input StartMasterPersonTaskInput) (string
 				return err
 			}
 
-			summary := PersonaRequestSummary{
-				RequestCount: len(requests),
-				NPCCount:     len(personaInput.NPCs),
-			}
 			taskMetadata := TaskMetadata{
 				"source_json_path": input.SourceJSONPath,
 				"entrypoint":       "master_persona",
 				"phase":            "request_enqueued",
 				"resume_cursor":    0,
-				"request_count":    summary.RequestCount,
-				"npc_count":        summary.NPCCount,
 			}
 
 			if b.queue == nil {
@@ -108,10 +108,10 @@ func (b *Bridge) StartMasterPersonTask(input StartMasterPersonTaskInput) (string
 
 			update("REQUEST_GENERATED", 100)
 			b.reportProgress(runCtx, taskID, 100, progress.StatusCompleted, "リクエスト生成が完了")
-			b.manager.EmitPhaseCompleted(taskID, "REQUEST_GENERATED", summary)
+			b.manager.EmitPhaseCompleted(taskID, "REQUEST_GENERATED", nil)
 			b.logger.InfoContext(runCtx, "persona.requests.generated",
-				slog.Int("request_count", summary.RequestCount),
-				slog.Int("npc_count", summary.NPCCount),
+				slog.Int("request_count", len(requests)),
+				slog.Int("npc_count", len(personaInput.NPCs)),
 				slog.String("task_id", taskID),
 				slog.Any("requests", buildRequestLogPayload(requests)),
 			)
@@ -206,21 +206,167 @@ func (b *Bridge) runPersonaExecution(ctx context.Context, task *Task, update fun
 	}
 
 	updatedState, stateErr := b.queue.GetTaskRequestState(ctx, task.ID)
-	if stateErr == nil {
-		metadata := TaskMetadata{
-			"phase":         "REQUEST_COMPLETED",
-			"resume_cursor": updatedState.Completed,
-		}
-		_ = b.manager.store.SaveMetadata(context.Background(), task.ID, metadata)
-		b.manager.EmitPhaseCompleted(task.ID, "REQUEST_COMPLETED", map[string]int{
-			"total":     updatedState.Total,
-			"completed": updatedState.Completed,
-			"failed":    updatedState.Failed,
-			"canceled":  updatedState.Canceled,
-		})
+	if stateErr != nil {
+		return nil
+	}
+
+	saveSummary, saveErr := b.persistPersonaResponses(ctx, task)
+	metadata := mergeTaskMetadata(task.Metadata, TaskMetadata{
+		"phase":                "REQUEST_COMPLETED",
+		"resume_cursor":        updatedState.Completed,
+		"saved_request_ids":    saveSummary.SavedRequestIDs,
+		"persona_saved_count":  saveSummary.Saved,
+		"persona_failed_count": saveSummary.Failed,
+	})
+	_ = b.manager.store.SaveMetadata(context.Background(), task.ID, metadata)
+	b.manager.EmitPhaseCompleted(task.ID, "REQUEST_COMPLETED", map[string]int{
+		"total":                updatedState.Total,
+		"completed":            updatedState.Completed,
+		"failed":               updatedState.Failed,
+		"canceled":             updatedState.Canceled,
+		"persona_save_attempt": saveSummary.Attempted,
+		"persona_save_success": saveSummary.Saved,
+		"persona_save_failed":  saveSummary.Failed,
+	})
+	if saveErr != nil {
+		b.reportTaskPhaseProgress(ctx, task.ID, task.Type, "REQUEST_COMPLETED", updatedState.Completed, updatedState.Total, progress.StatusFailed, saveErr.Error())
+		return saveErr
+	}
+	if saveSummary.Failed > 0 {
+		b.logger.WarnContext(ctx, "persona.save.partial_failure",
+			slog.String("task_id", task.ID),
+			slog.Int("attempted", saveSummary.Attempted),
+			slog.Int("saved", saveSummary.Saved),
+			slog.Int("failed", saveSummary.Failed),
+		)
 	}
 
 	return nil
+}
+
+func (b *Bridge) persistPersonaResponses(ctx context.Context, task *Task) (personaSaveSummary, error) {
+	out := personaSaveSummary{}
+	if b.personaGenerator == nil {
+		return out, fmt.Errorf("persona generator is not configured")
+	}
+
+	jobs, err := b.queue.GetTaskRequests(ctx, task.ID)
+	if err != nil {
+		return out, err
+	}
+
+	savedSet := metadataStringSet(task.Metadata["saved_request_ids"])
+	reporter, hasReporter := b.personaGenerator.(persona.SaveResultsReporter)
+	for _, job := range jobs {
+		if job.RequestState != queue.RequestStateCompleted || job.ResponseJSON == nil {
+			continue
+		}
+		if _, ok := savedSet[job.ID]; ok {
+			out.SkippedAlreadySave++
+			continue
+		}
+
+		resp, parseErr := buildPersonaResponseFromJob(job)
+		out.Attempted++
+		if parseErr != nil {
+			out.Failed++
+			continue
+		}
+
+		if hasReporter {
+			sum, saveErr := reporter.SaveResultsWithSummary(ctx, []llm.Response{resp})
+			if saveErr != nil {
+				return out, saveErr
+			}
+			out.Saved += sum.SuccessCount
+			out.Failed += sum.FailCount
+			if sum.SuccessCount > 0 {
+				savedSet[job.ID] = struct{}{}
+			}
+			continue
+		}
+
+		if err := b.personaGenerator.SaveResults(ctx, []llm.Response{resp}); err != nil {
+			return out, err
+		}
+		out.Saved++
+		savedSet[job.ID] = struct{}{}
+	}
+
+	out.SavedRequestIDs = sortedStringSet(savedSet)
+	return out, nil
+}
+
+func buildPersonaResponseFromJob(job queue.JobRequest) (llm.Response, error) {
+	var resp llm.Response
+	if err := json.Unmarshal([]byte(*job.ResponseJSON), &resp); err != nil {
+		return llm.Response{}, fmt.Errorf("failed to decode response for job=%s: %w", job.ID, err)
+	}
+
+	var req llm.Request
+	if err := json.Unmarshal([]byte(job.RequestJSON), &req); err == nil {
+		resp.Metadata = mergeMetadata(resp.Metadata, req.Metadata)
+	}
+	if resp.Metadata == nil {
+		resp.Metadata = map[string]interface{}{}
+	}
+	return resp, nil
+}
+
+func mergeTaskMetadata(base TaskMetadata, updates TaskMetadata) TaskMetadata {
+	out := TaskMetadata{}
+	for k, v := range base {
+		out[k] = v
+	}
+	for k, v := range updates {
+		out[k] = v
+	}
+	return out
+}
+
+func metadataStringSet(raw interface{}) map[string]struct{} {
+	out := map[string]struct{}{}
+	switch v := raw.(type) {
+	case []string:
+		for _, item := range v {
+			if strings.TrimSpace(item) == "" {
+				continue
+			}
+			out[item] = struct{}{}
+		}
+	case []interface{}:
+		for _, item := range v {
+			s, ok := item.(string)
+			if !ok || strings.TrimSpace(s) == "" {
+				continue
+			}
+			out[s] = struct{}{}
+		}
+	}
+	return out
+}
+
+func sortedStringSet(set map[string]struct{}) []string {
+	out := make([]string, 0, len(set))
+	for k := range set {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func mergeMetadata(primary map[string]interface{}, fallback map[string]interface{}) map[string]interface{} {
+	if primary == nil && fallback == nil {
+		return nil
+	}
+	merged := map[string]interface{}{}
+	for k, v := range fallback {
+		merged[k] = v
+	}
+	for k, v := range primary {
+		merged[k] = v
+	}
+	return merged
 }
 
 func toPercent(current int, total int) float64 {

@@ -157,6 +157,15 @@ func (g *DefaultPersonaGenerator) SaveResults(
 	ctx context.Context,
 	results []llm.Response,
 ) error {
+	_, err := g.SaveResultsWithSummary(ctx, results)
+	return err
+}
+
+// SaveResultsWithSummary parses responses, persists valid personas, and returns save counts.
+func (g *DefaultPersonaGenerator) SaveResultsWithSummary(
+	ctx context.Context,
+	results []llm.Response,
+) (SaveResultsSummary, error) {
 	defer telemetry.StartSpan(ctx, telemetry.ActionProcessTranslation)()
 	slog.DebugContext(ctx, "saving persona results",
 		slog.Int("response_count", len(results)),
@@ -233,7 +242,10 @@ func (g *DefaultPersonaGenerator) SaveResults(
 		slog.Int("success_count", successCount),
 		slog.Int("fail_count", failCount),
 	)
-	return nil
+	return SaveResultsSummary{
+		SuccessCount: successCount,
+		FailCount:    failCount,
+	}, nil
 }
 
 var personaRegex = regexp.MustCompile(`TL:\s*\|(.*?)\|`)

@@ -31,9 +31,9 @@
 
 ## 5. フェーズ4: ペルソナ保存と冪等再開
 
-- [ ] 5.1 LLM レスポンスから persona 保存入力を生成し、既存保存層へ upsert する
-- [ ] 5.2 再開時は completed request を再保存しない制御を追加する
-- [ ] 5.3 保存成功/失敗件数を task summary と phase_completed イベントへ反映する
+- [x] 5.1 LLM レスポンスから persona 保存入力を生成し、既存保存層へ upsert する
+- [x] 5.2 再開時は completed request を再保存しない制御を追加する
+- [x] 5.3 保存成功/失敗件数を task summary と phase_completed イベントへ反映する
 - [ ] 5.4 ユーザー動作テスト: 途中失敗を挟んでも最終的に重複なく persona が保存されることを確認する
 
 ## 6. 仕様・ドキュメント整合
