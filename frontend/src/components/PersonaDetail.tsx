@@ -24,12 +24,6 @@ const PersonaDetail: React.FC<PersonaDetailProps> = ({ npc }) => {
             <div className="shrink-0 flex justify-between items-start border-b pb-2">
                 <div>
                     <h3 className="text-xl font-bold">{npc.name} <span className="text-base text-base-content/60 font-mono">({npc.formId})</span></h3>
-                    <div className="flex gap-2 mt-2">
-                        <span className="badge badge-outline">Race: {npc.race || 'Unknown'}</span>
-                        <span className="badge badge-outline">Sex: {npc.sex || 'Unknown'}</span>
-                        <span className="badge badge-outline">Voice: {npc.voiceType || 'Unknown'}</span>
-                        <span className="badge badge-outline">Plugin: {npc.sourcePlugin || 'UNKNOWN'}</span>
-                    </div>
                 </div>
             </div>
 
@@ -64,17 +58,22 @@ const PersonaDetail: React.FC<PersonaDetailProps> = ({ npc }) => {
                         <table className="table table-zebra table-pin-rows w-full text-sm">
                             <thead>
                                 <tr>
-                                    <th className="w-16">Type</th>
-                                    <th className="w-48">EditorID</th>
-                                    <th>原文</th>
+                                    <th className="w-20 sm:w-28 md:w-40">EditorID</th>
+                                    <th className="w-full">原文</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {npc.dialogues.map((d, i) => (
                                     <tr key={i}>
-                                        <td><div className="badge badge-outline badge-sm font-mono">{d.recordType}</div></td>
-                                        <td className="font-mono text-xs">{d.editorId}</td>
-                                        <td className="text-base-content/70">{d.source}</td>
+                                        <td
+                                            className="font-mono text-xs max-w-[5rem] sm:max-w-[7rem] md:max-w-[10rem] truncate"
+                                            title={d.editorId}
+                                        >
+                                            {d.editorId}
+                                        </td>
+                                        <td className="text-base-content/70 whitespace-normal min-w-[200px] break-words">
+                                            {d.source}
+                                        </td>
                                     </tr>
                                 ))}
                             </tbody>
@@ -104,6 +103,15 @@ const PersonaDetail: React.FC<PersonaDetailProps> = ({ npc }) => {
 
                         <span className="font-bold">NPC名</span>
                         <span>{npc.name}</span>
+
+                        <span className="font-bold">Race</span>
+                        <span>{npc.race || 'Unknown'}</span>
+
+                        <span className="font-bold">Sex</span>
+                        <span>{npc.sex || 'Unknown'}</span>
+
+                        <span className="font-bold">Voice</span>
+                        <span>{npc.voiceType || 'Unknown'}</span>
 
                         <span className="font-bold">Source Plugin</span>
                         <span className="font-mono">{npc.sourcePlugin || 'UNKNOWN'}</span>

@@ -596,12 +596,17 @@ const MasterPersona: React.FC = () => {
         if (!isPromptConfigHydrated) {
             return;
         }
+
         const snapshot = latestPromptConfigRef.current;
-        saveQueueRef.current = saveQueueRef.current
-            .then(() => persistPromptConfigDiff(snapshot))
-            .catch((err) => {
-                console.error('failed to persist master_persona.prompt config', err);
-            });
+        const timer = setTimeout(() => {
+            saveQueueRef.current = saveQueueRef.current
+                .then(() => persistPromptConfigDiff(snapshot))
+                .catch((err) => {
+                    console.error('failed to persist master_persona.prompt config', err);
+                });
+        }, 500);
+
+        return () => clearTimeout(timer);
     }, [isPromptConfigHydrated, promptConfig]);
 
     useEffect(() => {
@@ -881,7 +886,7 @@ const MasterPersona: React.FC = () => {
     }, [activeTaskId, isGenerating]);
 
     return (
-        <div className="flex flex-col w-full h-full p-4 gap-4">
+        <div className="flex flex-col w-full min-h-full p-4 gap-4">
             {/* ヘッダー */}
             <div className="navbar bg-base-100 rounded-box border border-base-200 shadow-sm px-4 shrink-0">
                 <div className="flex justify-between items-center w-full">
@@ -980,12 +985,12 @@ const MasterPersona: React.FC = () => {
             </div>
 
             {/* 2ペインレイアウト (左: NPC テーブル, 右: PersonaDetail) */}
-            <div className="flex gap-4 flex-1 min-h-0 overflow-hidden relative">
-                <div className="w-1/2 flex flex-col min-h-0 border border-base-200 rounded-xl bg-base-100 overflow-hidden">
+            <div className="flex gap-4 flex-1 min-h-[500px] overflow-hidden relative">
+                <div className="w-1/2 flex flex-col min-h-[500px] border border-base-200 rounded-xl bg-base-100 overflow-hidden">
                     <DataTable
                         columns={NPC_COLUMNS}
                         data={pagedNpcData}
-                        title="NPC処理ステータス (Skyrim.esm)"
+                        title="ペルソナ一覧"
                         headerActions={
                             <div className="flex flex-wrap items-center gap-2">
                                 <input
@@ -1035,7 +1040,7 @@ const MasterPersona: React.FC = () => {
                     />
                 </div>
 
-                <div className="w-1/2 flex flex-col min-h-0">
+                <div className="w-1/2 flex flex-col min-h-[500px]">
                     <PersonaDetail npc={selectedRow} />
                 </div>
 
@@ -1059,14 +1064,14 @@ const MasterPersona: React.FC = () => {
                         onClick={handleStart}
                         disabled={isGenerating || !jsonPath || activeTaskStatus === 'running'}
                     >
-                        {isGenerating ? '生成中...' : '開始'}
+                        {isGenerating ? '生成中...' : '新規タスク開始'}
                     </button>
                     {activeTaskId && activeTaskStatus !== 'running' && (
                         <button
                             className="btn btn-success btn-sm"
                             onClick={handleResumeCurrentTask}
                         >
-                            再開
+                            生成開始
                         </button>
                     )}
                     {activeTaskId && activeTaskStatus === 'running' && (
@@ -1077,9 +1082,6 @@ const MasterPersona: React.FC = () => {
                             一時停止
                         </button>
                     )}
-                    <button className="btn btn-primary btn-sm" disabled={isGenerating}>
-                        生成データを確定
-                    </button>
                 </div>
             </div>
 

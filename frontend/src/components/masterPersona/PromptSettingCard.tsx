@@ -19,12 +19,12 @@ const PromptSettingCard: React.FC<PromptSettingCardProps> = ({
 }) => (
     <div className="card bg-base-100 border border-base-200 shadow-sm h-full">
         <div className="card-body gap-3">
-            <div className="flex items-start justify-between gap-3">
+            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
                 <div className="space-y-1">
                     <h2 className="card-title text-base">{title}</h2>
                     <p className="text-sm text-base-content/70">{description}</p>
                 </div>
-                <span className={`badge badge-sm ${readOnly ? 'badge-ghost' : 'badge-primary badge-outline'}`}>
+                <span className={`badge badge-sm shrink-0 whitespace-nowrap ${readOnly ? 'badge-ghost' : 'badge-primary badge-outline'}`}>
                     {badgeLabel}
                 </span>
             </div>

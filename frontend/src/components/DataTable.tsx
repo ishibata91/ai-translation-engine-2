@@ -72,13 +72,13 @@ function DataTable<TData>({
             {...(collapsible ? {} : {})}
         >
             {(title || headerActions) && (
-                <HeaderWrapper className={collapsible ? "collapse-title flex justify-between items-center px-6 py-3 min-h-0" : "flex justify-between items-center px-6 pt-4 pb-2"}>
-                    {title && <h2 className="card-title text-base font-bold">{title}</h2>}
-                    {headerActions && <div className="flex gap-2" onClick={e => collapsible && e.stopPropagation()}>{headerActions}</div>}
+                <HeaderWrapper className={collapsible ? "collapse-title flex flex-col xl:flex-row justify-between xl:items-center gap-4 px-6 py-3 min-h-0" : "flex flex-col xl:flex-row justify-between xl:items-center gap-4 px-6 pt-4 pb-2"}>
+                    {title && <h2 className="card-title text-base font-bold whitespace-nowrap shrink-0">{title}</h2>}
+                    {headerActions && <div className="flex flex-wrap gap-2 w-full xl:w-auto xl:justify-end" onClick={e => collapsible && e.stopPropagation()}>{headerActions}</div>}
                 </HeaderWrapper>
             )}
-            <div className={collapsible ? "collapse-content flex-1 flex flex-col min-h-0 p-0" : "contents"}>
-                <div className="overflow-x-auto flex-1 overflow-y-auto">
+            <div className={collapsible ? "collapse-content flex-1 flex flex-col min-h-0 p-0" : "flex-1 flex flex-col min-h-0"}>
+                <div className="overflow-x-auto overflow-y-auto flex-1 min-h-0">
                     <table className="table table-zebra table-pin-rows w-full">
                         <thead>
                             {table.getHeaderGroups().map((headerGroup) => (

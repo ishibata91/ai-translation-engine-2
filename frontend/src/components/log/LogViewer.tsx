@@ -81,6 +81,7 @@ const LogItem: React.FC<{ log: LogEntry; onClick: (log: LogEntry) => void }> = (
 const LogViewer: React.FC = () => {
     const { logViewerWidth: width, setLogViewerWidth: setWidth, setDetailPane } = useUIStore();
     const [isResizing, setIsResizing] = useState(false);
+    const [isCollapsed, setIsCollapsed] = useState(true);
 
     // ログ一覧（全件）
     const [allLogs, setAllLogs] = useState<LogEntry[]>([]);
@@ -119,8 +120,6 @@ const LogViewer: React.FC = () => {
             .then((jsonStr) => {
                 if (jsonStr) {
                     try {
-                        // ConfigService.UIStateSetJSON は JSON.stringify 後に Go側で再度 marshal するため
-                        // 値が二重エンコードされている場合がある。まず普通にパース試行。
                         const parsed = JSON.parse(jsonStr) as Partial<LogFilters>;
                         setFilters((prev) => ({
                             ...prev,
@@ -131,11 +130,8 @@ const LogViewer: React.FC = () => {
                         // パース失敗の場合はデフォルトのまま
                     }
                 }
-                // 取得値が空の場合はデフォルト（ERROR）を適用済み
             })
-            .catch(() => {
-                // エラー時もデフォルトのまま継続
-            })
+            .catch(() => { })
             .finally(() => {
                 filtersLoaded.current = true;
             });
@@ -145,9 +141,7 @@ const LogViewer: React.FC = () => {
     useEffect(() => {
         if (!filtersLoaded.current) return;
         const payload = { level: filters.level, traceId: filters.traceId };
-        UIStateSetJSON(UI_NAMESPACE, FILTER_KEY, payload).catch(() => {
-            // 永続化失敗は UI 表示に影響しないため無視
-        });
+        UIStateSetJSON(UI_NAMESPACE, FILTER_KEY, payload).catch(() => { });
     }, [filters]);
 
     // --- タスク 5.1, 5.2: Wails イベントでログを受信 ---
@@ -156,7 +150,6 @@ const LogViewer: React.FC = () => {
             if (!event || typeof event !== 'object') return;
             const raw = event as Record<string, any>;
             const entry: LogEntry = {
-                // バックエンドで短期間に同じIDが振られた場合でも、必ずフロントエンド側でユニークにする
                 id: `${raw['id'] ?? Date.now()}-${eventCounter++}`,
                 level: (['DEBUG', 'INFO', 'WARN', 'ERROR'].includes(raw['level'])
                     ? raw['level']
@@ -168,7 +161,6 @@ const LogViewer: React.FC = () => {
 
             setAllLogs((prev) => {
                 const next = [entry, ...prev];
-                // バッファリング: 上限を超えたら古いものを切り捨て
                 return next.length > MAX_LOG_ENTRIES ? next.slice(0, MAX_LOG_ENTRIES) : next;
             });
         };
@@ -194,6 +186,23 @@ const LogViewer: React.FC = () => {
         setFilters((prev) => ({ ...prev, traceId: e.target.value }));
     };
 
+    if (isCollapsed) {
+        return (
+            <div className="h-full bg-base-300 border-l border-base-200 p-2 flex flex-col items-center">
+                <button
+                    className="btn btn-ghost btn-sm btn-square"
+                    onClick={() => setIsCollapsed(false)}
+                    title="Open Logs"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" /></svg>
+                </button>
+                <div className="mt-4 text-xs font-bold text-base-content/50 tracking-widest hidden sm:block" style={{ writingMode: 'vertical-rl', textOrientation: 'mixed' }}>
+                    LOGS
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div
             style={{ width: `${width}px` }}
@@ -206,19 +215,28 @@ const LogViewer: React.FC = () => {
             />
 
             {/* タイトル＆ログ件数 */}
-            <div className="flex items-center gap-2 text-sm">
-                <div className="badge badge-outline">Telemetry Logs</div>
-                {allLogs.length > 0 && (
-                    <span className="text-xs opacity-40">
-                        {filteredLogs.length}/{allLogs.length}
-                    </span>
-                )}
+            <div className="flex items-center justify-between gap-2 text-sm z-10 relative">
+                <div className="flex items-center gap-2">
+                    <div className="badge badge-outline">Telemetry Logs</div>
+                    {allLogs.length > 0 && (
+                        <span className="text-xs opacity-40">
+                            {filteredLogs.length}/{allLogs.length}
+                        </span>
+                    )}
+                </div>
+                <button
+                    className="btn btn-ghost btn-xs btn-square shrink-0"
+                    onClick={() => setIsCollapsed(true)}
+                    title="Collapse Logs"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
+                </button>
             </div>
 
             {/* フィルターコントロール */}
-            <div className="flex flex-col gap-2 w-full">
+            <div className="flex flex-col gap-2 w-full z-10 relative">
                 <select
-                    className="select select-bordered select-sm w-full"
+                    className="select select-bordered select-sm w-full font-sans"
                     value={filters.level}
                     onChange={handleLevelChange}
                     id="log-level-filter"
@@ -240,7 +258,7 @@ const LogViewer: React.FC = () => {
             </div>
 
             {/* ログ一覧 */}
-            <div className="flex flex-col gap-2 overflow-y-auto w-full h-full text-xs">
+            <div className="flex flex-col gap-2 overflow-y-auto w-full h-full text-xs z-0 relative pr-1">
                 {filteredLogs.length === 0 && (
                     <div className="text-center opacity-30 mt-8 text-xs">
                         {allLogs.length === 0 ? 'ログ受信待ち...' : 'フィルター条件に一致するログなし'}

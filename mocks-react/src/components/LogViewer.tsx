@@ -39,6 +39,7 @@ const MOCK_LOGS: LogEntry[] = [
 const LogViewer: React.FC<LogViewerProps> = ({ onLogClick }) => {
     const [width, setWidth] = useState(320);
     const [isResizing, setIsResizing] = useState(false);
+    const [isCollapsed, setIsCollapsed] = useState(true);
 
     const handleMouseDown = useCallback((e: React.MouseEvent) => {
         e.preventDefault();
@@ -67,6 +68,23 @@ const LogViewer: React.FC<LogViewerProps> = ({ onLogClick }) => {
         };
     }, [isResizing]);
 
+    if (isCollapsed) {
+        return (
+            <div className="h-full bg-base-300 border-l border-base-200 p-2 flex flex-col items-center">
+                <button
+                    className="btn btn-ghost btn-sm btn-square"
+                    onClick={() => setIsCollapsed(false)}
+                    title="Open Logs"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" /></svg>
+                </button>
+                <div className="mt-4 text-xs font-bold text-base-content/50 tracking-widest hidden sm:block" style={{ writingMode: 'vertical-rl', textOrientation: 'mixed' }}>
+                    LOGS
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div
             style={{ width: `${width}px` }}
@@ -77,8 +95,15 @@ const LogViewer: React.FC<LogViewerProps> = ({ onLogClick }) => {
                 onMouseDown={handleMouseDown}
             />
 
-            <div className="flex items-center text-sm">
+            <div className="flex items-center justify-between text-sm">
                 <div className="badge badge-outline">Telemetry Logs</div>
+                <button
+                    className="btn btn-ghost btn-xs btn-square"
+                    onClick={() => setIsCollapsed(true)}
+                    title="Collapse Logs"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
+                </button>
             </div>
 
             <div className="flex flex-col gap-2 w-full">
