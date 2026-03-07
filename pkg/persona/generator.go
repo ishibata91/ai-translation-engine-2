@@ -12,19 +12,6 @@ import (
 	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/telemetry"
 )
 
-const personaSystemPrompt = `You are a character persona analyzer.
-Based on the provided dialogue history of an NPC, generate a concise persona summary.
-Your response MUST be formatted strictly with the following sections:
-- Personality Traits: (brief summary of character's personality)
-- Speaking Habits: (notes on tone, vocabulary, verbal tics)
-- Background: (implicit backstory or relationships inferred from dialogue)
-
-Keep the total response under 150 words. Do not include extra conversational filler.
-Format:
-Personality Traits: ...
-Speaking Habits: ...
-Background: ...`
-
 // DefaultPersonaGenerator implements the NPCPersonaGenerator interface.
 type DefaultPersonaGenerator struct {
 	Collector   DialogueCollector
@@ -78,6 +65,13 @@ func (g *DefaultPersonaGenerator) PreparePrompts(
 		MaxOutputTokens:      500,
 	}
 
+	promptCfg, promptErr := loadPromptConfig(ctx, g.Config)
+	if promptErr != nil {
+		slog.WarnContext(ctx, "failed to load master persona prompt config, using defaults",
+			telemetry.ErrorAttrs(promptErr)...,
+		)
+	}
+
 	groupedData, err := g.Collector.CollectByNPC(ctx, data)
 	if err != nil {
 		slog.ErrorContext(ctx, "failed to collect NPC dialogues", telemetry.ErrorAttrs(err)...)
@@ -128,20 +122,9 @@ func (g *DefaultPersonaGenerator) PreparePrompts(
 			continue
 		}
 
-		// Prepare user prompt
-		var sb strings.Builder
-		sb.WriteString(fmt.Sprintf("NPC Name: %s\n", npcData.NPCName))
-		sb.WriteString(fmt.Sprintf("Race: %s\n", npcData.Race))
-		sb.WriteString(fmt.Sprintf("Voice Type: %s\n", npcData.VoiceType))
-		sb.WriteString("---- Dialogue History ----\n")
-		for i, entry := range selectedDialogues {
-			sb.WriteString(fmt.Sprintf("[%d] %s\n", i+1, entry.EnglishText))
-		}
-		sb.WriteString("\nFormat Requirement: Output the persona summary strictly within TL: |...| format.")
-
 		request := llm.Request{
-			SystemPrompt: personaSystemPrompt,
-			UserPrompt:   sb.String(),
+			SystemPrompt: promptCfg.SystemPrompt,
+			UserPrompt:   buildPersonaUserPrompt(promptCfg, npcData, selectedDialogues),
 			Temperature:  0.3,
 			Metadata: map[string]interface{}{
 				"speaker_id":         npcData.SpeakerID,

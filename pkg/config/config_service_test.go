@@ -64,3 +64,32 @@ func TestConfigService_ConfigGet_MissingReturnsEmpty(t *testing.T) {
 		t.Fatalf("expected empty for missing key, got=%s", got)
 	}
 }
+
+func TestConfigService_ConfigGetAll_MasterPersonaPromptDefaults(t *testing.T) {
+	db, service := setupConfigServiceTest(t)
+	defer db.Close()
+
+	got, err := service.ConfigGetAll(MasterPersonaPromptNamespace)
+	if err != nil {
+		t.Fatalf("ConfigGetAll failed: %v", err)
+	}
+	if got[MasterPersonaUserPromptKey] != DefaultMasterPersonaUserPrompt {
+		t.Fatalf("unexpected default user prompt: %q", got[MasterPersonaUserPromptKey])
+	}
+	if got[MasterPersonaSystemPromptKey] != DefaultMasterPersonaSystemPrompt {
+		t.Fatalf("unexpected default system prompt: %q", got[MasterPersonaSystemPromptKey])
+	}
+}
+
+func TestConfigService_ConfigGet_MasterPersonaPromptDefault(t *testing.T) {
+	db, service := setupConfigServiceTest(t)
+	defer db.Close()
+
+	got, err := service.ConfigGet(MasterPersonaPromptNamespace, MasterPersonaSystemPromptKey)
+	if err != nil {
+		t.Fatalf("ConfigGet failed: %v", err)
+	}
+	if got != DefaultMasterPersonaSystemPrompt {
+		t.Fatalf("unexpected default system prompt: %q", got)
+	}
+}

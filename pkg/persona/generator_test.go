@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -14,9 +15,17 @@ import (
 )
 
 // mockConfigStore implements config.Config for testing.
-type mockConfigStore struct{}
+type mockConfigStore struct {
+	values map[string]map[string]string
+}
 
 func (m *mockConfigStore) Get(ctx context.Context, namespace string, key string) (string, error) {
+	if m.values == nil {
+		return "", nil
+	}
+	if bucket, ok := m.values[namespace]; ok {
+		return bucket[key], nil
+	}
 	return "", nil
 }
 func (m *mockConfigStore) Set(ctx context.Context, namespace string, key string, value string) error {
@@ -24,6 +33,16 @@ func (m *mockConfigStore) Set(ctx context.Context, namespace string, key string,
 }
 func (m *mockConfigStore) Delete(ctx context.Context, namespace string, key string) error { return nil }
 func (m *mockConfigStore) GetAll(ctx context.Context, namespace string) (map[string]string, error) {
+	if m.values == nil {
+		return nil, nil
+	}
+	if bucket, ok := m.values[namespace]; ok {
+		out := make(map[string]string, len(bucket))
+		for k, v := range bucket {
+			out[k] = v
+		}
+		return out, nil
+	}
 	return nil, nil
 }
 func (m *mockConfigStore) Watch(namespace string, key string, callback config.ChangeCallback) config.UnsubscribeFunc {
@@ -210,5 +229,56 @@ func TestPersonaGenSlice_TableDriven(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestPersonaGenSlice_UsesConfiguredPromptSplit(t *testing.T) {
+	ctx := context.Background()
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	store := persona.NewPersonaStore(db)
+	if err := store.InitSchema(ctx); err != nil {
+		t.Fatalf("Failed to init schema: %v", err)
+	}
+
+	collector := persona.NewDefaultDialogueCollector()
+	scorer := persona.NewDefaultScorer()
+	estimator := persona.NewSimpleTokenEstimator()
+	evaluator := persona.NewDefaultContextEvaluator(scorer, estimator)
+
+	configStore := &mockConfigStore{
+		values: map[string]map[string]string{
+			config.MasterPersonaPromptNamespace: {
+				config.MasterPersonaUserPromptKey:   "会話から口調と性格を抽出してください。",
+				config.MasterPersonaSystemPromptKey: "SYSTEM RULES",
+			},
+		},
+	}
+	secretStore := &mockSecretStore{}
+	generator := persona.NewPersonaGenerator(collector, evaluator, store, configStore, secretStore)
+
+	requests, err := generator.PreparePrompts(ctx, persona.PersonaGenInput{
+		NPCs: map[string]persona.PersonaNPC{
+			"NPC001": {ID: "NPC001", Name: "Aela", Race: "Nord", VoiceType: "FemaleYoungEager"},
+		},
+		Dialogues: []persona.PersonaDialogue{
+			{ID: "D1", SpeakerID: strPtr("NPC001"), Text: strPtr("We hunt as one."), Order: 1},
+		},
+	})
+	if err != nil {
+		t.Fatalf("PreparePrompts failed: %v", err)
+	}
+	if len(requests) != 1 {
+		t.Fatalf("expected one request, got %d", len(requests))
+	}
+	if requests[0].SystemPrompt != "SYSTEM RULES" {
+		t.Fatalf("unexpected system prompt: %q", requests[0].SystemPrompt)
+	}
+	if requests[0].UserPrompt == "" || requests[0].UserPrompt[:len("会話から口調と性格を抽出してください。")] != "会話から口調と性格を抽出してください。" {
+		t.Fatalf("unexpected user prompt prefix: %q", requests[0].UserPrompt)
+	}
+	if !strings.Contains(requests[0].UserPrompt, "Dialogue History:") {
+		t.Fatalf("expected dialogue history block in user prompt: %q", requests[0].UserPrompt)
 	}
 }

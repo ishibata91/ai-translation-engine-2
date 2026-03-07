@@ -4,13 +4,19 @@ import type { ColumnDef } from '@tanstack/react-table';
 import ModelSettings from '../components/ModelSettings';
 import DataTable from '../components/DataTable';
 import PersonaDetail from '../components/PersonaDetail';
+import PromptSettingCard from '../components/masterPersona/PromptSettingCard';
 import { type NpcRow, type NpcStatus, STATUS_BADGE } from '../types/npc';
 import { SelectJSONFile } from '../wailsjs/go/main/App';
 import { CancelTask, GetAllTasks, GetTaskRequestState, ResumeTask, StartMasterPersonTask } from '../wailsjs/go/task/Bridge';
 import { ListDialoguesByPersonaID, ListNPCs } from '../wailsjs/go/persona/Service';
 import { ConfigGetAll, ConfigSet } from '../wailsjs/go/config/ConfigService';
 import type { PhaseCompletedEvent, FrontendTask } from '../types/task';
-import { DEFAULT_MASTER_PERSONA_LLM_CONFIG, type MasterPersonaLLMConfig } from '../types/masterPersona';
+import {
+    DEFAULT_MASTER_PERSONA_LLM_CONFIG,
+    DEFAULT_MASTER_PERSONA_PROMPT_CONFIG,
+    type MasterPersonaLLMConfig,
+    type MasterPersonaPromptConfig,
+} from '../types/masterPersona';
 import * as Events from '../wailsjs/runtime/runtime';
 
 type PersonaProgressStatus = 'IN_PROGRESS' | 'COMPLETED' | 'FAILED';
@@ -74,7 +80,10 @@ const formatUpdatedAt = (raw: string): string => {
 };
 
 const MASTER_PERSONA_LLM_NAMESPACE = 'master_persona.llm';
+const MASTER_PERSONA_PROMPT_NAMESPACE = 'master_persona.prompt';
 const SELECTED_PROVIDER_KEY = 'selected_provider';
+const USER_PROMPT_KEY = 'user_prompt';
+const SYSTEM_PROMPT_KEY = 'system_prompt';
 
 const normalizeProvider = (value: string | undefined): MasterPersonaLLMConfig['provider'] => {
     if (value === 'lmstudio' || value === 'gemini' || value === 'openai' || value === 'xai') {
@@ -125,6 +134,11 @@ const buildProviderConfigPairs = (cfg: MasterPersonaLLMConfig): Record<string, s
     api_key: cfg.provider === 'lmstudio' ? '' : cfg.apiKey,
     temperature: String(cfg.temperature),
     context_length: String(cfg.contextLength),
+});
+
+const buildPromptConfigPairs = (cfg: MasterPersonaPromptConfig): Record<string, string> => ({
+    [USER_PROMPT_KEY]: cfg.userPrompt,
+    [SYSTEM_PROMPT_KEY]: cfg.systemPrompt,
 });
 
 const parseTaskTimestamp = (value: string | undefined): number => {
@@ -194,8 +208,12 @@ const MasterPersona: React.FC = () => {
     const [activeTaskStatus, setActiveTaskStatus] = useState<FrontendTask['status'] | null>(null);
     const [llmConfig, setLLMConfig] = useState<MasterPersonaLLMConfig>(DEFAULT_MASTER_PERSONA_LLM_CONFIG);
     const [isLLMConfigHydrated, setIsLLMConfigHydrated] = useState<boolean>(false);
+    const [promptConfig, setPromptConfig] = useState<MasterPersonaPromptConfig>(DEFAULT_MASTER_PERSONA_PROMPT_CONFIG);
+    const [isPromptConfigHydrated, setIsPromptConfigHydrated] = useState<boolean>(false);
     const lastSavedLLMConfigRef = useRef<Partial<Record<MasterPersonaLLMConfig['provider'], MasterPersonaLLMConfig>>>({});
     const latestLLMConfigRef = useRef<MasterPersonaLLMConfig>(DEFAULT_MASTER_PERSONA_LLM_CONFIG);
+    const lastSavedPromptConfigRef = useRef<MasterPersonaPromptConfig>(DEFAULT_MASTER_PERSONA_PROMPT_CONFIG);
+    const latestPromptConfigRef = useRef<MasterPersonaPromptConfig>(DEFAULT_MASTER_PERSONA_PROMPT_CONFIG);
     const selectedProviderRef = useRef<MasterPersonaLLMConfig['provider']>(DEFAULT_MASTER_PERSONA_LLM_CONFIG.provider);
     const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
     const isSwitchingProviderRef = useRef<boolean>(false);
@@ -226,6 +244,14 @@ const MasterPersona: React.FC = () => {
                 : DEFAULT_MASTER_PERSONA_LLM_CONFIG.syncConcurrency,
         };
         return config;
+    };
+
+    const loadPromptConfig = async (): Promise<MasterPersonaPromptConfig> => {
+        const loaded = await ConfigGetAll(MASTER_PERSONA_PROMPT_NAMESPACE);
+        return {
+            userPrompt: loaded[USER_PROMPT_KEY] ?? DEFAULT_MASTER_PERSONA_PROMPT_CONFIG.userPrompt,
+            systemPrompt: loaded[SYSTEM_PROMPT_KEY] ?? DEFAULT_MASTER_PERSONA_PROMPT_CONFIG.systemPrompt,
+        };
     };
 
     const handleRowSelect = (row: NpcRow | null, rowId: string | null) => {
@@ -415,6 +441,10 @@ const MasterPersona: React.FC = () => {
         latestLLMConfigRef.current = llmConfig;
     }, [llmConfig]);
 
+    useEffect(() => {
+        latestPromptConfigRef.current = promptConfig;
+    }, [promptConfig]);
+
     const persistLLMConfigDiff = (currentRaw: MasterPersonaLLMConfig) => {
         const current = {
             ...currentRaw,
@@ -454,6 +484,29 @@ const MasterPersona: React.FC = () => {
             ConfigSet(MASTER_PERSONA_LLM_NAMESPACE, SELECTED_PROVIDER_KEY, current.provider),
         ).then(() => {
             selectedProviderRef.current = current.provider;
+        });
+    };
+
+    const persistPromptConfigDiff = (current: MasterPersonaPromptConfig) => {
+        const currentPairs = buildPromptConfigPairs(current);
+        const previousPairs = buildPromptConfigPairs(lastSavedPromptConfigRef.current);
+        const writes: Array<[string, string]> = [];
+
+        for (const key of Object.keys(currentPairs)) {
+            const typedKey = key as keyof typeof currentPairs;
+            if (previousPairs[typedKey] !== currentPairs[typedKey]) {
+                writes.push([typedKey, currentPairs[typedKey]]);
+            }
+        }
+
+        if (writes.length === 0) {
+            return Promise.resolve();
+        }
+
+        return Promise.all(
+            writes.map(([key, value]) => ConfigSet(MASTER_PERSONA_PROMPT_NAMESPACE, key, value)),
+        ).then(() => {
+            lastSavedPromptConfigRef.current = current;
         });
     };
 
@@ -513,6 +566,45 @@ const MasterPersona: React.FC = () => {
     }, [isLLMConfigHydrated, llmConfig]);
 
     useEffect(() => {
+        let alive = true;
+        void loadPromptConfig()
+            .then((loaded) => {
+                if (!alive) {
+                    return;
+                }
+                setPromptConfig(loaded);
+                lastSavedPromptConfigRef.current = loaded;
+                latestPromptConfigRef.current = loaded;
+                setIsPromptConfigHydrated(true);
+            })
+            .catch((error) => {
+                console.error('failed to hydrate master_persona.prompt config', error);
+                if (!alive) {
+                    return;
+                }
+                setPromptConfig(DEFAULT_MASTER_PERSONA_PROMPT_CONFIG);
+                lastSavedPromptConfigRef.current = DEFAULT_MASTER_PERSONA_PROMPT_CONFIG;
+                latestPromptConfigRef.current = DEFAULT_MASTER_PERSONA_PROMPT_CONFIG;
+                setIsPromptConfigHydrated(true);
+            });
+        return () => {
+            alive = false;
+        };
+    }, []);
+
+    useEffect(() => {
+        if (!isPromptConfigHydrated) {
+            return;
+        }
+        const snapshot = latestPromptConfigRef.current;
+        saveQueueRef.current = saveQueueRef.current
+            .then(() => persistPromptConfigDiff(snapshot))
+            .catch((err) => {
+                console.error('failed to persist master_persona.prompt config', err);
+            });
+    }, [isPromptConfigHydrated, promptConfig]);
+
+    useEffect(() => {
         return () => {
             if (!isLLMConfigHydrated) {
                 return;
@@ -526,6 +618,20 @@ const MasterPersona: React.FC = () => {
                 });
         };
     }, [isLLMConfigHydrated]);
+
+    useEffect(() => {
+        return () => {
+            if (!isPromptConfigHydrated) {
+                return;
+            }
+            const snapshot = latestPromptConfigRef.current;
+            saveQueueRef.current = saveQueueRef.current
+                .then(() => persistPromptConfigDiff(snapshot))
+                .catch((err) => {
+                    console.error('failed to flush master_persona.prompt config on unmount', err);
+                });
+        };
+    }, [isPromptConfigHydrated]);
 
     const refreshProgressFromQueueState = async (task: FrontendTask) => {
         try {
@@ -824,6 +930,34 @@ const MasterPersona: React.FC = () => {
                         </div>
                     </div>
                 </div>
+            </div>
+
+            {/* Prompt 設定 */}
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 shrink-0">
+                {isPromptConfigHydrated ? (
+                    <>
+                        <PromptSettingCard
+                            title="ユーザープロンプト"
+                            description="可変の指示だけを編集します。NPC メタデータや会話履歴は送信時に別途付与されます。"
+                            value={promptConfig.userPrompt}
+                            onChange={(value) => setPromptConfig((prev) => ({ ...prev, userPrompt: value }))}
+                            badgeLabel="編集可能"
+                        />
+                        <PromptSettingCard
+                            title="システムプロンプト"
+                            description="固定の分析ルールと出力形式です。画面表示と実際の送信内容は同じ system prompt を参照します。"
+                            value={promptConfig.systemPrompt}
+                            readOnly
+                            badgeLabel="Read Only"
+                        />
+                    </>
+                ) : (
+                    <div className="card bg-base-100 border border-base-200 shadow-sm xl:col-span-2">
+                        <div className="card-body py-4">
+                            <span className="text-sm text-base-content/60">プロンプト設定を読み込み中...</span>
+                        </div>
+                    </div>
+                )}
             </div>
 
             {/* モデル設定 */}

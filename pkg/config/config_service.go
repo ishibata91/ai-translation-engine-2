@@ -39,7 +39,15 @@ func (s *ConfigService) UIStateDelete(namespace, key string) error {
 
 // ConfigGet は指定 namespace/key の設定値を取得する。
 func (s *ConfigService) ConfigGet(namespace, key string) (string, error) {
-	return s.configStore.Get(context.Background(), namespace, key)
+	value, err := s.configStore.Get(context.Background(), namespace, key)
+	if err != nil {
+		return "", err
+	}
+	if namespace == MasterPersonaPromptNamespace && value == "" {
+		defaults := DefaultMasterPersonaPromptValues()
+		return defaults[key], nil
+	}
+	return value, nil
 }
 
 // ConfigSet は指定 namespace/key へ値を保存する。
@@ -65,5 +73,12 @@ func (s *ConfigService) ConfigDelete(namespace, key string) error {
 
 // ConfigGetAll は指定 namespace の全キーを取得する。
 func (s *ConfigService) ConfigGetAll(namespace string) (map[string]string, error) {
-	return s.configStore.GetAll(context.Background(), namespace)
+	values, err := s.configStore.GetAll(context.Background(), namespace)
+	if err != nil {
+		return nil, err
+	}
+	if namespace == MasterPersonaPromptNamespace {
+		return MergeMasterPersonaPromptDefaults(values), nil
+	}
+	return values, nil
 }
