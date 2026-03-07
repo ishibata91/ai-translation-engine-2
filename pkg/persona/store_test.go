@@ -81,6 +81,9 @@ func TestPersonaStore_UpsertAndDialogues(t *testing.T) {
 			}); err != nil {
 				t.Fatalf("ReplaceDialogues(first) failed: %v", err)
 			}
+			if err := store.SaveGenerationRequest(ctx, effectivePlugin, "npc-001", "System Prompt:\nbase\n\nUser Prompt:\nfirst line"); err != nil {
+				t.Fatalf("SaveGenerationRequest(first) failed: %v", err)
+			}
 			if err := store.SavePersona(ctx, persona.PersonaResult{
 				SpeakerID:    "npc-001",
 				NPCName:      "Aela",
@@ -112,6 +115,9 @@ func TestPersonaStore_UpsertAndDialogues(t *testing.T) {
 				}); err != nil {
 					t.Fatalf("ReplaceDialogues(second) failed: %v", err)
 				}
+				if err := store.SaveGenerationRequest(ctx, effectivePlugin, "npc-001", "System Prompt:\nupdated\n\nUser Prompt:\nsecond line"); err != nil {
+					t.Fatalf("SaveGenerationRequest(second) failed: %v", err)
+				}
 			}
 			if err := store.SavePersona(ctx, persona.PersonaResult{
 				SpeakerID:    "npc-001",
@@ -136,6 +142,15 @@ func TestPersonaStore_UpsertAndDialogues(t *testing.T) {
 			}
 			if len(rows) != 1 {
 				t.Fatalf("unexpected npc count: got=%d want=1", len(rows))
+			}
+			if rows[0].DialogueCount != 1 {
+				t.Fatalf("expected aggregated dialogue count=1, got=%d", rows[0].DialogueCount)
+			}
+			if tc.overwriteExisting && rows[0].GenerationRequest != "System Prompt:\nupdated\n\nUser Prompt:\nsecond line" {
+				t.Fatalf("unexpected generation request after overwrite: %q", rows[0].GenerationRequest)
+			}
+			if !tc.overwriteExisting && rows[0].GenerationRequest != "System Prompt:\nbase\n\nUser Prompt:\nfirst line" {
+				t.Fatalf("unexpected generation request without overwrite: %q", rows[0].GenerationRequest)
 			}
 
 			dialogues, err := store.ListDialoguesByPersonaID(ctx, rows[0].PersonaID)

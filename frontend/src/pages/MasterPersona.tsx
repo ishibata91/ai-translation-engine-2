@@ -49,6 +49,8 @@ interface PersonaNPCRecord {
     DialogueCount?: number;
     persona_text?: string;
     PersonaText?: string;
+    generation_request?: string;
+    GenerationRequest?: string;
     updated_at?: string;
     UpdatedAt?: string;
 }
@@ -662,6 +664,7 @@ const MasterPersona: React.FC = () => {
     const refreshNPCDataFromService = async () => {
         try {
             const records = (await ListNPCs() as unknown as PersonaNPCRecord[]) || [];
+            const existingDialogues = new Map(allNpcData.map((row) => [row.personaId, row.dialogues] as const));
             const rows: NpcRow[] = records
                 .map((record) => {
                     const speakerID = pickString(record.speaker_id ?? record.SpeakerID);
@@ -682,8 +685,8 @@ const MasterPersona: React.FC = () => {
                         status: '完了' as NpcStatus,
                         updatedAt,
                         personaText: pickString(record.persona_text ?? record.PersonaText),
-                        rawResponse: '',
-                        dialogues: [],
+                        generationRequest: pickString(record.generation_request ?? record.GenerationRequest),
+                        dialogues: existingDialogues.get(personaID) ?? [],
                     };
                 })
                 .filter((row) => row.personaId > 0);
@@ -691,9 +694,12 @@ const MasterPersona: React.FC = () => {
             if (rows.length === 0) {
                 setSelectedRow(null);
                 setSelectedRowId(null);
-            } else if (!rows.some((row) => row.id === selectedRowId)) {
+            } else if (!selectedRowId || !rows.some((row) => row.id === selectedRowId)) {
                 setSelectedRow(rows[0]);
                 setSelectedRowId(rows[0].id);
+            } else {
+                const nextSelectedRow = rows.find((row) => row.id === selectedRowId) ?? null;
+                setSelectedRow(nextSelectedRow);
             }
         } catch (error) {
             console.error('failed to refresh npc rows from persona service', { error });
@@ -747,6 +753,10 @@ const MasterPersona: React.FC = () => {
     }, [npcPage, totalNpcPages]);
 
     useEffect(() => {
+        void refreshNPCDataFromService();
+    }, [location.key]);
+
+    useEffect(() => {
         const navState = location.state as { taskId?: string; resumeFromDashboard?: boolean } | null;
         const taskIdFromNav = navState?.taskId;
         let disposed = false;
@@ -770,10 +780,7 @@ const MasterPersona: React.FC = () => {
                     return;
                 }
                 hydrateTaskView(task);
-                return Promise.all([
-                    refreshProgressFromQueueState(task),
-                    refreshNPCDataFromService(),
-                ]).then(() => undefined);
+                return refreshProgressFromQueueState(task);
             })
             .catch((error) => {
                 console.error('failed to hydrate task from navigation state', error);
@@ -827,6 +834,16 @@ const MasterPersona: React.FC = () => {
         });
 
         const offTaskUpdated = Events.EventsOn('task:updated', (task: FrontendTask) => {
+            if (task.type === 'persona_extraction' && (
+                task.status === 'request_generated' ||
+                task.status === 'completed' ||
+                task.status === 'failed' ||
+                task.status === 'cancelled' ||
+                task.status === 'paused'
+            )) {
+                void refreshNPCDataFromService();
+            }
+
             const currentTaskId = activeTaskId ?? (isGenerating ? task.id : null);
 
             if (!activeTaskId && currentTaskId) {
@@ -865,6 +882,8 @@ const MasterPersona: React.FC = () => {
         });
 
         const offPhaseCompleted = Events.EventsOn('task:phase_completed', (payload: PhaseCompletedEvent) => {
+            void refreshNPCDataFromService();
+
             const currentTaskId = activeTaskId ?? (isGenerating ? payload.taskId : null);
 
             if (!activeTaskId && currentTaskId) {

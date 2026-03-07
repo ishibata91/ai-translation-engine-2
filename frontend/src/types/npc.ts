@@ -19,7 +19,7 @@ export interface NpcRow {
     status: NpcStatus;
     updatedAt: string;
     personaText: string;
-    rawResponse: string;
+    generationRequest: string;
     dialogues: Dialogue[];
 }
 

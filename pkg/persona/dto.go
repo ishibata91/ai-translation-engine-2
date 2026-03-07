@@ -43,7 +43,6 @@ type PersonaResult struct {
 	Sex             string `json:"sex"`
 	VoiceType       string `json:"voice_type"`
 	PersonaText     string `json:"persona_text"`
-	DialogueCount   int    `json:"dialogue_count"`
 	EstimatedTokens int    `json:"estimated_tokens"`
 	SourcePlugin    string `json:"source_plugin"`
 	Status          string `json:"status"`
@@ -60,17 +59,18 @@ type TokenEstimation struct {
 
 // PersonaNPCView is a UI-facing row of one NPC in persona DB.
 type PersonaNPCView struct {
-	PersonaID     int64  `json:"persona_id"`
-	SpeakerID     string `json:"speaker_id"`
-	EditorID      string `json:"editor_id"`
-	NPCName       string `json:"npc_name"`
-	Race          string `json:"race"`
-	Sex           string `json:"sex"`
-	VoiceType     string `json:"voice_type"`
-	PersonaText   string `json:"persona_text"`
-	DialogueCount int    `json:"dialogue_count"`
-	SourcePlugin  string `json:"source_plugin"`
-	UpdatedAt     string `json:"updated_at"`
+	PersonaID         int64  `json:"persona_id"`
+	SpeakerID         string `json:"speaker_id"`
+	EditorID          string `json:"editor_id"`
+	NPCName           string `json:"npc_name"`
+	Race              string `json:"race"`
+	Sex               string `json:"sex"`
+	VoiceType         string `json:"voice_type"`
+	PersonaText       string `json:"persona_text"`
+	GenerationRequest string `json:"generation_request"`
+	DialogueCount     int    `json:"dialogue_count"`
+	SourcePlugin      string `json:"source_plugin"`
+	UpdatedAt         string `json:"updated_at"`
 }
 
 // PersonaDialogueView is one stored dialogue row linked to npc_personas.

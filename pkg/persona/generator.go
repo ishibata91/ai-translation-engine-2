@@ -137,6 +137,12 @@ func (g *DefaultPersonaGenerator) PreparePrompts(
 				"overwrite_existing": data.OverwriteExisting,
 			},
 		}
+		if err := g.Store.SaveGenerationRequest(ctx, npcData.SourcePlugin, npcData.SpeakerID, formatGenerationRequest(request)); err != nil {
+			slog.WarnContext(ctx, "failed to save persona generation request",
+				slog.String("speaker_id", npcData.SpeakerID),
+				slog.String("error", err.Error()),
+			)
+		}
 		requests = append(requests, request)
 
 		slog.DebugContext(ctx, "persona request prepared",
@@ -155,6 +161,10 @@ func (g *DefaultPersonaGenerator) PreparePrompts(
 	)
 
 	return requests, nil
+}
+
+func formatGenerationRequest(request llm.Request) string {
+	return strings.TrimSpace(fmt.Sprintf("System Prompt:\n%s\n\nUser Prompt:\n%s", request.SystemPrompt, request.UserPrompt))
 }
 
 // SaveResults parses LLM responses and persists them to the store (Phase 2).

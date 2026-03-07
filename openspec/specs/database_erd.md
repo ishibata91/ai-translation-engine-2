@@ -138,7 +138,7 @@ erDiagram
         TEXT sex "性別"
         TEXT voice_type "声の種類"
         TEXT persona_text "生成されたペルソナテキスト"
-        INTEGER dialogue_count "ペルソナ生成に使用した会話件数"
+        TEXT generation_request "LLMへ送信した生成リクエスト本文"
         TEXT source_plugin "ソースプラグイン名 (UNIQUE with speaker_id)"
         DATETIME updated_at "更新日時"
     }
@@ -226,7 +226,7 @@ erDiagram
 
 ## queue (LLMジョブキュー)
 
-インフラ層の汎用ジョブキュー。ドメイン知識を一切持たず、`process_id` / `task_id` / `task_type` と `request` のペアを永続化し、request単位の再開状態を保持します。
+インフラ層の汎用ジョブキュー。ドメイン知識を一切持たず、`process_id` / `task_id` / `task_type` と `request` のペアを永続化し、request単位の再開状態を保持します。`Completed` になった MasterPersona task の job は `task_id` 単位で削除されます。
 **データベース名:** `llm_queue.db` (インフラ専用・全Mod共通)
 
 ```mermaid

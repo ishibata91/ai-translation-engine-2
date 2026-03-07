@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import type { NpcRow } from '../types/npc';
 
-export type DetailTab = 'persona' | 'dialogues' | 'raw' | 'meta';
+export type DetailTab = 'persona' | 'dialogues' | 'request' | 'meta';
 
 interface PersonaDetailProps {
     npc: NpcRow | null;
@@ -31,7 +31,7 @@ const PersonaDetail: React.FC<PersonaDetailProps> = ({ npc }) => {
             <div className="tabs tabs-boxed bg-base-200 w-fit shrink-0">
                 <a className={`tab ${detailTab === 'persona' ? 'tab-active' : ''}`} onClick={() => setDetailTab('persona')}>ペルソナ</a>
                 <a className={`tab ${detailTab === 'dialogues' ? 'tab-active' : ''}`} onClick={() => setDetailTab('dialogues')}>セリフ一覧</a>
-                <a className={`tab ${detailTab === 'raw' ? 'tab-active' : ''}`} onClick={() => setDetailTab('raw')}>RAWレスポンス</a>
+                <a className={`tab ${detailTab === 'request' ? 'tab-active' : ''}`} onClick={() => setDetailTab('request')}>生成リクエスト</a>
                 <a className={`tab ${detailTab === 'meta' ? 'tab-active' : ''}`} onClick={() => setDetailTab('meta')}>メタ情報</a>
             </div>
 
@@ -84,10 +84,10 @@ const PersonaDetail: React.FC<PersonaDetailProps> = ({ npc }) => {
                 </div>
             )}
 
-            {/* RAWレスポンスタブ */}
-            {detailTab === 'raw' && (
+            {/* 生成リクエストタブ */}
+            {detailTab === 'request' && (
                 <div className="mockup-code flex-1 overflow-y-auto bg-base-200 text-base-content text-sm border border-base-300">
-                    <pre data-prefix=">"><code>{npc.rawResponse}</code></pre>
+                    <pre data-prefix=">"><code>{npc.generationRequest || '(生成リクエストなし)'}</code></pre>
                 </div>
             )}
 

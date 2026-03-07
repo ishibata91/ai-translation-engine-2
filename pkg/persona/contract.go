@@ -93,6 +93,7 @@ type PersonaStore interface {
 	InitSchema(ctx context.Context) error
 	SavePersona(ctx context.Context, result PersonaResult, overwriteExisting bool) error
 	SavePersonaBase(ctx context.Context, data NPCDialogueData, overwriteExisting bool) (PersonaSaveState, error)
+	SaveGenerationRequest(ctx context.Context, sourcePlugin string, speakerID string, generationRequest string) error
 	ReplaceDialogues(ctx context.Context, personaID int64, sourcePlugin string, speakerID string, dialogues []DialogueEntry) error
 	GetPersona(ctx context.Context, sourcePlugin string, speakerID string) (string, error)
 	ListNPCs(ctx context.Context) ([]PersonaNPCView, error)

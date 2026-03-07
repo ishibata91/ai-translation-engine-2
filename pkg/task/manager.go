@@ -29,21 +29,27 @@ type Manager struct {
 	// Task Runners
 	runners   map[TaskType]Runner
 	runnersMu sync.RWMutex
+
+	completionHooks   map[TaskType][]CompletionHook
+	completionHooksMu sync.RWMutex
 }
 
 type Runner interface {
 	Run(ctx context.Context, task *Task, update func(phase string, progress float64)) error
 }
 
+type CompletionHook func(ctx context.Context, task *Task) error
+
 func NewManager(ctx context.Context, logger *slog.Logger, store *Store) *Manager {
 	return &Manager{
-		ctx:          ctx,
-		logger:       logger.With("module", "job_manager"),
-		store:        store,
-		activeTasks:  make(map[string]*Task),
-		cancelFuncs:  make(map[string]context.CancelFunc),
-		lastDBUpdate: make(map[string]time.Time),
-		runners:      make(map[TaskType]Runner),
+		ctx:             ctx,
+		logger:          logger.With("module", "job_manager"),
+		store:           store,
+		activeTasks:     make(map[string]*Task),
+		cancelFuncs:     make(map[string]context.CancelFunc),
+		lastDBUpdate:    make(map[string]time.Time),
+		runners:         make(map[TaskType]Runner),
+		completionHooks: make(map[TaskType][]CompletionHook),
 	}
 }
 
@@ -51,6 +57,12 @@ func (m *Manager) RegisterRunner(ttype TaskType, runner Runner) {
 	m.runnersMu.Lock()
 	defer m.runnersMu.Unlock()
 	m.runners[ttype] = runner
+}
+
+func (m *Manager) RegisterCompletionHook(ttype TaskType, hook CompletionHook) {
+	m.completionHooksMu.Lock()
+	defer m.completionHooksMu.Unlock()
+	m.completionHooks[ttype] = append(m.completionHooks[ttype], hook)
 }
 
 func (m *Manager) ResumeTask(id string) error {
@@ -89,6 +101,17 @@ func (m *Manager) ResumeTask(id string) error {
 		err := fmt.Errorf("task not found: %s", id)
 		m.logger.ErrorContext(logCtx, "resume task failed",
 			slog.String("id", id),
+			slog.String("reason", err.Error()),
+		)
+		return err
+	}
+	if task.Status == StatusCompleted {
+		err := fmt.Errorf("task already completed: %s", id)
+		m.logger.InfoContext(logCtx, "resume task skipped",
+			slog.String("id", id),
+			slog.String("task_type", string(task.Type)),
+			slog.String("task_status", string(task.Status)),
+			slog.String("task_phase", task.Phase),
 			slog.String("reason", err.Error()),
 		)
 		return err
@@ -348,8 +371,27 @@ func (m *Manager) handleTaskCompletionWithStatus(id string, status TaskStatus) {
 	delete(m.activeTasks, id)
 	m.mu.Unlock()
 
+	if status == StatusCompleted {
+		m.runCompletionHooks(task)
+	}
 	_ = m.store.UpdateTask(context.Background(), task.ID, task.Status, task.Phase, task.Progress, "")
 	m.emitTaskUpdate(task)
+}
+
+func (m *Manager) runCompletionHooks(task *Task) {
+	m.completionHooksMu.RLock()
+	hooks := append([]CompletionHook(nil), m.completionHooks[task.Type]...)
+	m.completionHooksMu.RUnlock()
+
+	for _, hook := range hooks {
+		if err := hook(context.Background(), task); err != nil {
+			m.logger.Error("completion hook failed",
+				slog.String("task_id", task.ID),
+				slog.String("task_type", string(task.Type)),
+				slog.String("error", err.Error()),
+			)
+		}
+	}
 }
 
 func (m *Manager) handleTaskFailure(id string, err error) {

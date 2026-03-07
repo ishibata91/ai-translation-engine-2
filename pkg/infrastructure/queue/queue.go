@@ -426,6 +426,22 @@ func (q *Queue) DeleteJobs(ctx context.Context, processID string) error {
 	return nil
 }
 
+// DeleteTaskRequests performs a hard delete of jobs associated with the task_id.
+func (q *Queue) DeleteTaskRequests(ctx context.Context, taskID string) error {
+	defer telemetry.StartSpan(ctx, telemetry.ActionDBQuery)()
+	q.logger.InfoContext(ctx, "deleting task jobs", slog.String("task_id", taskID))
+
+	res, err := q.db.ExecContext(ctx, "DELETE FROM llm_jobs WHERE task_id = ?", taskID)
+	if err != nil {
+		q.logger.ErrorContext(ctx, "failed to delete task jobs", telemetry.ErrorAttrs(err)...)
+		return fmt.Errorf("DeleteTaskRequests failed: %w", err)
+	}
+
+	deleted, _ := res.RowsAffected()
+	q.logger.InfoContext(ctx, "task jobs deleted", slog.String("task_id", taskID), slog.Int64("deleted_count", deleted))
+	return nil
+}
+
 // GetJobsByStatus retrieves jobs for a given processID that match a specific status.
 func (q *Queue) GetJobsByStatus(ctx context.Context, processID string, status string) ([]JobRequest, error) {
 	defer telemetry.StartSpan(ctx, telemetry.ActionDBQuery)()
