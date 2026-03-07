@@ -78,13 +78,18 @@ type mockLLMManager struct {
 	client      *mockLLMClient
 	batchClient *mockBatchClient
 	lastConfig  llm.LLMConfig
+	clientCalls int
+	batchCalls  int
 }
 
 func (m *mockLLMManager) GetClient(ctx context.Context, config llm.LLMConfig) (llm.LLMClient, error) {
+	m.clientCalls++
 	m.lastConfig = config
 	return m.client, nil
 }
 func (m *mockLLMManager) GetBatchClient(ctx context.Context, config llm.LLMConfig) (llm.BatchClient, error) {
+	m.batchCalls++
+	m.lastConfig = config
 	return m.batchClient, nil
 }
 func (m *mockLLMManager) ResolveBulkStrategy(ctx context.Context, strategy llm.BulkStrategy, provider string) llm.BulkStrategy {
@@ -531,5 +536,57 @@ func TestWorker_CancelKeepsCompletedRequests(t *testing.T) {
 	}
 	if len(completed) == 0 {
 		t.Fatalf("expected at least one completed job to be preserved on cancel")
+	}
+}
+
+func TestWorker_ProcessWithOptions_UsesConfigReadNamespaceForBulkStrategy(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	q, err := NewQueue(ctx, ":memory:", logger)
+	if err != nil {
+		t.Fatalf("failed to create queue: %v", err)
+	}
+	defer q.Close()
+
+	processID := "custom-namespace-batch"
+	if err := q.SubmitTaskRequests(ctx, processID, "generic_task", []llm.Request{{UserPrompt: "q"}}); err != nil {
+		t.Fatalf("SubmitTaskRequests failed: %v", err)
+	}
+
+	manager := &mockLLMManager{
+		client:      &mockLLMClient{},
+		batchClient: &mockBatchClient{status: "COMPLETED"},
+	}
+	cfg := &mapConfigStore{
+		values: map[string]string{
+			"custom.llm::selected_provider": "xai",
+			"custom.llm.xai::model":         "xai-model",
+			"custom.llm::bulk_strategy":     "batch",
+		},
+	}
+	worker := NewWorker(q, manager, cfg, &mockSecretStore{}, progress.NewNoopNotifier(), logger)
+	worker.SetPollingInterval(10 * time.Millisecond)
+
+	err = worker.ProcessProcessIDWithOptions(ctx, processID, ProcessOptions{
+		UseConfigProviderModel: true,
+		ConfigRead: ConfigReadOptions{
+			Namespace:           "custom.llm",
+			DefaultProvider:     "xai",
+			SelectedProviderKey: "selected_provider",
+		},
+	})
+	if err != nil {
+		t.Fatalf("ProcessProcessIDWithOptions failed: %v", err)
+	}
+	if manager.batchCalls == 0 {
+		t.Fatalf("expected batch client path to be selected for custom namespace strategy")
+	}
+	if manager.clientCalls != 0 {
+		t.Fatalf("expected sync client path not to run when strategy=batch")
+	}
+	if manager.lastConfig.Provider != "xai" || manager.lastConfig.Model != "xai-model" {
+		t.Fatalf("unexpected config resolved from custom namespace: %+v", manager.lastConfig)
 	}
 }

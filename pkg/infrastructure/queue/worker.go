@@ -103,10 +103,7 @@ func (w *Worker) ProcessProcessIDWithOptions(ctx context.Context, processID stri
 		return fmt.Errorf("failed to fetch llm config: %w", err)
 	}
 
-	cfgNamespace := opts.ConfigNamespace
-	if strings.TrimSpace(cfgNamespace) == "" {
-		cfgNamespace = llm.LLMConfigNamespace
-	}
+	cfgNamespace := resolveConfigNamespace(opts)
 	strategyStr := w.getConfigString(ctx, cfgNamespace, llm.LLMBulkStrategyKey, string(llm.BulkStrategySync))
 	strategy := w.llmManager.ResolveBulkStrategy(ctx, llm.BulkStrategy(strategyStr), llmConfig.Provider)
 
@@ -451,13 +448,7 @@ func (c *progressReportingClient) Complete(ctx context.Context, req llm.Request)
 
 func (w *Worker) fetchLLMConfig(ctx context.Context, opts ProcessOptions) (llm.LLMConfig, error) {
 	read := opts.ConfigRead
-	ns := strings.TrimSpace(read.Namespace)
-	if ns == "" {
-		ns = strings.TrimSpace(opts.ConfigNamespace)
-	}
-	if ns == "" {
-		ns = llm.LLMConfigNamespace
-	}
+	ns := resolveConfigNamespace(opts)
 	defaultProvider := strings.TrimSpace(read.DefaultProvider)
 	if defaultProvider == "" {
 		defaultProvider = "gemini"
@@ -594,4 +585,15 @@ func (w *Worker) getConfigString(ctx context.Context, ns, key, defaultVal string
 		return defaultVal
 	}
 	return val
+}
+
+func resolveConfigNamespace(opts ProcessOptions) string {
+	ns := strings.TrimSpace(opts.ConfigRead.Namespace)
+	if ns == "" {
+		ns = strings.TrimSpace(opts.ConfigNamespace)
+	}
+	if ns == "" {
+		ns = llm.LLMConfigNamespace
+	}
+	return ns
 }

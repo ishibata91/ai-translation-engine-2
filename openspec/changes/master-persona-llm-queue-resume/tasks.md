@@ -24,10 +24,10 @@
 
 ## 4. インフラ層の非依存性担保
 
-- [ ] 4.1 `pkg/progress` から MasterPersona 固有語彙を排除し、`task_type/phase/current/total` の汎用契約だけにする
-- [ ] 4.2 `pkg/queue` からスライス固有分岐を排除し、task 種別は `task_type` で受け取る
-- [ ] 4.3 `pkg/llm` からスライス名依存を排除し、Queue worker 由来コンテキストのみで実行する
-- [ ] 4.4 ユーザー動作テスト: MasterPersona 実行で機能を満たしつつ、インフラ層に固有実装が入っていないことを確認する
+- [x] 4.1 `pkg/progress` から MasterPersona 固有語彙を排除し、`task_type/phase/current/total` の汎用契約だけにする
+- [x] 4.2 `pkg/queue` からスライス固有分岐を排除し、task 種別は `task_type` で受け取る
+- [x] 4.3 `pkg/llm` からスライス名依存を排除し、Queue worker 由来コンテキストのみで実行する
+- [x] 4.4 ユーザー動作テスト: MasterPersona 実行で機能を満たしつつ、インフラ層に固有実装が入っていないことを確認する
 
 ## 5. フェーズ4: ペルソナ保存と冪等再開
 
