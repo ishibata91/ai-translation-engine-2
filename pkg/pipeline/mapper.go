@@ -64,22 +64,36 @@ func ToPersonaGenInput(out *parser.ParserOutput) persona.PersonaGenInput {
 
 	for id, npc := range out.NPCs {
 		input.NPCs[id] = persona.PersonaNPC{
-			ID:       npc.ID,
-			EditorID: npc.EditorID,
-			Type:     npc.Type,
-			Name:     npc.Name,
+			ID:           npc.ID,
+			EditorID:     npc.EditorID,
+			Type:         npc.Type,
+			Name:         npc.Name,
+			Race:         npc.Race,
+			Sex:          npc.Sex,
+			VoiceType:    npc.Voice,
+			SourcePlugin: derefString(npc.Source),
 		}
 	}
 
 	for _, group := range out.DialogueGroups {
 		for _, resp := range group.Responses {
+			editorID := resp.EditorID
+			if editorID == nil || *editorID == "" {
+				editorID = group.EditorID
+			}
+			sourcePlugin := resp.Source
+			if sourcePlugin == nil || *sourcePlugin == "" {
+				sourcePlugin = group.Source
+			}
 			input.Dialogues = append(input.Dialogues, persona.PersonaDialogue{
 				ID:               resp.ID,
-				EditorID:         resp.EditorID,
+				EditorID:         editorID,
+				GroupEditorID:    group.EditorID,
 				Type:             resp.Type,
 				SpeakerID:        resp.SpeakerID,
 				Text:             &resp.Text,
 				QuestID:          group.QuestID,
+				SourcePlugin:     sourcePlugin,
 				IsServicesBranch: group.IsServicesBranch,
 				Order:            resp.Order,
 			})
@@ -87,6 +101,13 @@ func ToPersonaGenInput(out *parser.ParserOutput) persona.PersonaGenInput {
 	}
 
 	return input
+}
+
+func derefString(v *string) string {
+	if v == nil {
+		return ""
+	}
+	return *v
 }
 
 // ToTranslatorInput maps ParserOutput to TranslatorInput.

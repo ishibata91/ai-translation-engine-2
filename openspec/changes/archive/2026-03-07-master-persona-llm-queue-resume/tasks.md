@@ -38,8 +38,8 @@
 
 ## 6. 仕様・ドキュメント整合
 
-- [ ] 6.1 実装に合わせて `openspec/specs/database_erd.md` の影響有無を確認し、必要なら更新する
-- [ ] 6.2 `openspec/specs/task/spec.md` `queue/spec.md` `llm/spec.md` `progress/spec.md` `persona/spec.md` `config/spec.md` の本体 spec 反映計画を記録する
+- [x] 6.1 実装に合わせて `openspec/specs/database_erd.md` の影響有無を確認し、必要なら更新する
+- [x] 6.2 `openspec/specs/task/spec.md` `queue/spec.md` `llm/spec.md` `progress/spec.md` `persona/spec.md` `config/spec.md` の本体 spec 反映計画を記録する
 - [ ] 6.3 フェーズ別の手動テスト結果を change 配下に記録し、アーカイブ前の検証証跡を残す
 
 ## 7. 実装中に確定した追加仕様
@@ -47,3 +47,5 @@
 - [x] 7.1 `provider=lmstudio` のモデルロードで `context_length` を設定可能にする（UI保存・再開時再読込を含む）
 - [x] 7.2 `frontend/src/components/ModelSettings.tsx` で並列実行数（sync concurrency）を設定可能にし、`master_persona.llm` 名前空間へ保存する
 - [x] 7.3 一時停止後の再起動/ダッシュボード再開時に進捗（current/total と progress%）を復元し、0から再開始しないようにする
+- [x] 7.4 リクエスト生成前の persona 下書き保存で `race/sex/voice_type/source_plugin` を抽出元属性で保存する（`race` に `record_type` を保存しない）
+- [x] 7.5 `npc_dialogues.editor_id` は response 側欠損時に dialogue group 側 `editor_id` へフォールバックして保存する

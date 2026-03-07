@@ -2,22 +2,26 @@ package persona
 
 // NPCDialogueData holds collected dialogue data for a single NPC.
 type NPCDialogueData struct {
-	SpeakerID string          `json:"speaker_id"`
-	EditorID  string          `json:"editor_id"`
-	NPCName   string          `json:"npc_name"`
-	Race      string          `json:"race"`
-	Sex       string          `json:"sex"`
-	VoiceType string          `json:"voice_type"`
-	Dialogues []DialogueEntry `json:"dialogues"`
+	SpeakerID    string          `json:"speaker_id"`
+	EditorID     string          `json:"editor_id"`
+	NPCName      string          `json:"npc_name"`
+	Race         string          `json:"race"`
+	Sex          string          `json:"sex"`
+	VoiceType    string          `json:"voice_type"`
+	SourcePlugin string          `json:"source_plugin"`
+	Dialogues    []DialogueEntry `json:"dialogues"`
 }
 
 // DialogueEntry represents a single dialogue line used for persona generation.
 type DialogueEntry struct {
-	Text              string `json:"text"`
-	EnglishText       string `json:"english_text"`
-	QuestID           string `json:"quest_id,omitempty"`
-	IsServicesBranch  bool   `json:"is_services_branch"`
-	Order             int    `json:"order"`
+	EditorID         string `json:"editor_id"`
+	RecordType       string `json:"record_type"`
+	Text             string `json:"text"`
+	EnglishText      string `json:"english_text"`
+	SourcePlugin     string `json:"source_plugin"`
+	QuestID          string `json:"quest_id,omitempty"`
+	IsServicesBranch bool   `json:"is_services_branch"`
+	Order            int    `json:"order"`
 }
 
 // ScoredDialogueEntry pairs a DialogueEntry with its computed importance score.
@@ -51,6 +55,32 @@ type TokenEstimation struct {
 	OutputTokens int  `json:"output_tokens"`
 	TotalTokens  int  `json:"total_tokens"`
 	ExceedsLimit bool `json:"exceeds_limit"`
+}
+
+// PersonaNPCView is a UI-facing row of one NPC in persona DB.
+type PersonaNPCView struct {
+	SpeakerID     string `json:"speaker_id"`
+	EditorID      string `json:"editor_id"`
+	NPCName       string `json:"npc_name"`
+	Race          string `json:"race"`
+	Sex           string `json:"sex"`
+	VoiceType     string `json:"voice_type"`
+	PersonaText   string `json:"persona_text"`
+	DialogueCount int    `json:"dialogue_count"`
+	UpdatedAt     string `json:"updated_at"`
+}
+
+// PersonaDialogueView is one stored dialogue row linked to npc_personas.
+type PersonaDialogueView struct {
+	ID               int64  `json:"id"`
+	SpeakerID        string `json:"speaker_id"`
+	EditorID         string `json:"editor_id"`
+	RecordType       string `json:"record_type"`
+	SourceText       string `json:"source_text"`
+	TranslatedText   string `json:"translated_text"`
+	QuestID          string `json:"quest_id"`
+	IsServicesBranch bool   `json:"is_services_branch"`
+	DialogueOrder    int    `json:"dialogue_order"`
 }
 
 // ScoringConfig holds configuration for importance scoring weights.

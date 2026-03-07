@@ -13,19 +13,25 @@ type PersonaGenInput struct {
 }
 
 type PersonaNPC struct {
-	ID       string
-	EditorID *string
-	Type     string
-	Name     string
+	ID           string
+	EditorID     *string
+	Type         string
+	Name         string
+	Race         string
+	Sex          string
+	VoiceType    string
+	SourcePlugin string
 }
 
 type PersonaDialogue struct {
 	ID               string
 	EditorID         *string
+	GroupEditorID    *string
 	Type             string
 	SpeakerID        *string
 	Text             *string
 	QuestID          *string
+	SourcePlugin     *string
 	IsServicesBranch bool
 	Order            int
 }
@@ -79,7 +85,11 @@ type ContextEvaluator interface {
 type PersonaStore interface {
 	InitSchema(ctx context.Context) error
 	SavePersona(ctx context.Context, result PersonaResult) error
+	SavePersonaBase(ctx context.Context, data NPCDialogueData) error
+	ReplaceDialogues(ctx context.Context, speakerID string, dialogues []DialogueEntry) error
 	GetPersona(ctx context.Context, speakerID string) (string, error)
+	ListNPCs(ctx context.Context) ([]PersonaNPCView, error)
+	ListDialoguesBySpeaker(ctx context.Context, speakerID string) ([]PersonaDialogueView, error)
 	Clear(ctx context.Context) error
 }
 

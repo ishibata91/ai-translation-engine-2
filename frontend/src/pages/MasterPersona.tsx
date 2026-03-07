@@ -7,6 +7,7 @@ import PersonaDetail from '../components/PersonaDetail';
 import { type NpcRow, type NpcStatus, STATUS_BADGE } from '../types/npc';
 import { SelectJSONFile } from '../wailsjs/go/main/App';
 import { CancelTask, GetAllTasks, GetTaskRequestState, ResumeTask, StartMasterPersonTask } from '../wailsjs/go/task/Bridge';
+import { ListDialoguesBySpeaker, ListNPCs } from '../wailsjs/go/persona/Service';
 import { ConfigGetAll, ConfigSet } from '../wailsjs/go/config/ConfigService';
 import type { PhaseCompletedEvent, FrontendTask } from '../types/task';
 import { DEFAULT_MASTER_PERSONA_LLM_CONFIG, type MasterPersonaLLMConfig } from '../types/masterPersona';
@@ -22,6 +23,45 @@ interface PersonaProgressEvent {
     Status: PersonaProgressStatus;
     Message: string;
 }
+
+interface PersonaNPCRecord {
+    speaker_id?: string;
+    SpeakerID?: string;
+    npc_name?: string;
+    NPCName?: string;
+    dialogue_count?: number;
+    DialogueCount?: number;
+    persona_text?: string;
+    PersonaText?: string;
+    updated_at?: string;
+    UpdatedAt?: string;
+}
+
+interface PersonaDialogueRecord {
+    record_type?: string;
+    RecordType?: string;
+    editor_id?: string;
+    EditorID?: string;
+    source_text?: string;
+    SourceText?: string;
+    translated_text?: string;
+    TranslatedText?: string;
+}
+
+const pickString = (value: unknown): string => {
+    if (typeof value === 'string') {
+        return value;
+    }
+    return '';
+};
+
+const formatUpdatedAt = (raw: string): string => {
+    const ts = Date.parse(raw);
+    if (!Number.isFinite(ts)) {
+        return '';
+    }
+    return new Date(ts).toLocaleString('ja-JP');
+};
 
 const MASTER_PERSONA_LLM_NAMESPACE = 'master_persona.llm';
 const SELECTED_PROVIDER_KEY = 'selected_provider';
@@ -118,7 +158,7 @@ const NPC_COLUMNS: ColumnDef<NpcRow, unknown>[] = [
 // ── ページコンポーネント ──────────────────────────────────
 const MasterPersona: React.FC = () => {
     const location = useLocation();
-    const [npcData] = useState<NpcRow[]>([]);
+    const [npcData, setNpcData] = useState<NpcRow[]>([]);
     const [selectedRow, setSelectedRow] = useState<NpcRow | null>(null);
     const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
     const [isGenerating, setIsGenerating] = useState<boolean>(false);
@@ -432,6 +472,78 @@ const MasterPersona: React.FC = () => {
         }
     };
 
+    const refreshNPCDataFromService = async () => {
+        try {
+            const records = (await ListNPCs() as unknown as PersonaNPCRecord[]) || [];
+            const rows: NpcRow[] = records
+                .map((record) => {
+                    const speakerID = pickString(record.speaker_id ?? record.SpeakerID);
+                    const npcName = pickString(record.npc_name ?? record.NPCName);
+                    const updatedAt = formatUpdatedAt(pickString(record.updated_at ?? record.UpdatedAt));
+                    const dialogueCount = Number(record.dialogue_count ?? record.DialogueCount ?? 0);
+                    return {
+                        formId: speakerID,
+                        name: npcName || 'Unknown NPC',
+                        dialogueCount: Number.isFinite(dialogueCount) ? dialogueCount : 0,
+                        status: '完了' as NpcStatus,
+                        updatedAt,
+                        personaText: pickString(record.persona_text ?? record.PersonaText),
+                        rawResponse: '',
+                        dialogues: [],
+                    };
+                })
+                .filter((row) => row.formId !== '');
+            setNpcData(rows);
+            if (rows.length === 0) {
+                setSelectedRow(null);
+                setSelectedRowId(null);
+            } else if (!rows.some((row) => row.formId === selectedRowId)) {
+                setSelectedRow(rows[0]);
+                setSelectedRowId(rows[0].formId);
+            }
+        } catch (error) {
+            console.error('failed to refresh npc rows from persona service', { error });
+        }
+    };
+
+    const loadDialoguesForSpeaker = async (speakerID: string) => {
+        try {
+            const records = (await ListDialoguesBySpeaker(speakerID) as unknown as PersonaDialogueRecord[]) || [];
+            const dialogues = records.map((row) => ({
+                recordType: pickString(row.record_type ?? row.RecordType),
+                editorId: pickString(row.editor_id ?? row.EditorID),
+                source: pickString(row.source_text ?? row.SourceText),
+                translation: pickString(row.translated_text ?? row.TranslatedText),
+            }));
+            setNpcData((prev) =>
+                prev.map((row) => (row.formId === speakerID ? { ...row, dialogues } : row)),
+            );
+            setSelectedRow((prev) => {
+                if (!prev || prev.formId !== speakerID) {
+                    return prev;
+                }
+                return { ...prev, dialogues };
+            });
+        } catch (error) {
+            console.error('failed to load dialogues from persona service', { speakerID, error });
+        }
+    };
+
+    const resetTaskView = () => {
+        setIsGenerating(false);
+        setActiveTaskStatus(null);
+        setActiveTaskId(null);
+        setStatusMessage('待機中');
+        resumeRequestedRef.current = false;
+    };
+
+    useEffect(() => {
+        if (!selectedRowId) {
+            return;
+        }
+        void loadDialoguesForSpeaker(selectedRowId);
+    }, [selectedRowId]);
+
     useEffect(() => {
         const navState = location.state as { taskId?: string; resumeFromDashboard?: boolean } | null;
         const taskIdFromNav = navState?.taskId;
@@ -456,7 +568,10 @@ const MasterPersona: React.FC = () => {
                     return;
                 }
                 hydrateTaskView(task);
-                return refreshProgressFromQueueState(task);
+                return Promise.all([
+                    refreshProgressFromQueueState(task),
+                    refreshNPCDataFromService(),
+                ]).then(() => undefined);
             })
             .catch((error) => {
                 console.error('failed to hydrate task from navigation state', error);
@@ -505,6 +620,7 @@ const MasterPersona: React.FC = () => {
             }
             if (event.Status === 'COMPLETED') {
                 setIsGenerating(false);
+                void refreshNPCDataFromService();
             }
         });
 
@@ -521,17 +637,24 @@ const MasterPersona: React.FC = () => {
             setActiveTaskStatus(task.status);
             if (task.status === 'paused' || task.status === 'cancelled' || task.status === 'completed' || task.status === 'failed') {
                 void refreshProgressFromQueueState(task);
+                void refreshNPCDataFromService();
             }
             if (task.status === 'failed') {
                 setIsGenerating(false);
                 setErrorMessage(task.error_msg || 'タスク実行に失敗しました');
             }
             if (task.status === 'completed') {
-                setIsGenerating(false);
+                setStatusMessage('処理完了');
+                setErrorMessage('');
+                resetTaskView();
             }
             if (task.status === 'paused' || task.status === 'cancelled') {
                 setIsGenerating(false);
                 setStatusMessage('一時停止中');
+            }
+            if (task.status === 'running') {
+                setIsGenerating(true);
+                setStatusMessage('リクエストを実行しています...');
             }
             if (task.status === 'request_generated') {
                 setStatusMessage('リクエスト生成完了。実行を開始します...');

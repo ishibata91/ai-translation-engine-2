@@ -42,13 +42,22 @@ func (c *DefaultDialogueCollector) CollectByNPC(ctx context.Context, data Person
 
 		// Map the raw dialogue to our internal DTO
 		entry := DialogueEntry{
+			RecordType:       raw.Type,
 			Text:             text,
 			EnglishText:      text, // For now, assuming raw text is English for NLP parsing if English. We might need a separate field if translation source is different.
 			IsServicesBranch: raw.IsServicesBranch,
 			Order:            raw.Order,
 		}
+		if raw.EditorID != nil {
+			entry.EditorID = *raw.EditorID
+		} else if raw.GroupEditorID != nil {
+			entry.EditorID = *raw.GroupEditorID
+		}
 		if raw.QuestID != nil {
 			entry.QuestID = *raw.QuestID
+		}
+		if raw.SourcePlugin != nil {
+			entry.SourcePlugin = *raw.SourcePlugin
 		}
 
 		speakerDialogues[speakerID] = append(speakerDialogues[speakerID], entry)
@@ -65,12 +74,19 @@ func (c *DefaultDialogueCollector) CollectByNPC(ctx context.Context, data Person
 		// Enrich with NPC metadata if available
 		if npc, found := data.NPCs[speakerID]; found {
 			npcData.NPCName = npc.Name
-			npcData.Race = npc.Type // Depending on how Type is mapped in the extraction Phase 1
-			// Sex and VoiceType might not be directly in PersonaNPC currently,
-			// so we leave them empty or map if they become available
+			npcData.Race = npc.Race
+			npcData.Sex = npc.Sex
+			npcData.VoiceType = npc.VoiceType
+			npcData.SourcePlugin = npc.SourcePlugin
 			if npc.EditorID != nil {
 				npcData.EditorID = *npc.EditorID
 			}
+		}
+		if npcData.SourcePlugin == "" && len(dialogues) > 0 {
+			npcData.SourcePlugin = dialogues[0].SourcePlugin
+		}
+		if npcData.EditorID == "" && len(dialogues) > 0 {
+			npcData.EditorID = dialogues[0].EditorID
 		}
 
 		result = append(result, npcData)

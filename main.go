@@ -97,7 +97,14 @@ func main() {
 		log.Printf("failed to recover llm queue worker state: %v", err)
 	}
 
-	personaStore := persona.NewPersonaStore(db)
+	// Persona data is persisted in dedicated persona.db.
+	personaDB, personaDBCleanup, err := datastore.NewSQLiteDB(context.Background(), "persona.db")
+	if err != nil {
+		log.Fatalf("failed to initialize persona database: %v", err)
+	}
+	defer personaDBCleanup()
+
+	personaStore := persona.NewPersonaStore(personaDB)
 	if err := personaStore.InitSchema(context.Background()); err != nil {
 		log.Fatalf("failed to initialize persona schema: %v", err)
 	}
@@ -108,6 +115,7 @@ func main() {
 		configStore,
 		configStore,
 	)
+	personaService := persona.NewService(personaStore, logger)
 
 	// 7. Setup Bridge
 	taskBridge := task.NewMasterPersonaBridge(taskManager, logger, parserLoader, personaGenerator, personaProgressNotifier, llmQueue, queueWorker)
@@ -145,6 +153,7 @@ func main() {
 			taskBridge,
 			configService,
 			modelCatalogService,
+			personaService,
 		},
 	})
 

@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
 import type { NpcRow } from '../types/npc';
-import { STATUS_BADGE } from '../types/npc';
 
-export type DetailTab = 'persona' | 'dialogues' | 'prompt' | 'raw' | 'meta';
+export type DetailTab = 'persona' | 'dialogues' | 'raw' | 'meta';
 
 interface PersonaDetailProps {
     npc: NpcRow | null;
@@ -31,14 +30,12 @@ const PersonaDetail: React.FC<PersonaDetailProps> = ({ npc }) => {
                         <span className="badge badge-outline">Class: Warrior</span>
                     </div>
                 </div>
-                <div className={`badge badge-sm ${STATUS_BADGE[npc.status]}`}>{npc.status}</div>
             </div>
 
             {/* タブナビゲーション */}
             <div className="tabs tabs-boxed bg-base-200 w-fit shrink-0">
                 <a className={`tab ${detailTab === 'persona' ? 'tab-active' : ''}`} onClick={() => setDetailTab('persona')}>ペルソナ</a>
                 <a className={`tab ${detailTab === 'dialogues' ? 'tab-active' : ''}`} onClick={() => setDetailTab('dialogues')}>セリフ一覧</a>
-                <a className={`tab ${detailTab === 'prompt' ? 'tab-active' : ''}`} onClick={() => setDetailTab('prompt')}>プロンプト履歴</a>
                 <a className={`tab ${detailTab === 'raw' ? 'tab-active' : ''}`} onClick={() => setDetailTab('raw')}>RAWレスポンス</a>
                 <a className={`tab ${detailTab === 'meta' ? 'tab-active' : ''}`} onClick={() => setDetailTab('meta')}>メタ情報</a>
             </div>
@@ -49,7 +46,8 @@ const PersonaDetail: React.FC<PersonaDetailProps> = ({ npc }) => {
                     <label className="label"><span className="label-text font-bold">生成されたペルソナ情報 (プロンプト動的注入用)</span></label>
                     <textarea
                         className="textarea textarea-bordered flex-1 text-base leading-relaxed"
-                        defaultValue={`誇り高く、カリスマ性のあるストームクロークの反乱軍リーダー。雄弁で威厳のある口調。\n一人称: 私、俺\n二人称: お前、貴様\n特徴: スカイリムの独立とノルドの誇りを強調する。「～だ」「～だろう」「～なのだ」といった断定的で力強い語尾を多用する。若者には厳しくも期待を込めて接する。`}
+                        value={npc.personaText}
+                        readOnly
                     />
                     <div className="flex justify-end gap-2 mt-2 shrink-0">
                         <button className="btn btn-outline btn-sm">再生成</button>
@@ -88,18 +86,6 @@ const PersonaDetail: React.FC<PersonaDetailProps> = ({ npc }) => {
                 </div>
             )}
 
-            {/* プロンプト履歴タブ */}
-            {detailTab === 'prompt' && (
-                <div className="mockup-code flex-1 overflow-y-auto bg-base-200 text-base-content text-sm border border-base-300">
-                    {npc.promptHistory.length > 0
-                        ? npc.promptHistory.map((line, i) => (
-                            <pre key={i} data-prefix={i + 1}><code>{line}</code></pre>
-                        ))
-                        : <pre data-prefix="—"><code className="text-base-content/40">(プロンプト履歴なし)</code></pre>
-                    }
-                </div>
-            )}
-
             {/* RAWレスポンスタブ */}
             {detailTab === 'raw' && (
                 <div className="mockup-code flex-1 overflow-y-auto bg-base-200 text-base-content text-sm border border-base-300">
@@ -116,9 +102,6 @@ const PersonaDetail: React.FC<PersonaDetailProps> = ({ npc }) => {
 
                         <span className="font-bold">NPC名</span>
                         <span>{npc.name}</span>
-
-                        <span className="font-bold">ステータス</span>
-                        <div><div className={`badge badge-sm ${STATUS_BADGE[npc.status]}`}>{npc.status}</div></div>
 
                         <span className="font-bold">セリフ数</span>
                         <span className="font-mono">{npc.dialogueCount} 行</span>

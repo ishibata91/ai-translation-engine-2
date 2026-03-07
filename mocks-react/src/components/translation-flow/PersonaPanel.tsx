@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 const ModelSettings = ({ title }: any) => <div className="p-4 border border-dashed border-base-300 text-center text-gray-500 rounded-xl">[{title} プレースホルダー]</div>;
 const PersonaDetail = ({ npc }: any) => <div className="p-4 text-center text-gray-400">Persona Detail Placeholder</div>;
 const NPC_DATA: any[] = [];
-const STATUS_BADGE: any = {};
 type NpcRow = any;
 
 interface PersonaPanelProps {
@@ -35,9 +34,6 @@ export const PersonaPanel: React.FC<PersonaPanelProps> = ({ isActive, onNext }) 
                                     onClick={() => setSelectedNpc(npc)}
                                 >
                                     {npc.name}
-                                    <span className={`badge ${STATUS_BADGE[npc.status]} badge-sm ml-auto`}>
-                                        {npc.status}
-                                    </span>
                                 </a>
                             </li>
                         ))}

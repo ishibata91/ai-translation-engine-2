@@ -89,6 +89,19 @@ func (g *DefaultPersonaGenerator) PreparePrompts(
 	thresholdCount := 0
 
 	for _, npcData := range groupedData {
+		// Persist base NPC metadata and dialogues before request generation.
+		if err := g.Store.SavePersonaBase(ctx, npcData); err != nil {
+			slog.WarnContext(ctx, "failed to save persona base data",
+				slog.String("speaker_id", npcData.SpeakerID),
+				slog.String("error", err.Error()),
+			)
+		} else if err := g.Store.ReplaceDialogues(ctx, npcData.SpeakerID, npcData.Dialogues); err != nil {
+			slog.WarnContext(ctx, "failed to save persona dialogues",
+				slog.String("speaker_id", npcData.SpeakerID),
+				slog.String("error", err.Error()),
+			)
+		}
+
 		// Check if already generated
 		exists, err := g.Store.GetPersona(ctx, npcData.SpeakerID)
 		if err == nil && exists != "" {
@@ -126,10 +139,13 @@ func (g *DefaultPersonaGenerator) PreparePrompts(
 			UserPrompt:   sb.String(),
 			Temperature:  0.3,
 			Metadata: map[string]interface{}{
-				"speaker_id": npcData.SpeakerID,
-				"npc_name":   npcData.NPCName,
-				"race":       npcData.Race,
-				"editor_id":  npcData.EditorID,
+				"speaker_id":    npcData.SpeakerID,
+				"npc_name":      npcData.NPCName,
+				"race":          npcData.Race,
+				"sex":           npcData.Sex,
+				"voice_type":    npcData.VoiceType,
+				"source_plugin": npcData.SourcePlugin,
+				"editor_id":     npcData.EditorID,
 			},
 		}
 		requests = append(requests, request)
@@ -213,15 +229,21 @@ func (g *DefaultPersonaGenerator) SaveResultsWithSummary(
 		// Prepare PersonaResult from metadata if available
 		npcName, _ := resp.Metadata["npc_name"].(string)
 		race, _ := resp.Metadata["race"].(string)
+		sex, _ := resp.Metadata["sex"].(string)
+		voiceType, _ := resp.Metadata["voice_type"].(string)
+		sourcePlugin, _ := resp.Metadata["source_plugin"].(string)
 		editorID, _ := resp.Metadata["editor_id"].(string)
 
 		result := PersonaResult{
-			SpeakerID:   speakerID,
-			EditorID:    editorID,
-			NPCName:     npcName,
-			Race:        race,
-			PersonaText: personaText,
-			Status:      "success",
+			SpeakerID:    speakerID,
+			EditorID:     editorID,
+			NPCName:      npcName,
+			Race:         race,
+			Sex:          sex,
+			VoiceType:    voiceType,
+			PersonaText:  personaText,
+			SourcePlugin: sourcePlugin,
+			Status:       "success",
 		}
 
 		if err := g.Store.SavePersona(ctx, result); err != nil {

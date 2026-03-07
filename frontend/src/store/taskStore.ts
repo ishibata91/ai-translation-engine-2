@@ -29,6 +29,10 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     },
 
     updateTask: (task) => {
+        if (task.status === 'completed') {
+            get().removeTask(task.id);
+            return;
+        }
         set((state) => ({
             tasks: {
                 ...state.tasks,
@@ -52,10 +56,11 @@ export const useTaskStore = create<TaskState>((set, get) => ({
         }
         set({ isLoading: true });
         try {
-            const tasks = typeof GetAllTasks === 'function'
-                ? (await GetAllTasks() as any) as FrontendTask[]
-                : (await GetActiveTasks() as any) as FrontendTask[];
-            get().setTasks(tasks || []);
+            const tasks = typeof GetActiveTasks === 'function'
+                ? (await GetActiveTasks() as any) as FrontendTask[]
+                : (await GetAllTasks() as any) as FrontendTask[];
+            const activeOnly = (tasks || []).filter((t) => t.status !== 'completed');
+            get().setTasks(activeOnly);
         } catch (error) {
             console.error('Failed to fetch tasks:', error);
         } finally {

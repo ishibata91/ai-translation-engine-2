@@ -13,7 +13,7 @@ export interface NpcRow {
     dialogueCount: number;
     status: NpcStatus;
     updatedAt: string;
-    promptHistory: string[];
+    personaText: string;
     rawResponse: string;
     dialogues: Dialogue[];
 }
