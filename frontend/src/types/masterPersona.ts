@@ -6,6 +6,8 @@ export interface MasterPersonaLLMConfig {
     endpoint: string;
     apiKey: string;
     temperature: number;
+    contextLength: number;
+    syncConcurrency: number;
 }
 
 export const DEFAULT_MASTER_PERSONA_LLM_CONFIG: MasterPersonaLLMConfig = {
@@ -14,4 +16,6 @@ export const DEFAULT_MASTER_PERSONA_LLM_CONFIG: MasterPersonaLLMConfig = {
     endpoint: 'http://localhost:1234',
     apiKey: '',
     temperature: 0.3,
+    contextLength: 0,
+    syncConcurrency: 1,
 };

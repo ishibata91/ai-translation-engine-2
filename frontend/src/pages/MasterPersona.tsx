@@ -40,6 +40,8 @@ const normalizeProvider = (value: string | undefined): MasterPersonaLLMConfig['p
 
 const providerNamespace = (provider: MasterPersonaLLMConfig['provider']): string =>
     `${MASTER_PERSONA_LLM_NAMESPACE}.${provider}`;
+const syncConcurrencyKey = (provider: MasterPersonaLLMConfig['provider']): string =>
+    `sync_concurrency.${provider}`;
 
 const toErrorMessage = (error: unknown, fallback: string): string => {
     if (typeof error === 'string' && error.trim() !== '') {
@@ -77,7 +79,16 @@ const buildProviderConfigPairs = (cfg: MasterPersonaLLMConfig): Record<string, s
     endpoint: cfg.endpoint,
     api_key: cfg.provider === 'lmstudio' ? '' : cfg.apiKey,
     temperature: String(cfg.temperature),
+    context_length: String(cfg.contextLength),
 });
+
+const parseTaskTimestamp = (value: string | undefined): number => {
+    if (!value) {
+        return 0;
+    }
+    const t = Date.parse(value);
+    return Number.isFinite(t) ? t : 0;
+};
 
 // ── 列定義 ───────────────────────────────────────────────
 const NPC_COLUMNS: ColumnDef<NpcRow, unknown>[] = [
@@ -138,15 +149,24 @@ const MasterPersona: React.FC = () => {
         provider: MasterPersonaLLMConfig['provider'],
         legacyRoot?: Record<string, string>,
     ): Promise<MasterPersonaLLMConfig> => {
+        const root = legacyRoot ?? await ConfigGetAll(MASTER_PERSONA_LLM_NAMESPACE);
         const loaded = await ConfigGetAll(providerNamespace(provider));
         const source = Object.keys(loaded).length > 0 ? loaded : (legacyRoot ?? {});
         const loadedTemperature = Number.parseFloat(source.temperature ?? '');
+        const loadedContextLength = Number.parseInt(source.context_length ?? '', 10);
+        const loadedSyncConcurrency = Number.parseInt(root[syncConcurrencyKey(provider)] ?? '', 10);
         const config = {
             provider,
             model: source.model ?? DEFAULT_MASTER_PERSONA_LLM_CONFIG.model,
             endpoint: source.endpoint || DEFAULT_MASTER_PERSONA_LLM_CONFIG.endpoint,
             apiKey: source.api_key ?? DEFAULT_MASTER_PERSONA_LLM_CONFIG.apiKey,
             temperature: Number.isFinite(loadedTemperature) ? loadedTemperature : DEFAULT_MASTER_PERSONA_LLM_CONFIG.temperature,
+            contextLength: Number.isFinite(loadedContextLength) && loadedContextLength > 0
+                ? loadedContextLength
+                : DEFAULT_MASTER_PERSONA_LLM_CONFIG.contextLength,
+            syncConcurrency: Number.isFinite(loadedSyncConcurrency) && loadedSyncConcurrency > 0
+                ? loadedSyncConcurrency
+                : DEFAULT_MASTER_PERSONA_LLM_CONFIG.syncConcurrency,
         };
         return config;
     };
@@ -310,14 +330,22 @@ const MasterPersona: React.FC = () => {
             ? Promise.resolve()
             : Promise.all(
                 writes.map(([key, val]) => ConfigSet(providerNamespace(current.provider), key, val)),
-            ).then(() => {
-                lastSavedLLMConfigRef.current[current.provider] = current;
-            });
+            ).then(() => undefined);
+        const persistSyncConcurrency = previous?.syncConcurrency === current.syncConcurrency
+            ? Promise.resolve()
+            : ConfigSet(
+                MASTER_PERSONA_LLM_NAMESPACE,
+                syncConcurrencyKey(current.provider),
+                String(current.syncConcurrency),
+            );
+        const persistAll = Promise.all([persistProvider, persistSyncConcurrency]).then(() => {
+            lastSavedLLMConfigRef.current[current.provider] = current;
+        });
 
         if (selectedProviderRef.current === current.provider) {
-            return persistProvider;
+            return persistAll.then(() => undefined);
         }
-        return persistProvider.then(() =>
+        return persistAll.then(() =>
             ConfigSet(MASTER_PERSONA_LLM_NAMESPACE, SELECTED_PROVIDER_KEY, current.provider),
         ).then(() => {
             selectedProviderRef.current = current.provider;
@@ -394,35 +422,52 @@ const MasterPersona: React.FC = () => {
         };
     }, [isLLMConfigHydrated]);
 
+    const refreshProgressFromQueueState = async (task: FrontendTask) => {
+        try {
+            const state = await GetTaskRequestState(task.id);
+            const queueTotal = Number(state.total ?? 0);
+            const queueCompleted = Number(state.completed ?? 0);
+            const metadataTotal = Number(task.metadata?.request_count ?? 0);
+            const metadataCompleted = Number(task.metadata?.resume_cursor ?? 0);
+            const total = queueTotal > 0 ? queueTotal : (metadataTotal > 0 ? metadataTotal : 0);
+            const current = queueTotal > 0 ? queueCompleted : (metadataCompleted > 0 ? metadataCompleted : 0);
+            setProgressCounts({
+                current,
+                total,
+            });
+            if (total > 0) {
+                setProgressPercent(Math.min(100, Math.max(0, (current / total) * 100)));
+            }
+        } catch (error) {
+            console.error('failed to refresh request progress state', { taskId: task.id, error });
+        }
+    };
+
     useEffect(() => {
         const navState = location.state as { taskId?: string; resumeFromDashboard?: boolean } | null;
         const taskIdFromNav = navState?.taskId;
-        if (!taskIdFromNav) {
-            return;
-        }
         let disposed = false;
         void GetAllTasks()
             .then((tasks) => {
                 if (disposed) {
                     return;
                 }
-                const task = (tasks as FrontendTask[]).find((t) => t.id === taskIdFromNav);
+                const personaTasks = (tasks as FrontendTask[])
+                    .filter((t) => t.type === 'persona_extraction');
+                let task: FrontendTask | undefined;
+                if (taskIdFromNav) {
+                    task = personaTasks.find((t) => t.id === taskIdFromNav);
+                } else {
+                    const recoverable = personaTasks
+                        .filter((t) => t.status !== 'completed')
+                        .sort((a, b) => parseTaskTimestamp(b.updated_at) - parseTaskTimestamp(a.updated_at));
+                    task = recoverable[0];
+                }
                 if (!task) {
                     return;
                 }
                 hydrateTaskView(task);
-                return GetTaskRequestState(task.id).then((state) => {
-                    if (disposed) {
-                        return;
-                    }
-                    setProgressCounts({
-                        current: state.completed ?? 0,
-                        total: state.total ?? 0,
-                    });
-                    if ((state.total ?? 0) > 0) {
-                        setProgressPercent(Math.min(100, Math.max(0, ((state.completed ?? 0) / state.total) * 100)));
-                    }
-                });
+                return refreshProgressFromQueueState(task);
             })
             .catch((error) => {
                 console.error('failed to hydrate task from navigation state', error);
@@ -485,6 +530,9 @@ const MasterPersona: React.FC = () => {
                 return;
             }
             setActiveTaskStatus(task.status);
+            if (task.status === 'paused' || task.status === 'cancelled' || task.status === 'completed' || task.status === 'failed') {
+                void refreshProgressFromQueueState(task);
+            }
             if (task.status === 'failed') {
                 setIsGenerating(false);
                 setErrorMessage(task.error_msg || 'タスク実行に失敗しました');

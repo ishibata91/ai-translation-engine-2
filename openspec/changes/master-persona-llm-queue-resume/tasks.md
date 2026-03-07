@@ -20,7 +20,7 @@
 - [x] 3.2 `pkg/llm` 呼び出し時に再開時点の `config` から `provider/model` を再読込して適用する
 - [x] 3.3 `task` 側で phase イベント（REQUEST_ENQUEUED / REQUEST_DISPATCHING / REQUEST_SAVING / REQUEST_COMPLETED）を決定し `progress` へ報告する
 - [x] 3.4 キャンセル時に request state を保存し、再開 API で未完了 request のみ再送する
-- [ ] 3.5 ユーザー動作テスト: LM Studio 実行中にキャンセル→再開して途中から進行することを確認する
+- [x] 3.5 ユーザー動作テスト: LM Studio 実行中にキャンセル→再開して途中から進行することを確認する
 
 ## 4. インフラ層の非依存性担保
 
@@ -44,6 +44,6 @@
 
 ## 7. 実装中に確定した追加仕様
 
-- [ ] 7.1 `provider=lmstudio` のモデルロードで `context_length` を設定可能にする（UI保存・再開時再読込を含む）
-- [ ] 7.2 `frontend/src/components/ModelSettings.tsx` で並列実行数（sync concurrency）を設定可能にし、`master_persona.llm` 名前空間へ保存する
-- [ ] 7.3 一時停止後の再起動/ダッシュボード再開時に進捗（current/total と progress%）を復元し、0から再開始しないようにする
+- [x] 7.1 `provider=lmstudio` のモデルロードで `context_length` を設定可能にする（UI保存・再開時再読込を含む）
+- [x] 7.2 `frontend/src/components/ModelSettings.tsx` で並列実行数（sync concurrency）を設定可能にし、`master_persona.llm` 名前空間へ保存する
+- [x] 7.3 一時停止後の再起動/ダッシュボード再開時に進捗（current/total と progress%）を復元し、0から再開始しないようにする

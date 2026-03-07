@@ -25,7 +25,7 @@ func ExecuteBulkSync(ctx context.Context, client LLMClient, reqs []Request, conc
 	results := make([]Response, len(reqs))
 
 	if err := runWorkerPool(ctx, client, reqs, concurrency, results); err != nil {
-		return nil, err
+		return results, err
 	}
 
 	return results, nil

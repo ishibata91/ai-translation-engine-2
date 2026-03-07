@@ -32,6 +32,14 @@ const PROVIDER_LABELS: Record<MasterPersonaProvider, string> = {
     xai: 'xAI (Grok)',
 };
 
+const CONTEXT_LENGTH_PRESETS: Array<{ label: string; value: number }> = [
+    { label: '4096', value: 4096 },
+    { label: '8k', value: 8192 },
+    { label: '16k', value: 16384 },
+    { label: '32k', value: 32768 },
+    { label: '64k', value: 65536 },
+];
+
 interface Props {
     title?: string;
     value: MasterPersonaLLMConfig;
@@ -200,7 +208,7 @@ const ModelSettings: React.FC<Props> = ({ title = 'モデル設定', value, onCh
                     <div className={`grid gap-4 ${isLMStudio ? 'grid-cols-1' : 'grid-cols-2'}`}>
                         <div className="flex flex-col gap-1">
                             <label className="label pb-0">
-                                <span className="label-text font-bold">Endpoint</span>
+                                <span className="label-text font-bold">エンドポイント</span>
                             </label>
                             <input
                                 type="text"
@@ -225,7 +233,66 @@ const ModelSettings: React.FC<Props> = ({ title = 'モデル設定', value, onCh
                         )}
                     </div>
 
+                    {isLMStudio && (
+                        <div className="grid grid-cols-1 gap-4">
+                            <div className="flex flex-col gap-1">
+                                <label className="label pb-0">
+                                    <span className="label-text font-bold">コンテキスト長</span>
+                                </label>
+                                <div className="flex flex-wrap gap-2 mb-2">
+                                    {CONTEXT_LENGTH_PRESETS.map((preset) => (
+                                        <button
+                                            key={preset.label}
+                                            type="button"
+                                            className={`btn btn-xs ${value.contextLength === preset.value ? 'btn-primary' : 'btn-outline'}`}
+                                            onClick={() => onChange({ ...value, contextLength: preset.value })}
+                                        >
+                                            {preset.label}
+                                        </button>
+                                    ))}
+                                </div>
+                                <input
+                                    type="number"
+                                    min={0}
+                                    step={1}
+                                    className="input input-bordered input-sm w-full font-mono"
+                                    value={value.contextLength}
+                                    onChange={(e) => {
+                                        const parsed = Number.parseInt(e.target.value, 10);
+                                        onChange({
+                                            ...value,
+                                            contextLength: Number.isFinite(parsed) && parsed > 0 ? parsed : 0,
+                                        });
+                                    }}
+                                />
+                                <span className="text-xs text-base-content/60">0 は LM Studio の既定値を使用</span>
+                            </div>
+                        </div>
+                    )}
+
                     <div className="grid grid-cols-1 gap-4">
+                        <div className="flex flex-col gap-1">
+                            <div className="flex justify-between items-center">
+                                <label className="label-text font-bold text-sm">並列実行数</label>
+                                <span className="badge badge-ghost badge-sm font-mono">{value.syncConcurrency}</span>
+                            </div>
+                            <input
+                                type="range"
+                                min="1"
+                                max="64"
+                                step="1"
+                                className="range range-primary range-sm w-full"
+                                value={value.syncConcurrency}
+                                onChange={(e) => {
+                                    const parsed = Number.parseInt(e.target.value, 10);
+                                    onChange({
+                                        ...value,
+                                        syncConcurrency: Number.isFinite(parsed) && parsed > 0 ? parsed : 1,
+                                    });
+                                }}
+                            />
+                            <span className="text-xs text-base-content/60">1〜64 で調整</span>
+                        </div>
                         <div className="flex flex-col gap-1">
                             <div className="flex justify-between items-center">
                                 <label className="label-text font-bold text-sm">Temperature</label>

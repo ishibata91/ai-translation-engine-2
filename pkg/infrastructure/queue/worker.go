@@ -240,7 +240,23 @@ func (w *Worker) processSync(ctx context.Context, processID string, llmConfig ll
 			w.logger.InfoContext(ctx, "ExecuteBulkSync canceled", slog.String("error", err.Error()))
 			cancelMsg := "task canceled"
 			persistCtx := context.Background()
-			for _, job := range jobs {
+			for i, job := range jobs {
+				// Keep completed responses even when the overall run is canceled.
+				if i < len(responses) {
+					res := responses[i]
+					if res.Success {
+						respJSON, _ := json.Marshal(res)
+						respStr := string(respJSON)
+						_ = w.queue.UpdateJob(persistCtx, job.ID, StatusCompleted, &respStr, nil, nil)
+						continue
+					}
+					// Empty result means this request was not processed yet.
+					if res.Error != "" {
+						errMsg := res.Error
+						_ = w.queue.UpdateJob(persistCtx, job.ID, StatusCancelled, nil, &errMsg, nil)
+						continue
+					}
+				}
 				_ = w.queue.UpdateJob(persistCtx, job.ID, StatusCancelled, nil, &cancelMsg, nil)
 			}
 		} else {
@@ -512,8 +528,21 @@ func (w *Worker) fetchLLMConfig(ctx context.Context, opts ProcessOptions) (llm.L
 	if concurrency <= 0 {
 		concurrency = llm.DefaultConcurrency(provider)
 	}
+	strContextLength := w.getConfigString(ctx, ns, "context_length", "")
+	if strContextLength == "" {
+		strContextLength = w.getConfigString(ctx, providerNS, "context_length", "")
+	}
+	var contextLength int
+	if strContextLength != "" {
+		fmt.Sscanf(strContextLength, "%d", &contextLength)
+	}
 	if strings.TrimSpace(model) == "" {
 		return llm.LLMConfig{}, llm.ErrModelRequired
+	}
+
+	params := map[string]interface{}{}
+	if contextLength > 0 {
+		params["context_length"] = contextLength
 	}
 
 	return llm.LLMConfig{
@@ -521,6 +550,7 @@ func (w *Worker) fetchLLMConfig(ctx context.Context, opts ProcessOptions) (llm.L
 		APIKey:      apiKey,
 		Endpoint:    endpoint,
 		Model:       model,
+		Parameters:  params,
 		Concurrency: concurrency,
 	}, nil
 }

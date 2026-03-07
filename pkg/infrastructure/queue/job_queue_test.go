@@ -15,12 +15,13 @@ import (
 
 // mockLLMClient simulates LLM completion
 type mockLLMClient struct {
-	delay     time.Duration
-	failIdx   int
-	count     int
-	loadErr   error
-	loadCnt   int
-	unloadCnt int
+	delay      time.Duration
+	failIdx    int
+	count      int
+	loadErr    error
+	loadCnt    int
+	loadCtxLen int
+	unloadCnt  int
 }
 
 func (m *mockLLMClient) ListModels(ctx context.Context) ([]llm.ModelInfo, error) {
@@ -48,6 +49,7 @@ func (m *mockLLMClient) GetEmbedding(ctx context.Context, text string) ([]float3
 func (m *mockLLMClient) HealthCheck(ctx context.Context) error { return nil }
 func (m *mockLLMClient) LoadModel(ctx context.Context, model string, contextLength int) (string, error) {
 	m.loadCnt++
+	m.loadCtxLen = contextLength
 	if m.loadErr != nil {
 		return "", m.loadErr
 	}
@@ -124,6 +126,25 @@ func (m *mockSecretStore) SetSecret(ctx context.Context, ns, key, val string) er
 func (m *mockSecretStore) DeleteSecret(ctx context.Context, ns, key string) error   { return nil }
 func (m *mockSecretStore) ListSecretKeys(ctx context.Context, ns string) ([]string, error) {
 	return nil, nil
+}
+
+type mapConfigStore struct {
+	values map[string]string
+}
+
+func (m *mapConfigStore) Get(ctx context.Context, ns, key string) (string, error) {
+	if v, ok := m.values[ns+"::"+key]; ok {
+		return v, nil
+	}
+	return "", nil
+}
+func (m *mapConfigStore) Set(ctx context.Context, ns, key, val string) error { return nil }
+func (m *mapConfigStore) Delete(ctx context.Context, ns, key string) error   { return nil }
+func (m *mapConfigStore) GetAll(ctx context.Context, ns string) (map[string]string, error) {
+	return nil, nil
+}
+func (m *mapConfigStore) Watch(ns, key string, cb config.ChangeCallback) config.UnsubscribeFunc {
+	return func() {}
 }
 
 func TestJobQueue_Lifecycle(t *testing.T) {
@@ -384,5 +405,131 @@ func TestQueue_TaskRequests_SurviveReopen(t *testing.T) {
 	}
 	if items[0].RequestState != RequestStatePending {
 		t.Fatalf("unexpected persisted request state: %s", items[0].RequestState)
+	}
+}
+
+func TestWorker_ProcessWithOptions_LoadsLMStudioContextLengthFromConfig(t *testing.T) {
+	ctx := context.Background()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	q, err := NewQueue(ctx, ":memory:", logger)
+	if err != nil {
+		t.Fatalf("failed to create queue: %v", err)
+	}
+	defer q.Close()
+
+	processID := "ctx-len"
+	if err := q.SubmitTaskRequests(ctx, processID, "persona_extraction", []llm.Request{{UserPrompt: "q"}}); err != nil {
+		t.Fatalf("SubmitTaskRequests failed: %v", err)
+	}
+
+	client := &mockLLMClient{}
+	manager := &mockLLMManager{client: client}
+	cfg := &mapConfigStore{
+		values: map[string]string{
+			"master_persona.llm::selected_provider":       "lmstudio",
+			"master_persona.llm.lmstudio::model":          "mock-model",
+			"master_persona.llm.lmstudio::endpoint":       "http://localhost:1234",
+			"master_persona.llm.lmstudio::context_length": "8192",
+		},
+	}
+	worker := NewWorker(q, manager, cfg, &mockSecretStore{}, progress.NewNoopNotifier(), logger)
+
+	err = worker.ProcessProcessIDWithOptions(ctx, processID, ProcessOptions{
+		ConfigNamespace:        "master_persona.llm",
+		UseConfigProviderModel: true,
+		ConfigRead: ConfigReadOptions{
+			Namespace:           "master_persona.llm",
+			DefaultProvider:     "lmstudio",
+			SelectedProviderKey: "selected_provider",
+		},
+	})
+	if err != nil {
+		t.Fatalf("ProcessProcessIDWithOptions failed: %v", err)
+	}
+	if client.loadCtxLen != 8192 {
+		t.Fatalf("expected context_length=8192, got %d", client.loadCtxLen)
+	}
+}
+
+func TestWorker_ProcessWithOptions_LoadsSyncConcurrencyFromNamespace(t *testing.T) {
+	ctx := context.Background()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	q, err := NewQueue(ctx, ":memory:", logger)
+	if err != nil {
+		t.Fatalf("failed to create queue: %v", err)
+	}
+	defer q.Close()
+
+	processID := "sync-concurrency"
+	if err := q.SubmitTaskRequests(ctx, processID, "persona_extraction", []llm.Request{{UserPrompt: "q"}}); err != nil {
+		t.Fatalf("SubmitTaskRequests failed: %v", err)
+	}
+
+	client := &mockLLMClient{}
+	manager := &mockLLMManager{client: client}
+	cfg := &mapConfigStore{
+		values: map[string]string{
+			"master_persona.llm::selected_provider":         "lmstudio",
+			"master_persona.llm.lmstudio::model":            "mock-model",
+			"master_persona.llm.lmstudio::endpoint":         "http://localhost:1234",
+			"master_persona.llm::sync_concurrency.lmstudio": "3",
+		},
+	}
+	worker := NewWorker(q, manager, cfg, &mockSecretStore{}, progress.NewNoopNotifier(), logger)
+
+	err = worker.ProcessProcessIDWithOptions(ctx, processID, ProcessOptions{
+		ConfigNamespace:        "master_persona.llm",
+		UseConfigProviderModel: true,
+		ConfigRead: ConfigReadOptions{
+			Namespace:           "master_persona.llm",
+			DefaultProvider:     "lmstudio",
+			SelectedProviderKey: "selected_provider",
+		},
+	})
+	if err != nil {
+		t.Fatalf("ProcessProcessIDWithOptions failed: %v", err)
+	}
+	if manager.lastConfig.Concurrency != 3 {
+		t.Fatalf("expected sync concurrency=3, got %d", manager.lastConfig.Concurrency)
+	}
+}
+
+func TestWorker_CancelKeepsCompletedRequests(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	q, err := NewQueue(context.Background(), ":memory:", logger)
+	if err != nil {
+		t.Fatalf("failed to create queue: %v", err)
+	}
+	defer q.Close()
+
+	processID := "cancel-keep-completed"
+	reqs := []any{
+		llm.Request{UserPrompt: "p1"},
+		llm.Request{UserPrompt: "p2"},
+		llm.Request{UserPrompt: "p3"},
+	}
+	if err := q.SubmitJobs(context.Background(), processID, reqs); err != nil {
+		t.Fatalf("SubmitJobs failed: %v", err)
+	}
+
+	client := &mockLLMClient{delay: 80 * time.Millisecond}
+	worker := NewWorker(q, &mockLLMManager{client: client}, &mockConfigStore{}, &mockSecretStore{}, progress.NewNoopNotifier(), logger)
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(120 * time.Millisecond)
+		cancel()
+	}()
+
+	err = worker.ProcessProcessID(ctx, processID)
+	if err == nil {
+		t.Fatalf("expected cancellation error")
+	}
+
+	completed, err := q.GetJobsByStatus(context.Background(), processID, StatusCompleted)
+	if err != nil {
+		t.Fatalf("GetJobsByStatus completed failed: %v", err)
+	}
+	if len(completed) == 0 {
+		t.Fatalf("expected at least one completed job to be preserved on cancel")
 	}
 }
