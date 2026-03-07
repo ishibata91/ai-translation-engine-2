@@ -281,4 +281,21 @@ func TestPersonaGenSlice_UsesConfiguredPromptSplit(t *testing.T) {
 	if !strings.Contains(requests[0].UserPrompt, "Dialogue History:") {
 		t.Fatalf("expected dialogue history block in user prompt: %q", requests[0].UserPrompt)
 	}
+
+	rows, err := store.ListNPCs(ctx)
+	if err != nil {
+		t.Fatalf("ListNPCs failed: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("expected one saved persona row, got %d", len(rows))
+	}
+	if rows[0].Status != "draft" {
+		t.Fatalf("expected saved persona row to remain draft after request generation, got %q", rows[0].Status)
+	}
+	if !strings.Contains(rows[0].GenerationRequest, "System Prompt:\nSYSTEM RULES") {
+		t.Fatalf("expected saved generation_request to contain system prompt, got %q", rows[0].GenerationRequest)
+	}
+	if !strings.Contains(rows[0].GenerationRequest, "User Prompt:\n会話から口調と性格を抽出してください。") {
+		t.Fatalf("expected saved generation_request to contain user prompt, got %q", rows[0].GenerationRequest)
+	}
 }

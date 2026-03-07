@@ -413,6 +413,43 @@ func TestQueue_TaskRequests_SurviveReopen(t *testing.T) {
 	}
 }
 
+func TestQueue_DeleteTaskRequests_RemovesOnlyTargetTask(t *testing.T) {
+	ctx := context.Background()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	q, err := NewQueue(ctx, ":memory:", logger)
+	if err != nil {
+		t.Fatalf("failed to create queue: %v", err)
+	}
+	defer q.Close()
+
+	if err := q.SubmitTaskRequests(ctx, "task-a", "persona_extraction", []llm.Request{{UserPrompt: "a1"}, {UserPrompt: "a2"}}); err != nil {
+		t.Fatalf("SubmitTaskRequests task-a failed: %v", err)
+	}
+	if err := q.SubmitTaskRequests(ctx, "task-b", "persona_extraction", []llm.Request{{UserPrompt: "b1"}}); err != nil {
+		t.Fatalf("SubmitTaskRequests task-b failed: %v", err)
+	}
+
+	if err := q.DeleteTaskRequests(ctx, "task-a"); err != nil {
+		t.Fatalf("DeleteTaskRequests failed: %v", err)
+	}
+
+	taskAJobs, err := q.GetTaskRequests(ctx, "task-a")
+	if err != nil {
+		t.Fatalf("GetTaskRequests task-a failed: %v", err)
+	}
+	if len(taskAJobs) != 0 {
+		t.Fatalf("expected task-a jobs to be deleted, got %d", len(taskAJobs))
+	}
+
+	taskBJobs, err := q.GetTaskRequests(ctx, "task-b")
+	if err != nil {
+		t.Fatalf("GetTaskRequests task-b failed: %v", err)
+	}
+	if len(taskBJobs) != 1 {
+		t.Fatalf("expected task-b jobs to remain, got %d", len(taskBJobs))
+	}
+}
+
 func TestWorker_ProcessWithOptions_LoadsLMStudioContextLengthFromConfig(t *testing.T) {
 	ctx := context.Background()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))

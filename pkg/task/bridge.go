@@ -47,6 +47,11 @@ func NewMasterPersonaBridge(
 	bridge.queue = requestQueue
 	bridge.worker = requestWorker
 	manager.RegisterRunner(TypePersonaExtraction, bridge)
+	if requestQueue != nil {
+		manager.RegisterCompletionHook(TypePersonaExtraction, func(ctx context.Context, task *Task) error {
+			return requestQueue.DeleteTaskRequests(ctx, task.ID)
+		})
+	}
 	return bridge
 }
 

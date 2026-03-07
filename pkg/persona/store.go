@@ -13,6 +13,11 @@ import (
 
 var pluginNamePattern = regexp.MustCompile(`(?i)[^\\/:*?"<>|\s]+\.(esm|esl|esp)`)
 
+const (
+	personaStatusDraft     = "draft"
+	personaStatusGenerated = "generated"
+)
+
 // sqlitePersonaStore implements PersonaStore using SQLite.
 type sqlitePersonaStore struct {
 	db *sql.DB
@@ -49,7 +54,8 @@ func (s *sqlitePersonaStore) InitSchema(ctx context.Context) error {
 			sex TEXT,
 			voice_type TEXT,
 			persona_text TEXT NOT NULL DEFAULT '',
-			dialogue_count INTEGER NOT NULL DEFAULT 0,
+			generation_request TEXT NOT NULL DEFAULT '',
+			status TEXT NOT NULL DEFAULT 'draft',
 			source_plugin TEXT NOT NULL,
 			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 			UNIQUE(source_plugin, speaker_id)
@@ -72,6 +78,9 @@ func (s *sqlitePersonaStore) InitSchema(ctx context.Context) error {
 		CREATE INDEX IF NOT EXISTS idx_npc_dialogues_plugin_speaker ON npc_dialogues(source_plugin, speaker_id);
 	`); err != nil {
 		return fmt.Errorf("failed to initialize persona schema: %w", err)
+	}
+	if err := s.migratePersonaSchema(ctx); err != nil {
+		return fmt.Errorf("failed to migrate persona schema: %w", err)
 	}
 
 	slog.DebugContext(ctx, "EXIT InitSchema",
@@ -109,7 +118,7 @@ func (s *sqlitePersonaStore) SavePersona(ctx context.Context, result PersonaResu
 		_, err = s.db.ExecContext(ctx, `
 			INSERT INTO npc_personas (
 				speaker_id, editor_id, npc_name, race, sex, voice_type,
-				persona_text, dialogue_count, source_plugin, updated_at
+				persona_text, status, source_plugin, updated_at
 			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		`,
 			result.SpeakerID,
@@ -119,7 +128,7 @@ func (s *sqlitePersonaStore) SavePersona(ctx context.Context, result PersonaResu
 			result.Sex,
 			result.VoiceType,
 			result.PersonaText,
-			result.DialogueCount,
+			personaStatusGenerated,
 			pluginName,
 			time.Now().UTC(),
 		)
@@ -140,7 +149,7 @@ func (s *sqlitePersonaStore) SavePersona(ctx context.Context, result PersonaResu
 				sex = ?,
 				voice_type = ?,
 				persona_text = ?,
-				dialogue_count = ?,
+				status = ?,
 				source_plugin = ?,
 				updated_at = ?
 			WHERE id = ?
@@ -151,7 +160,7 @@ func (s *sqlitePersonaStore) SavePersona(ctx context.Context, result PersonaResu
 			result.Sex,
 			result.VoiceType,
 			result.PersonaText,
-			result.DialogueCount,
+			personaStatusGenerated,
 			pluginName,
 			time.Now().UTC(),
 			personaID,
@@ -189,7 +198,7 @@ func (s *sqlitePersonaStore) SavePersonaBase(ctx context.Context, data NPCDialog
 		result, insertErr := s.db.ExecContext(ctx, `
 			INSERT INTO npc_personas (
 				speaker_id, editor_id, npc_name, race, sex, voice_type,
-				persona_text, dialogue_count, source_plugin, updated_at
+				persona_text, status, source_plugin, updated_at
 			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		`,
 			data.SpeakerID,
@@ -199,7 +208,7 @@ func (s *sqlitePersonaStore) SavePersonaBase(ctx context.Context, data NPCDialog
 			data.Sex,
 			data.VoiceType,
 			"",
-			len(data.Dialogues),
+			personaStatusDraft,
 			pluginName,
 			now,
 		)
@@ -223,7 +232,7 @@ func (s *sqlitePersonaStore) SavePersonaBase(ctx context.Context, data NPCDialog
 				race = ?,
 				sex = ?,
 				voice_type = ?,
-				dialogue_count = ?,
+				status = ?,
 				source_plugin = ?,
 				updated_at = ?
 			WHERE id = ?
@@ -233,7 +242,7 @@ func (s *sqlitePersonaStore) SavePersonaBase(ctx context.Context, data NPCDialog
 			data.Race,
 			data.Sex,
 			data.VoiceType,
-			len(data.Dialogues),
+			personaStatusDraft,
 			pluginName,
 			now,
 			state.PersonaID,
@@ -243,6 +252,22 @@ func (s *sqlitePersonaStore) SavePersonaBase(ctx context.Context, data NPCDialog
 	}
 
 	return state, nil
+}
+
+func (s *sqlitePersonaStore) SaveGenerationRequest(ctx context.Context, sourcePlugin string, speakerID string, generationRequest string) error {
+	if strings.TrimSpace(speakerID) == "" {
+		return errors.New("speaker_id is required")
+	}
+
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE npc_personas
+		SET generation_request = ?, updated_at = ?
+		WHERE source_plugin = ? AND speaker_id = ?
+	`, generationRequest, time.Now().UTC(), normalizeSourcePlugin(sourcePlugin, ""), speakerID)
+	if err != nil {
+		return fmt.Errorf("failed to save generation_request for %s: %w", speakerID, err)
+	}
+	return nil
 }
 
 func (s *sqlitePersonaStore) ReplaceDialogues(ctx context.Context, personaID int64, sourcePlugin string, speakerID string, dialogues []DialogueEntry) error {
@@ -347,9 +372,24 @@ func (s *sqlitePersonaStore) GetPersona(ctx context.Context, sourcePlugin string
 
 func (s *sqlitePersonaStore) ListNPCs(ctx context.Context) ([]PersonaNPCView, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, speaker_id, editor_id, npc_name, race, sex, voice_type, persona_text, dialogue_count, source_plugin, updated_at
-		FROM npc_personas
-		ORDER BY updated_at DESC, id DESC
+		SELECT
+			p.id,
+			p.speaker_id,
+			p.editor_id,
+			p.npc_name,
+			p.race,
+			p.sex,
+			p.voice_type,
+			p.persona_text,
+			p.generation_request,
+			p.status,
+			COUNT(d.id) AS dialogue_count,
+			p.source_plugin,
+			p.updated_at
+		FROM npc_personas p
+		LEFT JOIN npc_dialogues d ON d.persona_id = p.id
+		GROUP BY p.id, p.speaker_id, p.editor_id, p.npc_name, p.race, p.sex, p.voice_type, p.persona_text, p.generation_request, p.status, p.source_plugin, p.updated_at
+		ORDER BY p.updated_at DESC, p.id DESC
 	`)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list npcs: %w", err)
@@ -369,6 +409,8 @@ func (s *sqlitePersonaStore) ListNPCs(ctx context.Context) ([]PersonaNPCView, er
 			&row.Sex,
 			&row.VoiceType,
 			&row.PersonaText,
+			&row.GenerationRequest,
+			&row.Status,
 			&row.DialogueCount,
 			&row.SourcePlugin,
 			&updatedAt,
@@ -455,6 +497,76 @@ func (s *sqlitePersonaStore) schemaNeedsReset(ctx context.Context) (bool, error)
 		return true, nil
 	}
 	return false, nil
+}
+
+func (s *sqlitePersonaStore) migratePersonaSchema(ctx context.Context) error {
+	personaColumns, err := s.tableColumns(ctx, "npc_personas")
+	if err != nil {
+		return err
+	}
+	if len(personaColumns) == 0 {
+		return nil
+	}
+	if personaColumns["generation_request"] && personaColumns["status"] && !personaColumns["dialogue_count"] {
+		return nil
+	}
+
+	generationRequestExpr := `''`
+	if personaColumns["generation_request"] {
+		generationRequestExpr = `COALESCE(generation_request, '')`
+	}
+	statusExpr := fmt.Sprintf(`CASE WHEN TRIM(COALESCE(persona_text, '')) <> '' THEN '%s' ELSE '%s' END`, personaStatusGenerated, personaStatusDraft)
+	if personaColumns["status"] {
+		statusExpr = fmt.Sprintf(`COALESCE(NULLIF(TRIM(status), ''), CASE WHEN TRIM(COALESCE(persona_text, '')) <> '' THEN '%s' ELSE '%s' END)`, personaStatusGenerated, personaStatusDraft)
+	}
+
+	if _, err := s.db.ExecContext(ctx, `PRAGMA foreign_keys = OFF;`); err != nil {
+		return err
+	}
+	defer s.db.ExecContext(context.Background(), `PRAGMA foreign_keys = ON;`)
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	statements := []string{
+		`CREATE TABLE npc_personas_new (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			speaker_id TEXT NOT NULL,
+			editor_id TEXT,
+			npc_name TEXT,
+			race TEXT,
+			sex TEXT,
+			voice_type TEXT,
+			persona_text TEXT NOT NULL DEFAULT '',
+			generation_request TEXT NOT NULL DEFAULT '',
+			status TEXT NOT NULL DEFAULT 'draft',
+			source_plugin TEXT NOT NULL,
+			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE(source_plugin, speaker_id)
+		);`,
+		fmt.Sprintf(`
+			INSERT INTO npc_personas_new (
+				id, speaker_id, editor_id, npc_name, race, sex, voice_type,
+				persona_text, generation_request, status, source_plugin, updated_at
+			)
+			SELECT
+				id, speaker_id, editor_id, npc_name, race, sex, voice_type,
+				persona_text, %s, %s, source_plugin, updated_at
+			FROM npc_personas;
+		`, generationRequestExpr, statusExpr),
+		`DROP TABLE npc_personas;`,
+		`ALTER TABLE npc_personas_new RENAME TO npc_personas;`,
+	}
+	for _, stmt := range statements {
+		if _, err := tx.ExecContext(ctx, stmt); err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
 }
 
 func (s *sqlitePersonaStore) resetSchema(ctx context.Context) error {
