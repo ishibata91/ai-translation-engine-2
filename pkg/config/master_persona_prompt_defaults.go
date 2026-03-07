@@ -7,7 +7,7 @@ const (
 )
 
 const (
-	DefaultMasterPersonaUserPrompt   = `以下の会話履歴をもとに、NPC の性格、話し方、背景や関係性を簡潔に要約してください。重要な特徴を優先し、推測しすぎないでください。`
+	DefaultMasterPersonaUserPrompt   = ` このNPCを他言語へ翻訳する際の「翻訳ガイドライン」を作成せよ。特に、一人称・二人称の選択、文末のニュアンス（敬語の度合い）、および特徴的な語彙（口癖や専門用語）を特定し、翻訳者が一貫性を保てるように分析すること`
 	DefaultMasterPersonaSystemPrompt = `You are a character persona analyzer for RPG dialogue.
 The user message will contain:
 - User Request: the editable analysis focus from the operator
