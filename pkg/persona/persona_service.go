@@ -30,11 +30,11 @@ func (s *Service) ListNPCs() ([]PersonaNPCView, error) {
 	return rows, nil
 }
 
-// ListDialoguesBySpeaker returns dialogues for one speaker.
-func (s *Service) ListDialoguesBySpeaker(speakerID string) ([]PersonaDialogueView, error) {
-	rows, err := s.store.ListDialoguesBySpeaker(context.Background(), speakerID)
+// ListDialoguesByPersonaID returns dialogues for one stored persona row.
+func (s *Service) ListDialoguesByPersonaID(personaID int64) ([]PersonaDialogueView, error) {
+	rows, err := s.store.ListDialoguesByPersonaID(context.Background(), personaID)
 	if err != nil {
-		s.logger.Error("failed to list persona dialogues", slog.String("speaker_id", speakerID), slog.String("error", err.Error()))
+		s.logger.Error("failed to list persona dialogues", slog.Int64("persona_id", personaID), slog.String("error", err.Error()))
 		return nil, fmt.Errorf("failed to list persona dialogues: %w", err)
 	}
 	return rows, nil

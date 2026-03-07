@@ -4,12 +4,17 @@ export interface Dialogue {
     recordType: string;
     editorId: string;
     source: string;
-    translation: string;
 }
 
 export interface NpcRow {
+    id: string;
+    personaId: number;
     formId: string;
+    sourcePlugin: string;
     name: string;
+    race: string;
+    sex: string;
+    voiceType: string;
     dialogueCount: number;
     status: NpcStatus;
     updatedAt: string;

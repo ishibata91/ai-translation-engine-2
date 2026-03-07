@@ -25,9 +25,10 @@ const PersonaDetail: React.FC<PersonaDetailProps> = ({ npc }) => {
                 <div>
                     <h3 className="text-xl font-bold">{npc.name} <span className="text-base text-base-content/60 font-mono">({npc.formId})</span></h3>
                     <div className="flex gap-2 mt-2">
-                        <span className="badge badge-outline">Race: Nord</span>
-                        <span className="badge badge-outline">Sex: Male</span>
-                        <span className="badge badge-outline">Class: Warrior</span>
+                        <span className="badge badge-outline">Race: {npc.race || 'Unknown'}</span>
+                        <span className="badge badge-outline">Sex: {npc.sex || 'Unknown'}</span>
+                        <span className="badge badge-outline">Voice: {npc.voiceType || 'Unknown'}</span>
+                        <span className="badge badge-outline">Plugin: {npc.sourcePlugin || 'UNKNOWN'}</span>
                     </div>
                 </div>
             </div>
@@ -66,7 +67,6 @@ const PersonaDetail: React.FC<PersonaDetailProps> = ({ npc }) => {
                                     <th className="w-16">Type</th>
                                     <th className="w-48">EditorID</th>
                                     <th>原文</th>
-                                    <th>訳文</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -75,7 +75,6 @@ const PersonaDetail: React.FC<PersonaDetailProps> = ({ npc }) => {
                                         <td><div className="badge badge-outline badge-sm font-mono">{d.recordType}</div></td>
                                         <td className="font-mono text-xs">{d.editorId}</td>
                                         <td className="text-base-content/70">{d.source}</td>
-                                        <td>{d.translation}</td>
                                     </tr>
                                 ))}
                             </tbody>
@@ -100,8 +99,14 @@ const PersonaDetail: React.FC<PersonaDetailProps> = ({ npc }) => {
                         <span className="font-bold">FormID</span>
                         <span className="font-mono">{npc.formId}</span>
 
+                        <span className="font-bold">PersonaID</span>
+                        <span className="font-mono">{npc.personaId}</span>
+
                         <span className="font-bold">NPC名</span>
                         <span>{npc.name}</span>
+
+                        <span className="font-bold">Source Plugin</span>
+                        <span className="font-mono">{npc.sourcePlugin || 'UNKNOWN'}</span>
 
                         <span className="font-bold">セリフ数</span>
                         <span className="font-mono">{npc.dialogueCount} 行</span>
