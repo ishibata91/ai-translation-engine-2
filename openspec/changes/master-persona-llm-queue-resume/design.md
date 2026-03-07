@@ -58,10 +58,16 @@
 - 却下理由: 現時点の要件に対して過剰実装となる。
 
 ### 5) Progress は段階イベントに正規化する
-- 決定: `REQUEST_ENQUEUED` / `REQUEST_DISPATCHING` / `REQUEST_SAVING` / `REQUEST_COMPLETED` を MasterPersona 共通 phase として emit する。
+- 決定: `REQUEST_ENQUEUED` / `REQUEST_DISPATCHING` / `REQUEST_SAVING` / `REQUEST_COMPLETED` を MasterPersona 共通 phase として `task` が決定し、`progress` は中継のみ行う。
 - 理由: UI が実装詳細を知らずに進捗表示できる。
 - 代替案: `%` のみ通知。
 - 却下理由: 再開時の状態把握が困難。
+
+### 5.1) タスク状態遷移は progress を介さず UI に通知する
+- 決定: `pending/running/completed/failed/canceled` の状態遷移は `task` イベント（`task:updated` 等）で UI に直接通知する。`progress` は進捗バー表示のための値のみ扱う。
+- 理由: ステータス表示と進捗バー表示の責務を分離し、イベント意味を単純化できる。
+- 代替案: 状態遷移を progress ペイロードへ混在させる。
+- 却下理由: UI 側の判定ロジックが複雑化し、誤表示リスクが増える。
 
 ### 6) ペルソナ保存は idempotent upsert を維持する
 - 決定: 保存処理は既存 persona 永続化（`npc_personas`）を upsert 前提で呼び出し、再開/再試行で重複作成しない。
@@ -119,7 +125,7 @@ classDiagram
     TaskBridge --> QueueManager : enqueue/resume
     QueueManager --> LLMRunner : dispatch (lmstudio only)
     QueueManager --> PersonaSaver : persist results
-    QueueManager --> ProgressHub : phase progress
+    TaskBridge --> ProgressHub : report phase progress
 
     classDef ui fill:#111827,stroke:#60a5fa,color:#f9fafb
     classDef app fill:#052e16,stroke:#34d399,color:#ecfeff
@@ -144,21 +150,21 @@ sequenceDiagram
     UI->>UI: load persisted llm config
     UI->>Bridge: StartMasterPersonTask(jsonPath, llmConfig)
     Bridge->>Queue: EnqueuePersonaRequests(taskId, requests)
-    Queue-->>Prog: REQUEST_ENQUEUED
+    Bridge->>Prog: REPORT REQUEST_ENQUEUED
 
     loop 未完了 request
-      Queue-->>Prog: REQUEST_DISPATCHING
+      Bridge->>Prog: REPORT REQUEST_DISPATCHING
       Queue->>LLM: RunLMStudio(request)
       alt success
-        Queue-->>Prog: REQUEST_SAVING
+        Bridge->>Prog: REPORT REQUEST_SAVING
         Queue->>Save: Upsert persona
       else failed/canceled
         Queue->>Queue: persist state (failed/canceled)
       end
     end
 
-    Queue-->>Prog: REQUEST_COMPLETED
-    Queue-->>UI: task:phase_completed
+    Bridge->>Prog: REPORT REQUEST_COMPLETED
+    Bridge-->>UI: task:updated / task:phase_completed
 
     opt 再起動/キャンセル後再開
       UI->>Bridge: ResumeMasterPersonaTask(taskId)

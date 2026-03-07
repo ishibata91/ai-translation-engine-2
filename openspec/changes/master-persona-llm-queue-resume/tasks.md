@@ -18,7 +18,7 @@
 
 - [ ] 3.1 Queue worker の MasterPersona 経路を `provider=lmstudio` 限定で実装する
 - [ ] 3.2 `pkg/llm` 呼び出し時に再開時点の `config` から `provider/model` を再読込して適用する
-- [ ] 3.3 `progress` へ phase イベント（REQUEST_ENQUEUED / REQUEST_DISPATCHING / REQUEST_SAVING / REQUEST_COMPLETED）を追加する
+- [ ] 3.3 `task` 側で phase イベント（REQUEST_ENQUEUED / REQUEST_DISPATCHING / REQUEST_SAVING / REQUEST_COMPLETED）を決定し `progress` へ報告する
 - [ ] 3.4 キャンセル時に request state を保存し、再開 API で未完了 request のみ再送する
 - [ ] 3.5 ユーザー動作テスト: LM Studio 実行中にキャンセル→再開して途中から進行することを確認する
 
