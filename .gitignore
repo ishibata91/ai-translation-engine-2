@@ -15,3 +15,13 @@ frontend/node_modules/
 frontend/dist/
 frontend/src/wailsjs/
 db/
+
+# LogicStamp context & security files
+context.json
+context_*.json
+context.toon
+context_*.toon
+*.uif.json
+logicstamp.manifest.json
+.logicstamp/
+stamp_security_report.json
