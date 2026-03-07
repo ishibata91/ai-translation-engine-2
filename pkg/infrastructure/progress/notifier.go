@@ -11,6 +11,10 @@ const (
 // ProgressEvent はドメイン・インフラに依存しない汎用進捗イベント型。
 type ProgressEvent struct {
 	CorrelationID string // 処理のまとまりを識別するID (UUID等)。UI側での表示単位となる
+	TaskID        string // タスクID
+	TaskType      string // タスク種別
+	Phase         string // task が決定したフェーズ名
+	Current       int    // task が決定した現在進捗
 	Total         int    // 総件数（不明な場合は 0）
 	Completed     int    // 完了件数
 	Failed        int    // 失敗件数

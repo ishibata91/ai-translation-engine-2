@@ -145,7 +145,6 @@ func (s *translatorSlice) ProposeJobs(ctx context.Context, input TranslatorInput
 			requests = append(requests, llm.Request{
 				SystemPrompt: systemPrompt,
 				UserPrompt:   userPrompt,
-				MaxTokens:    input.OutputConfig.MaxTokens,
 				Metadata: map[string]interface{}{
 					"id":            req.ID,
 					"record_type":   req.RecordType,

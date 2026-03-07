@@ -198,8 +198,7 @@ func (c *geminiClient) buildRequest(ctx context.Context, req Request) (*http.Req
 		Parts []part `json:"parts"`
 	}
 	type generationConfig struct {
-		Temperature     float32 `json:"temperature,omitempty"`
-		MaxOutputTokens int     `json:"maxOutputTokens,omitempty"`
+		Temperature float32 `json:"temperature,omitempty"`
 	}
 	type requestBody struct {
 		Contents          []content        `json:"contents"`
@@ -212,8 +211,7 @@ func (c *geminiClient) buildRequest(ctx context.Context, req Request) (*http.Req
 			{Role: "user", Parts: []part{{Text: req.UserPrompt}}},
 		},
 		GenerationConfig: generationConfig{
-			Temperature:     req.Temperature,
-			MaxOutputTokens: req.MaxTokens,
+			Temperature: req.Temperature,
 		},
 	}
 	if req.SystemPrompt != "" {

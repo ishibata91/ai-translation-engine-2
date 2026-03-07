@@ -246,7 +246,6 @@ func (c *lmStudioClient) doChatCompletion(ctx context.Context, req Request, stru
 		Model          string         `json:"model"`
 		Messages       []message      `json:"messages"`
 		Temperature    float32        `json:"temperature,omitempty"`
-		MaxTokens      int            `json:"max_tokens,omitempty"`
 		Stream         bool           `json:"stream"`
 		ResponseFormat *responseFormat `json:"response_format,omitempty"`
 	}
@@ -261,7 +260,6 @@ func (c *lmStudioClient) doChatCompletion(ctx context.Context, req Request, stru
 		Model:       c.config.Model,
 		Messages:    msgs,
 		Temperature: req.Temperature,
-		MaxTokens:   req.MaxTokens,
 		Stream:      false,
 	}
 	if structured {

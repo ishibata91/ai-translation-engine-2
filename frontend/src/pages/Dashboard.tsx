@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useTaskStore } from '../store/taskStore';
 import { useNavigate } from 'react-router-dom';
 import { FrontendTask } from '../types/task';
@@ -10,6 +10,10 @@ const Dashboard: React.FC = () => {
     const resumeTask = useTaskStore(state => state.resumeTask);
     const cancelTask = useTaskStore(state => state.cancelTask);
     const navigate = useNavigate();
+    const sortedTasks = useMemo(
+        () => [...tasks].sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()),
+        [tasks],
+    );
 
     const handleTaskClick = (task: FrontendTask) => {
         // Phase based routing
@@ -27,6 +31,14 @@ const Dashboard: React.FC = () => {
         }
     };
 
+    const handleResumeClick = (task: FrontendTask) => {
+        if (task.type === 'persona_extraction') {
+            navigate('/master_persona', { state: { taskId: task.id, phase: task.phase, resumeFromDashboard: true } });
+            return;
+        }
+        void resumeTask(task.id);
+    };
+
     return (
         <div className="flex flex-col w-full p-4 gap-4">
             {/* ヘッダー部分 */}
@@ -39,7 +51,7 @@ const Dashboard: React.FC = () => {
             {/* 進行中のジョブ */}
             <div className="card bg-base-100 shadow-sm border border-base-200 flex-1">
                 <div className="card-body">
-                    <h2 className="card-title text-base">進行中のジョブ</h2>
+                    <h2 className="card-title text-base">ジョブ一覧</h2>
                     <div className="overflow-x-auto">
                         <table className="table w-full">
                             <thead>
@@ -53,14 +65,14 @@ const Dashboard: React.FC = () => {
                                 </tr>
                             </thead>
                             <tbody>
-                                {tasks.length === 0 ? (
+                                {sortedTasks.length === 0 ? (
                                     <tr>
                                         <td colSpan={6} className="text-center text-base-content/50 py-4">
-                                            進行中のジョブはありません
+                                            ジョブはありません
                                         </td>
                                     </tr>
                                 ) : (
-                                    tasks.map(task => (
+                                    sortedTasks.map(task => (
                                         <tr key={task.id} className="hover cursor-pointer" onClick={() => handleTaskClick(task)}>
                                             <td>{task.name}</td>
                                             <td>
@@ -78,19 +90,21 @@ const Dashboard: React.FC = () => {
                                                 </div>
                                             </td>
                                             <td>
-                                                <div className={`badge badge-sm ${task.status === 'running' ? 'badge-primary' :
-                                                    task.status === 'paused' ? 'badge-warning' :
-                                                        task.status === 'failed' ? 'badge-error' : 'badge-ghost'
-                                                    }`}>
+                                                <div className={`badge badge-sm ${
+                                                    task.status === 'running' ? 'badge-primary' :
+                                                        task.status === 'paused' || task.status === 'request_generated' ? 'badge-warning' :
+                                                            task.status === 'failed' || task.status === 'cancelled' ? 'badge-error' :
+                                                                task.status === 'completed' ? 'badge-success' : 'badge-ghost'
+                                                }`}>
                                                     {task.status}
                                                 </div>
                                             </td>
                                             <td onClick={(e) => e.stopPropagation()}>
                                                 <div className="flex gap-2">
-                                                    {task.status === 'paused' && (
+                                                    {(task.status === 'paused' || task.status === 'request_generated' || task.status === 'failed' || task.status === 'cancelled' || task.status === 'pending') && (
                                                         <button
                                                             className="btn btn-xs btn-success"
-                                                            onClick={() => resumeTask(task.id)}
+                                                            onClick={() => handleResumeClick(task)}
                                                         >再開</button>
                                                     )}
                                                     {task.status === 'running' && (

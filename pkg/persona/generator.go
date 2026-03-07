@@ -124,7 +124,6 @@ func (g *DefaultPersonaGenerator) PreparePrompts(
 		request := llm.Request{
 			SystemPrompt: personaSystemPrompt,
 			UserPrompt:   sb.String(),
-			MaxTokens:    config.MaxOutputTokens,
 			Temperature:  0.3,
 			Metadata: map[string]interface{}{
 				"speaker_id": npcData.SpeakerID,
@@ -140,7 +139,6 @@ func (g *DefaultPersonaGenerator) PreparePrompts(
 			slog.String("npc_name", npcData.NPCName),
 			slog.String("system_prompt", request.SystemPrompt),
 			slog.String("user_prompt", request.UserPrompt),
-			slog.Int("max_tokens", request.MaxTokens),
 			slog.Float64("temperature", float64(request.Temperature)),
 		)
 	}

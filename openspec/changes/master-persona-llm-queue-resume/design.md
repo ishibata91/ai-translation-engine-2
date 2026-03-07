@@ -200,3 +200,20 @@ sequenceDiagram
 
 - 本変更での再開単位は「task 全体」とし、request 単位の個別再実行 UI は将来対応とする。
 - Phase 進捗の `total` は常に「全 request 件数」を分母として固定する。
+
+## 追加仕様メモ（実装中に判明）
+
+### A) LM Studio のモデルロード時に context length を指定可能にする
+- 要件: `provider=lmstudio` の場合、モデルロード API (`/api/v1/models/load`) に `context_length` を渡せること。
+- UI: MasterPersona のモデル設定で `context_length` を入力可能にし、`master_persona.llm.<provider>` に保存すること。
+- 実行: Queue worker 再開時も保存済み `context_length` を読み込み、LoadModel に反映すること。
+
+### B) ModelSettings で並列実行数（sync concurrency）を指定可能にする
+- 要件: `ModelSettings.tsx` で provider ごとの並列実行数を設定可能にすること。
+- 保存先: `master_persona.llm` 名前空間の `sync_concurrency.<provider>` を利用すること。
+- 実行: Queue worker は再開時・初回実行時ともに保存済み並列実行数を使用すること。
+
+### C) 停止後の再起動/ダッシュボード再開で進捗を復元する
+- 要件: 再開時に `current/total` と progress% を request state から復元し、0% から再開始に見えないこと。
+- UI: MasterPersona 画面遷移時に task metadata と queue state を再取得して、停止時点の状態を復元すること。
+- 動作: 一時停止後の再開では `completed` 件数をベースに `REQUEST_DISPATCHING/REQUEST_SAVING` が進行すること。

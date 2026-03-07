@@ -609,6 +609,35 @@ func (q *Queue) UpdateProcessMetadata(ctx context.Context, processID, provider, 
 	return nil
 }
 
+// PrepareTaskResume moves non-completed task requests back to pending so only unfinished requests are retried.
+func (q *Queue) PrepareTaskResume(ctx context.Context, taskID string) error {
+	_, err := q.db.ExecContext(ctx, `
+		UPDATE llm_jobs
+		SET status = ?, request_state = ?, error_message = NULL, updated_at = ?
+		WHERE task_id = ?
+		  AND request_state IN (?, ?, ?, ?)
+	`, StatusPending, RequestStatePending, time.Now().UTC(), taskID, RequestStatePending, RequestStateFailed, RequestStateCanceled, RequestStateRunning)
+	if err != nil {
+		return fmt.Errorf("PrepareTaskResume failed: %w", err)
+	}
+	return nil
+}
+
+// MarkTaskRequestsCanceled marks unfinished requests as canceled for a task.
+func (q *Queue) MarkTaskRequestsCanceled(ctx context.Context, taskID string) error {
+	message := "canceled by user"
+	_, err := q.db.ExecContext(ctx, `
+		UPDATE llm_jobs
+		SET status = ?, request_state = ?, error_message = ?, updated_at = ?
+		WHERE task_id = ?
+		  AND request_state IN (?, ?)
+	`, StatusCancelled, RequestStateCanceled, message, time.Now().UTC(), taskID, RequestStatePending, RequestStateRunning)
+	if err != nil {
+		return fmt.Errorf("MarkTaskRequestsCanceled failed: %w", err)
+	}
+	return nil
+}
+
 func hashRequest(raw string) string {
 	sum := sha256.Sum256([]byte(raw))
 	return fmt.Sprintf("%x", sum[:])

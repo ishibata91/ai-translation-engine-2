@@ -211,7 +211,6 @@ func (c *xaiClient) buildRequest(ctx context.Context, req Request) (*http.Reques
 		Model       string    `json:"model"`
 		Messages    []message `json:"messages"`
 		Temperature float32   `json:"temperature,omitempty"`
-		MaxTokens   int       `json:"max_tokens,omitempty"`
 		Stream      bool      `json:"stream"`
 	}
 
@@ -225,7 +224,6 @@ func (c *xaiClient) buildRequest(ctx context.Context, req Request) (*http.Reques
 		Model:       c.config.Model,
 		Messages:    messages,
 		Temperature: req.Temperature,
-		MaxTokens:   req.MaxTokens,
 		Stream:      false,
 	}
 
@@ -497,7 +495,6 @@ func (b *xaiBatchClient) addRequests(ctx context.Context, batchID string, reqs [
 		Model       string    `json:"model"`
 		Messages    []message `json:"messages"`
 		Temperature float32   `json:"temperature,omitempty"`
-		MaxTokens   int       `json:"max_tokens,omitempty"`
 	}
 	type batchRequest struct {
 		BatchRequestID string `json:"batch_request_id"`
@@ -521,7 +518,6 @@ func (b *xaiBatchClient) addRequests(ctx context.Context, batchID string, reqs [
 			Model:       b.config.Model,
 			Messages:    msgs,
 			Temperature: req.Temperature,
-			MaxTokens:   req.MaxTokens,
 		}
 		batchReqs = append(batchReqs, br)
 	}

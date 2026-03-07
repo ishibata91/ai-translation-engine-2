@@ -6,7 +6,6 @@ import "strings"
 type Request struct {
 	SystemPrompt   string                 `json:"system_prompt"`
 	UserPrompt     string                 `json:"user_prompt"`
-	MaxTokens      int                    `json:"max_tokens"`
 	Temperature    float32                `json:"temperature"`
 	ResponseSchema map[string]interface{} `json:"response_schema,omitempty"`
 	StopSequences  []string               `json:"stop_sequences,omitempty"`

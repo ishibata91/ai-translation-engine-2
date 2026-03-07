@@ -4,7 +4,7 @@
 - [x] 1.2 Queue 永続化層へ MasterPersona request state（pending/running/completed/failed/canceled）を保存する
 - [x] 1.3 `task` メタデータへ再開に必要なキー（phase/resume_cursor）を保存する
 - [x] 1.4 キューマネージャーから task/request 状態を取得できる API を追加する
-- [ ] 1.5 ユーザー動作テスト: 開始後に再起動しても request が失われないことを確認する
+- [x] 1.5 ユーザー動作テスト: 開始後に再起動しても request が失われないことを確認する
 
 ## 2. フェーズ2: MasterPersona LLM config 永続化
 
@@ -12,14 +12,14 @@
 - [x] 2.2 `frontend/src/pages/MasterPersona.tsx` で初期ロード時に保存設定を読み込む
 - [x] 2.3 `ModelSettings` 変更値を開始時に `master_persona.llm` として保存する
 - [x] 2.4 未保存時の既定値フォールバック（空/既定パラメータ）を実装する
-- [ ] 2.5 ユーザー動作テスト: 設定保存後にアプリ再起動して値が復元されることを確認する
+- [x] 2.5 ユーザー動作テスト: 設定保存後にアプリ再起動して値が復元されることを確認する
 
 ## 3. フェーズ3: LM Studio 経由の request 実行
 
-- [ ] 3.1 Queue worker の MasterPersona 経路を `provider=lmstudio` 限定で実装する
-- [ ] 3.2 `pkg/llm` 呼び出し時に再開時点の `config` から `provider/model` を再読込して適用する
-- [ ] 3.3 `task` 側で phase イベント（REQUEST_ENQUEUED / REQUEST_DISPATCHING / REQUEST_SAVING / REQUEST_COMPLETED）を決定し `progress` へ報告する
-- [ ] 3.4 キャンセル時に request state を保存し、再開 API で未完了 request のみ再送する
+- [x] 3.1 Queue worker の MasterPersona 経路を `provider=lmstudio` 限定で実装する
+- [x] 3.2 `pkg/llm` 呼び出し時に再開時点の `config` から `provider/model` を再読込して適用する
+- [x] 3.3 `task` 側で phase イベント（REQUEST_ENQUEUED / REQUEST_DISPATCHING / REQUEST_SAVING / REQUEST_COMPLETED）を決定し `progress` へ報告する
+- [x] 3.4 キャンセル時に request state を保存し、再開 API で未完了 request のみ再送する
 - [ ] 3.5 ユーザー動作テスト: LM Studio 実行中にキャンセル→再開して途中から進行することを確認する
 
 ## 4. インフラ層の非依存性担保
@@ -41,3 +41,9 @@
 - [ ] 6.1 実装に合わせて `openspec/specs/database_erd.md` の影響有無を確認し、必要なら更新する
 - [ ] 6.2 `openspec/specs/task/spec.md` `queue/spec.md` `llm/spec.md` `progress/spec.md` `persona/spec.md` `config/spec.md` の本体 spec 反映計画を記録する
 - [ ] 6.3 フェーズ別の手動テスト結果を change 配下に記録し、アーカイブ前の検証証跡を残す
+
+## 7. 実装中に確定した追加仕様
+
+- [ ] 7.1 `provider=lmstudio` のモデルロードで `context_length` を設定可能にする（UI保存・再開時再読込を含む）
+- [ ] 7.2 `frontend/src/components/ModelSettings.tsx` で並列実行数（sync concurrency）を設定可能にし、`master_persona.llm` 名前空間へ保存する
+- [ ] 7.3 一時停止後の再起動/ダッシュボード再開時に進捗（current/total と progress%）を復元し、0から再開始しないようにする

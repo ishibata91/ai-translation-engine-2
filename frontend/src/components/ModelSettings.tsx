@@ -45,7 +45,6 @@ const ModelSettings: React.FC<Props> = ({ title = 'モデル設定', value, onCh
     const [catalogLoading, setCatalogLoading] = useState<boolean>(false);
     const [catalogError, setCatalogError] = useState<string>('');
     const [draftTemperature, setDraftTemperature] = useState<number>(value.temperature);
-    const [draftMaxTokens, setDraftMaxTokens] = useState<string>(String(value.maxTokens));
 
     const provider = value.provider;
     const endpoint = value.endpoint;
@@ -86,23 +85,12 @@ const ModelSettings: React.FC<Props> = ({ title = 'モデル設定', value, onCh
         setDraftTemperature(value.temperature);
     }, [value.temperature]);
 
-    useEffect(() => {
-        setDraftMaxTokens(String(value.maxTokens));
-    }, [value.maxTokens]);
-
     const commitTemperature = () => {
         if (value.temperature !== draftTemperature) {
             onChange({ ...value, temperature: draftTemperature });
         }
     };
 
-    const commitMaxTokens = () => {
-        const parsed = Number.parseInt(draftMaxTokens, 10);
-        const next = Number.isFinite(parsed) && parsed > 0 ? parsed : value.maxTokens;
-        if (next !== value.maxTokens) {
-            onChange({ ...value, maxTokens: next });
-        }
-    };
 
     useEffect(() => {
         if (!enabled) {
@@ -237,7 +225,7 @@ const ModelSettings: React.FC<Props> = ({ title = 'モデル設定', value, onCh
                         )}
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 gap-4">
                         <div className="flex flex-col gap-1">
                             <div className="flex justify-between items-center">
                                 <label className="label-text font-bold text-sm">Temperature</label>
@@ -254,24 +242,6 @@ const ModelSettings: React.FC<Props> = ({ title = 'モデル設定', value, onCh
                                 onMouseUp={commitTemperature}
                                 onTouchEnd={commitTemperature}
                                 onKeyUp={commitTemperature}
-                            />
-                        </div>
-                        <div className="flex flex-col gap-1">
-                            <label className="label pb-0">
-                                <span className="label-text font-bold">Max Tokens</span>
-                            </label>
-                            <input
-                                type="number"
-                                min={1}
-                                className="input input-bordered input-sm w-full font-mono"
-                                value={draftMaxTokens}
-                                onChange={(e) => setDraftMaxTokens(e.target.value)}
-                                onBlur={commitMaxTokens}
-                                onKeyDown={(e) => {
-                                    if (e.key === 'Enter') {
-                                        commitMaxTokens();
-                                    }
-                                }}
                             />
                         </div>
                     </div>

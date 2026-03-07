@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { FrontendTask } from '../types/task'
 import * as Events from '../wailsjs/runtime/runtime'
-import { GetActiveTasks, ResumeTask, CancelTask } from '../wailsjs/go/task/Bridge'
+import { GetActiveTasks, GetAllTasks, ResumeTask, CancelTask } from '../wailsjs/go/task/Bridge'
 
 interface TaskState {
     tasks: Record<string, FrontendTask>;
@@ -46,16 +46,18 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     },
 
     fetchActiveTasks: async () => {
-        if (typeof GetActiveTasks !== 'function') {
-            console.warn('Wails GetActiveTasks binding is not available');
+        if (typeof GetAllTasks !== 'function' && typeof GetActiveTasks !== 'function') {
+            console.warn('Wails task bindings are not available');
             return;
         }
         set({ isLoading: true });
         try {
-            const tasks = (await GetActiveTasks() as any) as FrontendTask[];
+            const tasks = typeof GetAllTasks === 'function'
+                ? (await GetAllTasks() as any) as FrontendTask[]
+                : (await GetActiveTasks() as any) as FrontendTask[];
             get().setTasks(tasks || []);
         } catch (error) {
-            console.error('Failed to fetch active tasks:', error);
+            console.error('Failed to fetch tasks:', error);
         } finally {
             set({ isLoading: false });
         }

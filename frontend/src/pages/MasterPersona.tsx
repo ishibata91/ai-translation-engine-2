@@ -1,11 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import type { ColumnDef } from '@tanstack/react-table';
 import ModelSettings from '../components/ModelSettings';
 import DataTable from '../components/DataTable';
 import PersonaDetail from '../components/PersonaDetail';
 import { type NpcRow, type NpcStatus, STATUS_BADGE } from '../types/npc';
 import { SelectJSONFile } from '../wailsjs/go/main/App';
-import { StartMasterPersonTask } from '../wailsjs/go/task/Bridge';
+import { CancelTask, GetAllTasks, GetTaskRequestState, ResumeTask, StartMasterPersonTask } from '../wailsjs/go/task/Bridge';
 import { ConfigGetAll, ConfigSet } from '../wailsjs/go/config/ConfigService';
 import type { PhaseCompletedEvent, FrontendTask } from '../types/task';
 import { DEFAULT_MASTER_PERSONA_LLM_CONFIG, type MasterPersonaLLMConfig } from '../types/masterPersona';
@@ -40,12 +41,42 @@ const normalizeProvider = (value: string | undefined): MasterPersonaLLMConfig['p
 const providerNamespace = (provider: MasterPersonaLLMConfig['provider']): string =>
     `${MASTER_PERSONA_LLM_NAMESPACE}.${provider}`;
 
+const toErrorMessage = (error: unknown, fallback: string): string => {
+    if (typeof error === 'string' && error.trim() !== '') {
+        return error;
+    }
+    if (error && typeof error === 'object') {
+        const message = (error as { message?: unknown }).message;
+        if (typeof message === 'string' && message.trim() !== '') {
+            return message;
+        }
+    }
+    return fallback;
+};
+
+const statusMessageFromTask = (task: FrontendTask): string => {
+    switch (task.status) {
+        case 'running':
+            return 'リクエストを実行しています...';
+        case 'paused':
+        case 'cancelled':
+            return '一時停止中';
+        case 'request_generated':
+            return 'リクエスト生成完了';
+        case 'failed':
+            return 'タスク実行に失敗しました';
+        case 'completed':
+            return '処理完了';
+        default:
+            return '待機中';
+    }
+};
+
 const buildProviderConfigPairs = (cfg: MasterPersonaLLMConfig): Record<string, string> => ({
     model: cfg.model,
     endpoint: cfg.endpoint,
     api_key: cfg.provider === 'lmstudio' ? '' : cfg.apiKey,
     temperature: String(cfg.temperature),
-    max_tokens: String(cfg.maxTokens),
 });
 
 // ── 列定義 ───────────────────────────────────────────────
@@ -80,6 +111,7 @@ const NPC_COLUMNS: ColumnDef<NpcRow, unknown>[] = [
 
 // ── ページコンポーネント ──────────────────────────────────
 const MasterPersona: React.FC = () => {
+    const location = useLocation();
     const [npcData] = useState<NpcRow[]>([]);
     const [selectedRow, setSelectedRow] = useState<NpcRow | null>(null);
     const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
@@ -89,7 +121,9 @@ const MasterPersona: React.FC = () => {
     const [progressPercent, setProgressPercent] = useState<number>(0);
     const [statusMessage, setStatusMessage] = useState<string>('待機中');
     const [errorMessage, setErrorMessage] = useState<string>('');
+    const [progressCounts, setProgressCounts] = useState<{ current: number; total: number }>({ current: 0, total: 0 });
     const [summary, setSummary] = useState<PersonaRequestSummary | null>(null);
+    const [activeTaskStatus, setActiveTaskStatus] = useState<FrontendTask['status'] | null>(null);
     const [llmConfig, setLLMConfig] = useState<MasterPersonaLLMConfig>(DEFAULT_MASTER_PERSONA_LLM_CONFIG);
     const [isLLMConfigHydrated, setIsLLMConfigHydrated] = useState<boolean>(false);
     const lastSavedLLMConfigRef = useRef<Partial<Record<MasterPersonaLLMConfig['provider'], MasterPersonaLLMConfig>>>({});
@@ -98,6 +132,7 @@ const MasterPersona: React.FC = () => {
     const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
     const isSwitchingProviderRef = useRef<boolean>(false);
     const previousProviderRef = useRef<MasterPersonaLLMConfig['provider']>(DEFAULT_MASTER_PERSONA_LLM_CONFIG.provider);
+    const resumeRequestedRef = useRef<boolean>(false);
 
     const loadProviderConfig = async (
         provider: MasterPersonaLLMConfig['provider'],
@@ -106,14 +141,12 @@ const MasterPersona: React.FC = () => {
         const loaded = await ConfigGetAll(providerNamespace(provider));
         const source = Object.keys(loaded).length > 0 ? loaded : (legacyRoot ?? {});
         const loadedTemperature = Number.parseFloat(source.temperature ?? '');
-        const loadedMaxTokens = Number.parseInt(source.max_tokens ?? '', 10);
         const config = {
             provider,
             model: source.model ?? DEFAULT_MASTER_PERSONA_LLM_CONFIG.model,
             endpoint: source.endpoint || DEFAULT_MASTER_PERSONA_LLM_CONFIG.endpoint,
             apiKey: source.api_key ?? DEFAULT_MASTER_PERSONA_LLM_CONFIG.apiKey,
             temperature: Number.isFinite(loadedTemperature) ? loadedTemperature : DEFAULT_MASTER_PERSONA_LLM_CONFIG.temperature,
-            maxTokens: Number.isFinite(loadedMaxTokens) && loadedMaxTokens > 0 ? loadedMaxTokens : DEFAULT_MASTER_PERSONA_LLM_CONFIG.maxTokens,
         };
         return config;
     };
@@ -141,7 +174,10 @@ const MasterPersona: React.FC = () => {
         setErrorMessage('');
         setSummary(null);
         setProgressPercent(0);
+        setProgressCounts({ current: 0, total: 0 });
         setStatusMessage('タスクを開始しています...');
+        resumeRequestedRef.current = false;
+        setActiveTaskStatus('pending');
 
         try {
             const taskID = await StartMasterPersonTask({ source_json_path: jsonPath });
@@ -150,6 +186,60 @@ const MasterPersona: React.FC = () => {
             setIsGenerating(false);
             setStatusMessage('タスク開始に失敗しました');
             setErrorMessage(error instanceof Error ? error.message : '不明なエラーが発生しました');
+        }
+    };
+
+    const hydrateTaskView = (task: FrontendTask) => {
+        setActiveTaskId(task.id);
+        setActiveTaskStatus(task.status);
+        setProgressPercent(task.progress || 0);
+        setStatusMessage(statusMessageFromTask(task));
+        setErrorMessage(task.error_msg || '');
+        setIsGenerating(task.status === 'running');
+        const requestCount = Number(task.metadata?.request_count ?? 0);
+        const npcCount = Number(task.metadata?.npc_count ?? 0);
+        if (requestCount > 0 || npcCount > 0) {
+            setSummary({ request_count: requestCount, npc_count: npcCount });
+        }
+        const resumeCursor = Number(task.metadata?.resume_cursor ?? 0);
+        setProgressCounts({
+            current: Number.isFinite(resumeCursor) ? resumeCursor : 0,
+            total: requestCount > 0 ? requestCount : 0,
+        });
+        const sourceJSONPath = String(task.metadata?.source_json_path ?? '');
+        if (sourceJSONPath) {
+            setJsonPath(sourceJSONPath);
+        }
+    };
+
+    const handleResumeCurrentTask = async () => {
+        if (!activeTaskId) {
+            return;
+        }
+        resumeRequestedRef.current = false;
+        setErrorMessage('');
+        setStatusMessage('リクエストを実行しています...');
+        setIsGenerating(true);
+        try {
+            await ResumeTask(activeTaskId);
+        } catch (error) {
+            setIsGenerating(false);
+            setStatusMessage('キュー実行の開始に失敗しました');
+            setErrorMessage(toErrorMessage(error, 'キュー実行の開始に失敗しました'));
+        }
+    };
+
+    const handlePauseCurrentTask = async () => {
+        if (!activeTaskId) {
+            return;
+        }
+        try {
+            await CancelTask(activeTaskId);
+            setIsGenerating(false);
+            setActiveTaskStatus('cancelled');
+            setStatusMessage('一時停止中');
+        } catch (error) {
+            setErrorMessage(toErrorMessage(error, '一時停止に失敗しました'));
         }
     };
 
@@ -305,6 +395,59 @@ const MasterPersona: React.FC = () => {
     }, [isLLMConfigHydrated]);
 
     useEffect(() => {
+        const navState = location.state as { taskId?: string; resumeFromDashboard?: boolean } | null;
+        const taskIdFromNav = navState?.taskId;
+        if (!taskIdFromNav) {
+            return;
+        }
+        let disposed = false;
+        void GetAllTasks()
+            .then((tasks) => {
+                if (disposed) {
+                    return;
+                }
+                const task = (tasks as FrontendTask[]).find((t) => t.id === taskIdFromNav);
+                if (!task) {
+                    return;
+                }
+                hydrateTaskView(task);
+                return GetTaskRequestState(task.id).then((state) => {
+                    if (disposed) {
+                        return;
+                    }
+                    setProgressCounts({
+                        current: state.completed ?? 0,
+                        total: state.total ?? 0,
+                    });
+                    if ((state.total ?? 0) > 0) {
+                        setProgressPercent(Math.min(100, Math.max(0, ((state.completed ?? 0) / state.total) * 100)));
+                    }
+                });
+            })
+            .catch((error) => {
+                console.error('failed to hydrate task from navigation state', error);
+            });
+        return () => {
+            disposed = true;
+        };
+    }, [location.state]);
+
+    useEffect(() => {
+        const startQueuedExecution = (taskId: string) => {
+            if (resumeRequestedRef.current) {
+                return;
+            }
+            resumeRequestedRef.current = true;
+            setStatusMessage('リクエストを実行しています...');
+            void ResumeTask(taskId).catch((error) => {
+                console.error('ResumeTask failed', { taskId, error });
+                setIsGenerating(false);
+                setStatusMessage('キュー実行の開始に失敗しました');
+                setErrorMessage(toErrorMessage(error, 'キュー実行の開始に失敗しました'));
+                resumeRequestedRef.current = false;
+            });
+        };
+
         const offProgress = Events.EventsOn('persona:progress', (event: PersonaProgressEvent) => {
             const currentTaskId = activeTaskId ?? (isGenerating ? event.CorrelationID : null);
 
@@ -317,6 +460,7 @@ const MasterPersona: React.FC = () => {
             }
 
             if (event.Total > 0) {
+                setProgressCounts({ current: event.Completed, total: event.Total });
                 setProgressPercent(Math.min(100, Math.max(0, (event.Completed / event.Total) * 100)));
             }
             setStatusMessage(event.Message || '処理中');
@@ -340,12 +484,20 @@ const MasterPersona: React.FC = () => {
             if (!currentTaskId || task.id !== currentTaskId) {
                 return;
             }
+            setActiveTaskStatus(task.status);
             if (task.status === 'failed') {
                 setIsGenerating(false);
                 setErrorMessage(task.error_msg || 'タスク実行に失敗しました');
             }
-            if (task.status === 'request_generated') {
+            if (task.status === 'completed') {
                 setIsGenerating(false);
+            }
+            if (task.status === 'paused' || task.status === 'cancelled') {
+                setIsGenerating(false);
+                setStatusMessage('一時停止中');
+            }
+            if (task.status === 'request_generated') {
+                setStatusMessage('リクエスト生成完了。実行を開始します...');
             }
         });
 
@@ -364,9 +516,8 @@ const MasterPersona: React.FC = () => {
                 request_count: nextSummary.request_count ?? 0,
                 npc_count: nextSummary.npc_count ?? 0,
             });
-            setStatusMessage('REQUEST_GENERATED');
-            setProgressPercent(100);
-            setIsGenerating(false);
+            setStatusMessage('リクエスト生成完了。実行を開始します...');
+            startQueuedExecution(payload.taskId);
         });
 
         return () => {
@@ -405,6 +556,11 @@ const MasterPersona: React.FC = () => {
                             <div>
                                 <span className="mt-2 mb-1 block text-sm text-base-content/70 font-bold">全体進捗</span>
                                 <progress className="progress progress-primary w-full" value={progressPercent} max="100"></progress>
+                                {progressCounts.total > 0 && (
+                                    <span className="text-xs text-base-content/70 mt-1 block">
+                                        {progressCounts.current} / {progressCounts.total} 件
+                                    </span>
+                                )}
                                 <span className="text-xs text-base-content/70 mt-1 block">{statusMessage}</span>
                                 {errorMessage && <span className="text-xs text-error mt-1 block">{errorMessage}</span>}
                             </div>
@@ -484,10 +640,26 @@ const MasterPersona: React.FC = () => {
                     <button
                         className={`btn btn-sm ${isGenerating ? 'btn-ghost' : 'btn-outline'}`}
                         onClick={handleStart}
-                        disabled={isGenerating || !jsonPath}
+                        disabled={isGenerating || !jsonPath || activeTaskStatus === 'running'}
                     >
                         {isGenerating ? '生成中...' : '開始'}
                     </button>
+                    {activeTaskId && activeTaskStatus !== 'running' && (
+                        <button
+                            className="btn btn-success btn-sm"
+                            onClick={handleResumeCurrentTask}
+                        >
+                            再開
+                        </button>
+                    )}
+                    {activeTaskId && activeTaskStatus === 'running' && (
+                        <button
+                            className="btn btn-warning btn-sm"
+                            onClick={handlePauseCurrentTask}
+                        >
+                            一時停止
+                        </button>
+                    )}
                     <button className="btn btn-primary btn-sm" disabled={isGenerating}>
                         生成データを確定
                     </button>

@@ -3,6 +3,7 @@ package queue
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -23,6 +24,29 @@ type Worker struct {
 	notifier        progress.ProgressNotifier
 	logger          *slog.Logger
 	pollingInterval time.Duration
+}
+
+// ProcessHooks allows callers to observe progress boundaries while processing one process/task.
+type ProcessHooks struct {
+	OnDispatch func(current int, total int)
+	OnSaving   func(current int, total int)
+	OnComplete func(completed int, total int, failed int)
+}
+
+// ProcessOptions customizes worker execution without introducing slice-specific logic.
+type ProcessOptions struct {
+	ConfigNamespace        string
+	RequireProvider        string
+	UseConfigProviderModel bool
+	ConfigRead             ConfigReadOptions
+	Hooks                  *ProcessHooks
+}
+
+// ConfigReadOptions describes how to resolve provider/model settings from Config.
+type ConfigReadOptions struct {
+	Namespace           string
+	DefaultProvider     string
+	SelectedProviderKey string
 }
 
 // NewWorker initializes a new Worker.
@@ -66,19 +90,28 @@ func (w *Worker) Recover(ctx context.Context) error {
 // Note: This method blocks until the process finishes or polling exhausts. Callers should
 // execute it in a goroutine if they do not wish to block.
 func (w *Worker) ProcessProcessID(ctx context.Context, processID string) error {
+	return w.ProcessProcessIDWithOptions(ctx, processID, ProcessOptions{})
+}
+
+// ProcessProcessIDWithOptions synchronously processes queue jobs for one process/task.
+func (w *Worker) ProcessProcessIDWithOptions(ctx context.Context, processID string, opts ProcessOptions) error {
 	w.logger.DebugContext(ctx, "ENTER ProcessProcessID", slog.String("process_id", processID))
 
 	// Fetch llm config
-	llmConfig, err := w.fetchLLMConfig(ctx)
+	llmConfig, err := w.fetchLLMConfig(ctx, opts)
 	if err != nil {
 		return fmt.Errorf("failed to fetch llm config: %w", err)
 	}
 
-	strategyStr := w.getConfigString(ctx, "llm", llm.LLMBulkStrategyKey, string(llm.BulkStrategySync))
+	cfgNamespace := opts.ConfigNamespace
+	if strings.TrimSpace(cfgNamespace) == "" {
+		cfgNamespace = llm.LLMConfigNamespace
+	}
+	strategyStr := w.getConfigString(ctx, cfgNamespace, llm.LLMBulkStrategyKey, string(llm.BulkStrategySync))
 	strategy := w.llmManager.ResolveBulkStrategy(ctx, llm.BulkStrategy(strategyStr), llmConfig.Provider)
 
 	if strategy == llm.BulkStrategySync {
-		err = w.processSync(ctx, processID, llmConfig)
+		err = w.processSync(ctx, processID, llmConfig, opts)
 	} else {
 		err = w.processBatch(ctx, processID, llmConfig)
 	}
@@ -87,7 +120,7 @@ func (w *Worker) ProcessProcessID(ctx context.Context, processID string) error {
 	return err
 }
 
-func (w *Worker) processSync(ctx context.Context, processID string, llmConfig llm.LLMConfig) error {
+func (w *Worker) processSync(ctx context.Context, processID string, llmConfig llm.LLMConfig, opts ProcessOptions) error {
 	w.logger.DebugContext(ctx, "ENTER processSync", slog.String("process_id", processID))
 
 	jobs, err := w.queue.GetJobsByStatus(ctx, processID, StatusPending)
@@ -100,9 +133,19 @@ func (w *Worker) processSync(ctx context.Context, processID string, llmConfig ll
 		return nil
 	}
 
-	resolvedProvider, resolvedModel, err := w.resolveResumeProviderModel(ctx, jobs, llmConfig.Provider, llmConfig.Model)
-	if err != nil {
-		return err
+	var resolvedProvider string
+	var resolvedModel string
+	if opts.UseConfigProviderModel {
+		resolvedProvider = llm.NormalizeProvider(llmConfig.Provider)
+		resolvedModel = llmConfig.Model
+	} else {
+		resolvedProvider, resolvedModel, err = w.resolveResumeProviderModel(ctx, jobs, llmConfig.Provider, llmConfig.Model)
+		if err != nil {
+			return err
+		}
+	}
+	if required := llm.NormalizeProvider(opts.RequireProvider); required != "" && llm.NormalizeProvider(resolvedProvider) != required {
+		return fmt.Errorf("provider %q is not allowed, required=%q", resolvedProvider, required)
 	}
 	llmConfig.Provider = resolvedProvider
 	llmConfig.Model = resolvedModel
@@ -123,6 +166,10 @@ func (w *Worker) processSync(ctx context.Context, processID string, llmConfig ll
 
 		// Mark as IN_PROGRESS immediately
 		w.queue.UpdateJob(ctx, job.ID, StatusInProgress, nil, nil, nil)
+	}
+	if opts.Hooks != nil && opts.Hooks.OnDispatch != nil {
+		// Dispatch phase starts here; progress increments are reported in saving phase.
+		opts.Hooks.OnDispatch(0, len(jobs))
 	}
 
 	client, err := w.llmManager.GetClient(ctx, llmConfig)
@@ -157,17 +204,28 @@ func (w *Worker) processSync(ctx context.Context, processID string, llmConfig ll
 	}
 
 	// Wrap the client to report progress periodically
+	progressNotifier := w.notifier
+	// task 側で phase/current/total を通知する経路がある場合は、
+	// worker 既定の件数通知を止めて進捗の分母ずれを防ぐ。
+	if opts.Hooks != nil {
+		progressNotifier = nil
+	}
 	progressClient := &progressReportingClient{
 		LLMClient: client,
-		notifier:  w.notifier,
+		notifier:  progressNotifier,
 		processID: processID,
 		total:     len(jobs),
 		completed: new(int32), // starting at 0
+		onEach: func(completed int, total int) {
+			if opts.Hooks != nil && opts.Hooks.OnDispatch != nil {
+				opts.Hooks.OnDispatch(completed, total)
+			}
+		},
 	}
 
 	// Emit initial progress event
-	if w.notifier != nil {
-		w.notifier.OnProgress(ctx, progress.ProgressEvent{
+	if progressNotifier != nil {
+		progressNotifier.OnProgress(ctx, progress.ProgressEvent{
 			CorrelationID: processID,
 			Total:         len(jobs),
 			Completed:     0,
@@ -178,14 +236,26 @@ func (w *Worker) processSync(ctx context.Context, processID string, llmConfig ll
 
 	responses, err := llm.ExecuteBulkSync(ctx, progressClient, reqs, llmConfig.Concurrency)
 	if err != nil {
-		w.logger.ErrorContext(ctx, "ExecuteBulkSync failed", slog.String("error", err.Error()))
-		// It only fails on context cancellation.
-		// State updates for individual successes still occurred so we preserve DB.
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			w.logger.InfoContext(ctx, "ExecuteBulkSync canceled", slog.String("error", err.Error()))
+			cancelMsg := "task canceled"
+			persistCtx := context.Background()
+			for _, job := range jobs {
+				_ = w.queue.UpdateJob(persistCtx, job.ID, StatusCancelled, nil, &cancelMsg, nil)
+			}
+		} else {
+			w.logger.ErrorContext(ctx, "ExecuteBulkSync failed", slog.String("error", err.Error()))
+		}
+		return err
 	}
 
 	// Update DB with results
+	failedCount := 0
 	for i, res := range responses {
 		jobID := jobs[i].ID
+		if opts.Hooks != nil && opts.Hooks.OnSaving != nil {
+			opts.Hooks.OnSaving(i+1, len(jobs))
+		}
 		if res.Success {
 			respJSON, _ := json.Marshal(res)
 			respStr := string(respJSON)
@@ -193,16 +263,20 @@ func (w *Worker) processSync(ctx context.Context, processID string, llmConfig ll
 		} else {
 			errMsg := res.Error
 			w.queue.UpdateJob(ctx, jobID, StatusFailed, nil, &errMsg, nil)
+			failedCount++
 		}
+	}
+	if opts.Hooks != nil && opts.Hooks.OnComplete != nil {
+		opts.Hooks.OnComplete(len(jobs)-failedCount, len(jobs), failedCount)
 	}
 
 	// Emit final completion
-	if w.notifier != nil {
+	if progressNotifier != nil {
 		status := progress.StatusCompleted
 		if err != nil {
 			status = progress.StatusFailed
 		}
-		w.notifier.OnProgress(ctx, progress.ProgressEvent{
+		progressNotifier.OnProgress(ctx, progress.ProgressEvent{
 			CorrelationID: processID,
 			Total:         len(jobs),
 			Completed:     int(atomic.LoadInt32(progressClient.completed)),
@@ -212,7 +286,7 @@ func (w *Worker) processSync(ctx context.Context, processID string, llmConfig ll
 	}
 
 	w.logger.DebugContext(ctx, "EXIT processSync", slog.String("process_id", processID))
-	return err
+	return nil
 }
 
 func (w *Worker) processBatch(ctx context.Context, processID string, llmConfig llm.LLMConfig) error {
@@ -338,11 +412,15 @@ type progressReportingClient struct {
 	processID string
 	total     int
 	completed *int32
+	onEach    func(completed int, total int)
 }
 
 func (c *progressReportingClient) Complete(ctx context.Context, req llm.Request) (llm.Response, error) {
 	resp, err := c.LLMClient.Complete(ctx, req)
 	comp := atomic.AddInt32(c.completed, 1)
+	if c.onEach != nil {
+		c.onEach(int(comp), c.total)
+	}
 	if c.notifier != nil {
 		c.notifier.OnProgress(ctx, progress.ProgressEvent{
 			CorrelationID: c.processID,
@@ -355,44 +433,78 @@ func (c *progressReportingClient) Complete(ctx context.Context, req llm.Request)
 	return resp, err
 }
 
-func (w *Worker) fetchLLMConfig(ctx context.Context) (llm.LLMConfig, error) {
-	rawProvider := w.getConfigString(ctx, llm.LLMConfigNamespace, llm.LLMDefaultProviderKey, "gemini")
+func (w *Worker) fetchLLMConfig(ctx context.Context, opts ProcessOptions) (llm.LLMConfig, error) {
+	read := opts.ConfigRead
+	ns := strings.TrimSpace(read.Namespace)
+	if ns == "" {
+		ns = strings.TrimSpace(opts.ConfigNamespace)
+	}
+	if ns == "" {
+		ns = llm.LLMConfigNamespace
+	}
+	defaultProvider := strings.TrimSpace(read.DefaultProvider)
+	if defaultProvider == "" {
+		defaultProvider = "gemini"
+	}
+
+	rawProvider := ""
+	if key := strings.TrimSpace(read.SelectedProviderKey); key != "" {
+		rawProvider = w.getConfigString(ctx, ns, key, "")
+	}
+	if rawProvider == "" {
+		rawProvider = w.getConfigString(ctx, ns, llm.LLMDefaultProviderKey, "")
+	}
+	if rawProvider == "" {
+		rawProvider = w.getConfigString(ctx, ns, "provider", defaultProvider)
+	}
 	provider := llm.NormalizeProvider(rawProvider)
-	model := w.getConfigString(ctx, llm.LLMConfigNamespace, provider+"_"+llm.LLMModelIDKeySuffix, "")
+	providerNS := ns + "." + provider
+	model := w.getConfigString(ctx, ns, "model", "")
 	if model == "" {
-		model = w.getConfigString(ctx, llm.LLMConfigNamespace, provider+"_default_model", "")
+		model = w.getConfigString(ctx, providerNS, "model", "")
+	}
+	if model == "" {
+		model = w.getConfigString(ctx, ns, provider+"_"+llm.LLMModelIDKeySuffix, "")
+	}
+	if model == "" {
+		model = w.getConfigString(ctx, ns, provider+"_default_model", "")
 	}
 	// legacy compatibility
 	if provider == "lmstudio" && model == "" {
-		model = w.getConfigString(ctx, llm.LLMConfigNamespace, "local_default_model", "")
+		model = w.getConfigString(ctx, ns, "local_default_model", "")
 		if model == "" {
-			model = w.getConfigString(ctx, llm.LLMConfigNamespace, "local-llm_default_model", "")
+			model = w.getConfigString(ctx, ns, "local-llm_default_model", "")
 		}
 	}
-	endpoint := w.getConfigString(ctx, llm.LLMConfigNamespace, provider+"_endpoint", "")
+
+	endpoint := w.getConfigString(ctx, ns, "endpoint", "")
+	if endpoint == "" {
+		endpoint = w.getConfigString(ctx, providerNS, "endpoint", "")
+	}
+	if endpoint == "" {
+		endpoint = w.getConfigString(ctx, ns, provider+"_endpoint", "")
+	}
 	if provider == "lmstudio" && endpoint == "" {
-		endpoint = w.getConfigString(ctx, llm.LLMConfigNamespace, "local_endpoint", "")
+		endpoint = w.getConfigString(ctx, ns, "local_endpoint", "")
 		if endpoint == "" {
-			endpoint = w.getConfigString(ctx, llm.LLMConfigNamespace, "local-llm_endpoint", "")
+			endpoint = w.getConfigString(ctx, ns, "local-llm_endpoint", "")
 		}
 	}
 
 	apiKey := ""
-	if val, err := w.secretStore.GetSecret(ctx, llm.LLMConfigNamespace, provider+"_api_key"); err == nil {
-		apiKey = val
-	}
-	if provider == "lmstudio" && apiKey == "" {
-		if val, err := w.secretStore.GetSecret(ctx, llm.LLMConfigNamespace, "local_api_key"); err == nil {
-			apiKey = val
-		}
+	if provider != "lmstudio" {
+		apiKey = w.getConfigString(ctx, ns, "api_key", "")
 		if apiKey == "" {
-			if val, err := w.secretStore.GetSecret(ctx, llm.LLMConfigNamespace, "local-llm_api_key"); err == nil {
-				apiKey = val
-			}
+			apiKey = w.getConfigString(ctx, providerNS, "api_key", "")
+		}
+	}
+	if provider != "lmstudio" && apiKey == "" {
+		if val, err := w.secretStore.GetSecret(ctx, ns, provider+"_api_key"); err == nil {
+			apiKey = val
 		}
 	}
 
-	strConcurrency := w.getConfigString(ctx, llm.LLMConfigNamespace, llm.LLMSyncConcurrencyKeySuffix+"."+provider, "")
+	strConcurrency := w.getConfigString(ctx, ns, llm.LLMSyncConcurrencyKeySuffix+"."+provider, "")
 	var concurrency int
 	if strConcurrency != "" {
 		fmt.Sscanf(strConcurrency, "%d", &concurrency)

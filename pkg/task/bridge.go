@@ -18,6 +18,7 @@ type Bridge struct {
 	personaGenerator persona.NPCPersonaGenerator
 	notifier         progress.ProgressNotifier
 	queue            *queue.Queue
+	worker           *queue.Worker
 }
 
 func NewBridge(
@@ -37,12 +38,15 @@ func NewMasterPersonaBridge(
 	personaGenerator persona.NPCPersonaGenerator,
 	notifier progress.ProgressNotifier,
 	requestQueue *queue.Queue,
+	requestWorker *queue.Worker,
 ) *Bridge {
 	bridge := NewBridge(manager, logger)
 	bridge.parser = parser
 	bridge.personaGenerator = personaGenerator
 	bridge.notifier = notifier
 	bridge.queue = requestQueue
+	bridge.worker = requestWorker
+	manager.RegisterRunner(TypePersonaExtraction, bridge)
 	return bridge
 }
 
@@ -55,6 +59,10 @@ func (b *Bridge) GetAllTasks() ([]Task, error) {
 }
 
 func (b *Bridge) ResumeTask(taskID string) error {
+	return b.manager.ResumeTask(taskID)
+}
+
+func (b *Bridge) ResumeMasterPersonaTask(taskID string) error {
 	return b.manager.ResumeTask(taskID)
 }
 
@@ -87,4 +95,28 @@ func (b *Bridge) reportProgress(ctx context.Context, correlationID string, compl
 		Status:        status,
 		Message:       message,
 	})
+}
+
+func (b *Bridge) reportTaskPhaseProgress(ctx context.Context, taskID string, taskType TaskType, phase string, current int, total int, status string, message string) {
+	if b.notifier == nil {
+		return
+	}
+	b.notifier.OnProgress(ctx, progress.ProgressEvent{
+		CorrelationID: taskID,
+		TaskID:        taskID,
+		TaskType:      string(taskType),
+		Phase:         phase,
+		Current:       current,
+		Total:         total,
+		Completed:     current,
+		Status:        status,
+		Message:       message,
+	})
+}
+
+func (b *Bridge) Run(ctx context.Context, task *Task, update func(phase string, progress float64)) error {
+	if task.Type != TypePersonaExtraction {
+		return errors.New("unsupported task type for bridge runner")
+	}
+	return b.runPersonaExecution(ctx, task, update)
 }

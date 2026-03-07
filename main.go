@@ -92,6 +92,11 @@ func main() {
 		_ = llmQueue.Close()
 	}()
 
+	queueWorker := queue.NewWorker(llmQueue, llmManager, configStore, configStore, personaProgressNotifier, logger)
+	if err := queueWorker.Recover(context.Background()); err != nil {
+		log.Printf("failed to recover llm queue worker state: %v", err)
+	}
+
 	personaStore := persona.NewPersonaStore(db)
 	if err := personaStore.InitSchema(context.Background()); err != nil {
 		log.Fatalf("failed to initialize persona schema: %v", err)
@@ -105,7 +110,7 @@ func main() {
 	)
 
 	// 7. Setup Bridge
-	taskBridge := task.NewMasterPersonaBridge(taskManager, logger, parserLoader, personaGenerator, personaProgressNotifier, llmQueue)
+	taskBridge := task.NewMasterPersonaBridge(taskManager, logger, parserLoader, personaGenerator, personaProgressNotifier, llmQueue, queueWorker)
 
 	// Create an instance of the app structure
 	app := NewApp()

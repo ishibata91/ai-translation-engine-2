@@ -2,6 +2,7 @@ package task
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -53,7 +54,14 @@ func (m *Manager) RegisterRunner(ttype TaskType, runner Runner) {
 }
 
 func (m *Manager) ResumeTask(id string) error {
-	m.logger.Info("Resuming task", slog.String("id", id))
+	baseCtx := m.ctx
+	if baseCtx == nil {
+		baseCtx = context.Background()
+	}
+	logCtx := telemetry.WithTraceID(baseCtx)
+	logCtx = telemetry.WithAction(logCtx, telemetry.ActionTaskManagement, telemetry.ResourceTask, id)
+	defer telemetry.StartSpan(logCtx, telemetry.ActionTaskManagement)()
+	m.logger.InfoContext(logCtx, "resuming task", slog.String("id", id))
 
 	// Load task from DB if not in memory (unexpected case but let's be safe)
 	m.mu.Lock()
@@ -64,6 +72,9 @@ func (m *Manager) ResumeTask(id string) error {
 		// Try loading from DB
 		dbTasks, err := m.store.GetAllTasks(context.Background())
 		if err != nil {
+			m.logger.ErrorContext(logCtx, "resume task failed",
+				append(telemetry.ErrorAttrs(err), slog.String("id", id))...,
+			)
 			return err
 		}
 		for _, t := range dbTasks {
@@ -75,11 +86,23 @@ func (m *Manager) ResumeTask(id string) error {
 	}
 
 	if task == nil {
-		return fmt.Errorf("task not found: %s", id)
+		err := fmt.Errorf("task not found: %s", id)
+		m.logger.ErrorContext(logCtx, "resume task failed",
+			slog.String("id", id),
+			slog.String("reason", err.Error()),
+		)
+		return err
 	}
 
 	if task.Status == StatusRunning {
-		return fmt.Errorf("task is already running: %s", id)
+		m.logger.InfoContext(logCtx, "resume task skipped",
+			slog.String("id", id),
+			slog.String("task_type", string(task.Type)),
+			slog.String("task_status", string(task.Status)),
+			slog.String("task_phase", task.Phase),
+			slog.String("reason", "task is already running"),
+		)
+		return nil
 	}
 
 	m.runnersMu.RLock()
@@ -87,10 +110,18 @@ func (m *Manager) ResumeTask(id string) error {
 	m.runnersMu.RUnlock()
 
 	if !ok {
-		return fmt.Errorf("no runner registered for task type: %s", task.Type)
+		err := fmt.Errorf("no runner registered for task type: %s", task.Type)
+		m.logger.ErrorContext(logCtx, "resume task failed",
+			slog.String("id", id),
+			slog.String("task_type", string(task.Type)),
+			slog.String("task_status", string(task.Status)),
+			slog.String("task_phase", task.Phase),
+			slog.String("reason", err.Error()),
+		)
+		return err
 	}
 
-	taskCtx, cancel := context.WithCancel(context.Background())
+	taskCtx, cancel := context.WithCancel(logCtx)
 	m.mu.Lock()
 	task.Status = StatusRunning
 	task.ErrorMsg = ""
@@ -111,8 +142,27 @@ func (m *Manager) ResumeTask(id string) error {
 
 		if err != nil {
 			if taskCtx.Err() == context.Canceled {
+				m.logger.InfoContext(taskCtx, "task runner canceled",
+					slog.String("id", id),
+					slog.String("task_type", string(task.Type)),
+					slog.String("reason", err.Error()),
+				)
+				m.handleTaskCancellation(id)
+			} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				m.logger.InfoContext(taskCtx, "task runner canceled",
+					slog.String("id", id),
+					slog.String("task_type", string(task.Type)),
+					slog.String("reason", err.Error()),
+				)
 				m.handleTaskCancellation(id)
 			} else {
+				m.logger.ErrorContext(taskCtx, "task runner failed",
+					append(telemetry.ErrorAttrs(err),
+						slog.String("id", id),
+						slog.String("task_type", string(task.Type)),
+						slog.String("reason", err.Error()),
+					)...,
+				)
 				m.handleTaskFailure(id, err)
 			}
 		} else {
@@ -303,6 +353,13 @@ func (m *Manager) handleTaskCompletionWithStatus(id string, status TaskStatus) {
 }
 
 func (m *Manager) handleTaskFailure(id string, err error) {
+	logCtx := m.ctx
+	if logCtx == nil {
+		logCtx = context.Background()
+	}
+	logCtx = telemetry.WithTraceID(logCtx)
+	logCtx = telemetry.WithAction(logCtx, telemetry.ActionTaskManagement, telemetry.ResourceTask, id)
+
 	m.mu.Lock()
 	task, ok := m.activeTasks[id]
 	if !ok {
@@ -317,6 +374,13 @@ func (m *Manager) handleTaskFailure(id string, err error) {
 	m.mu.Unlock()
 
 	_ = m.store.UpdateTask(context.Background(), task.ID, task.Status, task.Phase, task.Progress, task.ErrorMsg)
+	m.logger.ErrorContext(logCtx, "task marked failed",
+		append(telemetry.ErrorAttrs(err),
+			slog.String("id", task.ID),
+			slog.String("phase", task.Phase),
+			slog.String("reason", task.ErrorMsg),
+		)...,
+	)
 	m.emitTaskUpdate(task)
 }
 

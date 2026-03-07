@@ -158,6 +158,7 @@ func TestBridge_StartMasterPersonTask_SuccessStatusAndInfoLog(t *testing.T) {
 		},
 		progress.NewNoopNotifier(),
 		requestQueue,
+		nil,
 	)
 
 	taskID, err := bridge.StartMasterPersonTask(StartMasterPersonTaskInput{SourceJSONPath: "dummy.json"})
@@ -205,6 +206,7 @@ func TestBridge_StartMasterPersonTask_FailureStatusAndErrorLog(t *testing.T) {
 		&mockPersonaGenerator{},
 		progress.NewNoopNotifier(),
 		requestQueue,
+		nil,
 	)
 
 	taskID, err := bridge.StartMasterPersonTask(StartMasterPersonTaskInput{SourceJSONPath: "dummy.json"})
