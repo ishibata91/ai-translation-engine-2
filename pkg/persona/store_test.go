@@ -84,6 +84,16 @@ func TestPersonaStore_UpsertAndDialogues(t *testing.T) {
 			if err := store.SaveGenerationRequest(ctx, effectivePlugin, "npc-001", "System Prompt:\nbase\n\nUser Prompt:\nfirst line"); err != nil {
 				t.Fatalf("SaveGenerationRequest(first) failed: %v", err)
 			}
+			rows, err := store.ListNPCs(ctx)
+			if err != nil {
+				t.Fatalf("ListNPCs(after request) failed: %v", err)
+			}
+			if len(rows) != 1 {
+				t.Fatalf("unexpected npc count after request: got=%d want=1", len(rows))
+			}
+			if rows[0].Status != "draft" {
+				t.Fatalf("expected draft status after request generation, got=%q", rows[0].Status)
+			}
 			if err := store.SavePersona(ctx, persona.PersonaResult{
 				SpeakerID:    "npc-001",
 				NPCName:      "Aela",
@@ -136,7 +146,7 @@ func TestPersonaStore_UpsertAndDialogues(t *testing.T) {
 				t.Fatalf("unexpected persona text: got=%q want=%q", personaText, tc.expectPersonaText)
 			}
 
-			rows, err := store.ListNPCs(ctx)
+			rows, err = store.ListNPCs(ctx)
 			if err != nil {
 				t.Fatalf("ListNPCs failed: %v", err)
 			}
@@ -145,6 +155,9 @@ func TestPersonaStore_UpsertAndDialogues(t *testing.T) {
 			}
 			if rows[0].DialogueCount != 1 {
 				t.Fatalf("expected aggregated dialogue count=1, got=%d", rows[0].DialogueCount)
+			}
+			if rows[0].Status != "generated" {
+				t.Fatalf("expected generated status after persona save, got=%q", rows[0].Status)
 			}
 			if tc.overwriteExisting && rows[0].GenerationRequest != "System Prompt:\nupdated\n\nUser Prompt:\nsecond line" {
 				t.Fatalf("unexpected generation request after overwrite: %q", rows[0].GenerationRequest)

@@ -289,6 +289,9 @@ func TestPersonaGenSlice_UsesConfiguredPromptSplit(t *testing.T) {
 	if len(rows) != 1 {
 		t.Fatalf("expected one saved persona row, got %d", len(rows))
 	}
+	if rows[0].Status != "draft" {
+		t.Fatalf("expected saved persona row to remain draft after request generation, got %q", rows[0].Status)
+	}
 	if !strings.Contains(rows[0].GenerationRequest, "System Prompt:\nSYSTEM RULES") {
 		t.Fatalf("expected saved generation_request to contain system prompt, got %q", rows[0].GenerationRequest)
 	}

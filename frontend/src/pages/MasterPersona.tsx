@@ -5,7 +5,7 @@ import ModelSettings from '../components/ModelSettings';
 import DataTable from '../components/DataTable';
 import PersonaDetail from '../components/PersonaDetail';
 import PromptSettingCard from '../components/masterPersona/PromptSettingCard';
-import { type NpcRow, type NpcStatus, STATUS_BADGE } from '../types/npc';
+import { NPC_STATUS_LABEL, type NpcRow, type NpcStatus, STATUS_BADGE } from '../types/npc';
 import { SelectJSONFile } from '../wailsjs/go/main/App';
 import { CancelTask, GetAllTasks, GetTaskRequestState, ResumeTask, StartMasterPersonTask } from '../wailsjs/go/task/Bridge';
 import { ListDialoguesByPersonaID, ListNPCs } from '../wailsjs/go/persona/Service';
@@ -51,6 +51,8 @@ interface PersonaNPCRecord {
     PersonaText?: string;
     generation_request?: string;
     GenerationRequest?: string;
+    status?: string;
+    Status?: string;
     updated_at?: string;
     UpdatedAt?: string;
 }
@@ -80,6 +82,8 @@ const formatUpdatedAt = (raw: string): string => {
     }
     return new Date(ts).toLocaleString('ja-JP');
 };
+
+const normalizeNpcStatus = (value: unknown): NpcStatus => value === 'generated' ? 'generated' : 'draft';
 
 const MASTER_PERSONA_LLM_NAMESPACE = 'master_persona.llm';
 const MASTER_PERSONA_PROMPT_NAMESPACE = 'master_persona.prompt';
@@ -179,7 +183,7 @@ const NPC_COLUMNS: ColumnDef<NpcRow, unknown>[] = [
         header: 'ステータス',
         cell: (info) => {
             const s = info.getValue() as NpcStatus;
-            return <div className={`badge badge-sm ${STATUS_BADGE[s]}`}>{s}</div>;
+            return <div className={`badge badge-sm ${STATUS_BADGE[s]}`}>{NPC_STATUS_LABEL[s]}</div>;
         },
     },
     {
@@ -196,8 +200,10 @@ const MasterPersona: React.FC = () => {
     const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
     const [npcSearchInput, setNpcSearchInput] = useState<string>('');
     const [pluginFilterInput, setPluginFilterInput] = useState<string>('');
+    const [statusFilterInput, setStatusFilterInput] = useState<string>('');
     const [appliedNpcSearch, setAppliedNpcSearch] = useState<string>('');
     const [appliedPluginFilter, setAppliedPluginFilter] = useState<string>('');
+    const [appliedStatusFilter, setAppliedStatusFilter] = useState<string>('');
     const [npcPage, setNpcPage] = useState<number>(1);
     const [isGenerating, setIsGenerating] = useState<boolean>(false);
     const [jsonPath, setJsonPath] = useState<string>('');
@@ -274,8 +280,12 @@ const MasterPersona: React.FC = () => {
     const filteredNpcData = useMemo(() => {
         const keyword = appliedNpcSearch.trim().toLowerCase();
         const plugin = appliedPluginFilter.trim().toLowerCase();
+        const status = appliedStatusFilter.trim().toLowerCase();
         return allNpcData.filter((row) => {
             if (plugin !== '' && row.sourcePlugin.toLowerCase() !== plugin) {
+                return false;
+            }
+            if (status !== '' && row.status !== status) {
                 return false;
             }
             if (keyword === '') {
@@ -291,7 +301,7 @@ const MasterPersona: React.FC = () => {
                 row.personaText,
             ].some((value) => value.toLowerCase().includes(keyword));
         });
-    }, [allNpcData, appliedNpcSearch, appliedPluginFilter]);
+    }, [allNpcData, appliedNpcSearch, appliedPluginFilter, appliedStatusFilter]);
 
     const totalNpcPages = Math.max(1, Math.ceil(filteredNpcData.length / PERSONA_PAGE_SIZE));
     const pagedNpcData = useMemo(() => {
@@ -302,14 +312,17 @@ const MasterPersona: React.FC = () => {
     const applyNPCFilters = () => {
         setAppliedNpcSearch(npcSearchInput);
         setAppliedPluginFilter(pluginFilterInput);
+        setAppliedStatusFilter(statusFilterInput);
         setNpcPage(1);
     };
 
     const clearNPCFilters = () => {
         setNpcSearchInput('');
         setPluginFilterInput('');
+        setStatusFilterInput('');
         setAppliedNpcSearch('');
         setAppliedPluginFilter('');
+        setAppliedStatusFilter('');
         setNpcPage(1);
     };
 
@@ -672,6 +685,7 @@ const MasterPersona: React.FC = () => {
                     const npcName = pickString(record.npc_name ?? record.NPCName);
                     const updatedAt = formatUpdatedAt(pickString(record.updated_at ?? record.UpdatedAt));
                     const dialogueCount = Number(record.dialogue_count ?? record.DialogueCount ?? 0);
+                    const status = normalizeNpcStatus(record.status ?? record.Status);
                     return {
                         id: String(personaID),
                         personaId: personaID,
@@ -682,7 +696,7 @@ const MasterPersona: React.FC = () => {
                         sex: pickString(record.sex ?? record.Sex),
                         voiceType: pickString(record.voice_type ?? record.VoiceType),
                         dialogueCount: Number.isFinite(dialogueCount) ? dialogueCount : 0,
-                        status: '完了' as NpcStatus,
+                        status,
                         updatedAt,
                         personaText: pickString(record.persona_text ?? record.PersonaText),
                         generationRequest: pickString(record.generation_request ?? record.GenerationRequest),
@@ -1028,6 +1042,15 @@ const MasterPersona: React.FC = () => {
                                     {pluginOptions.map((plugin) => (
                                         <option key={plugin} value={plugin}>{plugin}</option>
                                     ))}
+                                </select>
+                                <select
+                                    className="select select-bordered select-xs w-32"
+                                    value={statusFilterInput}
+                                    onChange={(event) => setStatusFilterInput(event.target.value)}
+                                >
+                                    <option value="">全状態</option>
+                                    <option value="draft">{NPC_STATUS_LABEL.draft}</option>
+                                    <option value="generated">{NPC_STATUS_LABEL.generated}</option>
                                 </select>
                                 <button className="btn btn-primary btn-xs" onClick={applyNPCFilters}>
                                     検索

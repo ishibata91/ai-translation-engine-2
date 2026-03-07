@@ -68,6 +68,7 @@ type PersonaNPCView struct {
 	VoiceType         string `json:"voice_type"`
 	PersonaText       string `json:"persona_text"`
 	GenerationRequest string `json:"generation_request"`
+	Status            string `json:"status"`
 	DialogueCount     int    `json:"dialogue_count"`
 	SourcePlugin      string `json:"source_plugin"`
 	UpdatedAt         string `json:"updated_at"`

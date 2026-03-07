@@ -139,6 +139,7 @@ erDiagram
         TEXT voice_type "声の種類"
         TEXT persona_text "生成されたペルソナテキスト"
         TEXT generation_request "LLMへ送信した生成リクエスト本文"
+        TEXT status "状態 (draft / generated)"
         TEXT source_plugin "ソースプラグイン名 (UNIQUE with speaker_id)"
         DATETIME updated_at "更新日時"
     }
