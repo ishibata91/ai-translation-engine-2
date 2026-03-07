@@ -89,22 +89,27 @@ func (g *DefaultPersonaGenerator) PreparePrompts(
 	thresholdCount := 0
 
 	for _, npcData := range groupedData {
+		npcData.SourcePlugin = normalizeSourcePlugin(npcData.SourcePlugin, npcData.SourceHint)
+
 		// Persist base NPC metadata and dialogues before request generation.
-		if err := g.Store.SavePersonaBase(ctx, npcData); err != nil {
+		saveState, err := g.Store.SavePersonaBase(ctx, npcData, data.OverwriteExisting)
+		if err != nil {
 			slog.WarnContext(ctx, "failed to save persona base data",
 				slog.String("speaker_id", npcData.SpeakerID),
 				slog.String("error", err.Error()),
 			)
-		} else if err := g.Store.ReplaceDialogues(ctx, npcData.SpeakerID, npcData.Dialogues); err != nil {
-			slog.WarnContext(ctx, "failed to save persona dialogues",
-				slog.String("speaker_id", npcData.SpeakerID),
-				slog.String("error", err.Error()),
-			)
+			continue
+		}
+		if strings.TrimSpace(saveState.PersonaText) == "" || data.OverwriteExisting {
+			if err := g.Store.ReplaceDialogues(ctx, saveState.PersonaID, npcData.SourcePlugin, npcData.SpeakerID, npcData.Dialogues); err != nil {
+				slog.WarnContext(ctx, "failed to save persona dialogues",
+					slog.String("speaker_id", npcData.SpeakerID),
+					slog.String("error", err.Error()),
+				)
+			}
 		}
 
-		// Check if already generated
-		exists, err := g.Store.GetPersona(ctx, npcData.SpeakerID)
-		if err == nil && exists != "" {
+		if strings.TrimSpace(saveState.PersonaText) != "" && !data.OverwriteExisting {
 			skippedCount++
 			continue
 		}
@@ -139,13 +144,14 @@ func (g *DefaultPersonaGenerator) PreparePrompts(
 			UserPrompt:   sb.String(),
 			Temperature:  0.3,
 			Metadata: map[string]interface{}{
-				"speaker_id":    npcData.SpeakerID,
-				"npc_name":      npcData.NPCName,
-				"race":          npcData.Race,
-				"sex":           npcData.Sex,
-				"voice_type":    npcData.VoiceType,
-				"source_plugin": npcData.SourcePlugin,
-				"editor_id":     npcData.EditorID,
+				"speaker_id":         npcData.SpeakerID,
+				"npc_name":           npcData.NPCName,
+				"race":               npcData.Race,
+				"sex":                npcData.Sex,
+				"voice_type":         npcData.VoiceType,
+				"source_plugin":      npcData.SourcePlugin,
+				"editor_id":          npcData.EditorID,
+				"overwrite_existing": data.OverwriteExisting,
 			},
 		}
 		requests = append(requests, request)
@@ -233,6 +239,7 @@ func (g *DefaultPersonaGenerator) SaveResultsWithSummary(
 		voiceType, _ := resp.Metadata["voice_type"].(string)
 		sourcePlugin, _ := resp.Metadata["source_plugin"].(string)
 		editorID, _ := resp.Metadata["editor_id"].(string)
+		overwriteExisting, _ := resp.Metadata["overwrite_existing"].(bool)
 
 		result := PersonaResult{
 			SpeakerID:    speakerID,
@@ -246,7 +253,7 @@ func (g *DefaultPersonaGenerator) SaveResultsWithSummary(
 			Status:       "success",
 		}
 
-		if err := g.Store.SavePersona(ctx, result); err != nil {
+		if err := g.Store.SavePersona(ctx, result, overwriteExisting); err != nil {
 			slog.ErrorContext(ctx, "failed to save persona to store",
 				append(telemetry.ErrorAttrs(err), slog.String("speaker_id", speakerID))...)
 			failCount++

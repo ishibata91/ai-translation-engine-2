@@ -8,8 +8,10 @@ import (
 
 // PersonaGenInput is the input data required for persona generation.
 type PersonaGenInput struct {
-	NPCs      map[string]PersonaNPC
-	Dialogues []PersonaDialogue
+	NPCs              map[string]PersonaNPC
+	Dialogues         []PersonaDialogue
+	SourceJSONPath    string
+	OverwriteExisting bool
 }
 
 type PersonaNPC struct {
@@ -34,6 +36,11 @@ type PersonaDialogue struct {
 	SourcePlugin     *string
 	IsServicesBranch bool
 	Order            int
+}
+
+type PersonaSaveState struct {
+	PersonaID   int64
+	PersonaText string
 }
 
 // NPCPersonaGenerator is the main entry point for NPC persona generation.
@@ -84,12 +91,12 @@ type ContextEvaluator interface {
 // including schema creation, INSERT/UPSERT, and retrieval.
 type PersonaStore interface {
 	InitSchema(ctx context.Context) error
-	SavePersona(ctx context.Context, result PersonaResult) error
-	SavePersonaBase(ctx context.Context, data NPCDialogueData) error
-	ReplaceDialogues(ctx context.Context, speakerID string, dialogues []DialogueEntry) error
-	GetPersona(ctx context.Context, speakerID string) (string, error)
+	SavePersona(ctx context.Context, result PersonaResult, overwriteExisting bool) error
+	SavePersonaBase(ctx context.Context, data NPCDialogueData, overwriteExisting bool) (PersonaSaveState, error)
+	ReplaceDialogues(ctx context.Context, personaID int64, sourcePlugin string, speakerID string, dialogues []DialogueEntry) error
+	GetPersona(ctx context.Context, sourcePlugin string, speakerID string) (string, error)
 	ListNPCs(ctx context.Context) ([]PersonaNPCView, error)
-	ListDialoguesBySpeaker(ctx context.Context, speakerID string) ([]PersonaDialogueView, error)
+	ListDialoguesByPersonaID(ctx context.Context, personaID int64) ([]PersonaDialogueView, error)
 	Clear(ctx context.Context) error
 }
 

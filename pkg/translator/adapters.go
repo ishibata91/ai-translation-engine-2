@@ -18,7 +18,7 @@ func NewPersonaLookupAdapter(store persona.PersonaStore) PersonaLookup {
 }
 
 func (a *personaLookupAdapter) FindBySpeakerID(ctx context.Context, speakerID string) (*string, error) {
-	text, err := a.store.GetPersona(ctx, speakerID)
+	text, err := a.store.GetPersona(ctx, "", speakerID)
 	if err != nil {
 		return nil, err
 	}

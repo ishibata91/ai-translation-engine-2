@@ -84,9 +84,9 @@ func (s *Store) GetActiveTasks(ctx context.Context) ([]Task, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, name, type, status, phase, progress, error_msg, metadata, created_at, updated_at
 		FROM frontend_tasks
-		WHERE status IN (?, ?, ?)
+		WHERE status IN (?, ?, ?, ?, ?)
 		ORDER BY created_at DESC
-	`, StatusPending, StatusRunning, StatusPaused)
+	`, StatusPending, StatusRunning, StatusPaused, StatusRequestGenerated, StatusCancelled)
 	if err != nil {
 		return nil, err
 	}

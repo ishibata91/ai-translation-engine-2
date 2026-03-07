@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import type { ColumnDef } from '@tanstack/react-table';
 import ModelSettings from '../components/ModelSettings';
@@ -7,7 +7,7 @@ import PersonaDetail from '../components/PersonaDetail';
 import { type NpcRow, type NpcStatus, STATUS_BADGE } from '../types/npc';
 import { SelectJSONFile } from '../wailsjs/go/main/App';
 import { CancelTask, GetAllTasks, GetTaskRequestState, ResumeTask, StartMasterPersonTask } from '../wailsjs/go/task/Bridge';
-import { ListDialoguesBySpeaker, ListNPCs } from '../wailsjs/go/persona/Service';
+import { ListDialoguesByPersonaID, ListNPCs } from '../wailsjs/go/persona/Service';
 import { ConfigGetAll, ConfigSet } from '../wailsjs/go/config/ConfigService';
 import type { PhaseCompletedEvent, FrontendTask } from '../types/task';
 import { DEFAULT_MASTER_PERSONA_LLM_CONFIG, type MasterPersonaLLMConfig } from '../types/masterPersona';
@@ -25,10 +25,20 @@ interface PersonaProgressEvent {
 }
 
 interface PersonaNPCRecord {
+    persona_id?: number;
+    PersonaID?: number;
     speaker_id?: string;
     SpeakerID?: string;
+    source_plugin?: string;
+    SourcePlugin?: string;
     npc_name?: string;
     NPCName?: string;
+    race?: string;
+    Race?: string;
+    sex?: string;
+    Sex?: string;
+    voice_type?: string;
+    VoiceType?: string;
     dialogue_count?: number;
     DialogueCount?: number;
     persona_text?: string;
@@ -38,14 +48,14 @@ interface PersonaNPCRecord {
 }
 
 interface PersonaDialogueRecord {
+    persona_id?: number;
+    PersonaID?: number;
     record_type?: string;
     RecordType?: string;
     editor_id?: string;
     EditorID?: string;
     source_text?: string;
     SourceText?: string;
-    translated_text?: string;
-    TranslatedText?: string;
 }
 
 const pickString = (value: unknown): string => {
@@ -125,12 +135,19 @@ const parseTaskTimestamp = (value: string | undefined): number => {
     return Number.isFinite(t) ? t : 0;
 };
 
+const PERSONA_PAGE_SIZE = 100;
+
 // ── 列定義 ───────────────────────────────────────────────
 const NPC_COLUMNS: ColumnDef<NpcRow, unknown>[] = [
     {
         accessorKey: 'formId',
         header: 'FormID',
         cell: (info) => <span className="font-mono text-sm">{info.getValue() as string}</span>,
+    },
+    {
+        accessorKey: 'sourcePlugin',
+        header: 'プラグイン名',
+        cell: (info) => <span className="font-mono text-xs">{info.getValue() as string}</span>,
     },
     {
         accessorKey: 'name',
@@ -158,11 +175,17 @@ const NPC_COLUMNS: ColumnDef<NpcRow, unknown>[] = [
 // ── ページコンポーネント ──────────────────────────────────
 const MasterPersona: React.FC = () => {
     const location = useLocation();
-    const [npcData, setNpcData] = useState<NpcRow[]>([]);
+    const [allNpcData, setAllNpcData] = useState<NpcRow[]>([]);
     const [selectedRow, setSelectedRow] = useState<NpcRow | null>(null);
     const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
+    const [npcSearchInput, setNpcSearchInput] = useState<string>('');
+    const [pluginFilterInput, setPluginFilterInput] = useState<string>('');
+    const [appliedNpcSearch, setAppliedNpcSearch] = useState<string>('');
+    const [appliedPluginFilter, setAppliedPluginFilter] = useState<string>('');
+    const [npcPage, setNpcPage] = useState<number>(1);
     const [isGenerating, setIsGenerating] = useState<boolean>(false);
     const [jsonPath, setJsonPath] = useState<string>('');
+    const [overwriteExisting, setOverwriteExisting] = useState<boolean>(false);
     const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
     const [progressPercent, setProgressPercent] = useState<number>(0);
     const [statusMessage, setStatusMessage] = useState<string>('待機中');
@@ -210,6 +233,58 @@ const MasterPersona: React.FC = () => {
         setSelectedRowId(rowId);
     };
 
+    const pluginOptions = useMemo(() => {
+        const unique = new Set<string>();
+        for (const row of allNpcData) {
+            if (row.sourcePlugin.trim() !== '') {
+                unique.add(row.sourcePlugin);
+            }
+        }
+        return Array.from(unique).sort((a, b) => a.localeCompare(b, 'ja'));
+    }, [allNpcData]);
+
+    const filteredNpcData = useMemo(() => {
+        const keyword = appliedNpcSearch.trim().toLowerCase();
+        const plugin = appliedPluginFilter.trim().toLowerCase();
+        return allNpcData.filter((row) => {
+            if (plugin !== '' && row.sourcePlugin.toLowerCase() !== plugin) {
+                return false;
+            }
+            if (keyword === '') {
+                return true;
+            }
+            return [
+                row.formId,
+                row.sourcePlugin,
+                row.name,
+                row.race,
+                row.sex,
+                row.voiceType,
+                row.personaText,
+            ].some((value) => value.toLowerCase().includes(keyword));
+        });
+    }, [allNpcData, appliedNpcSearch, appliedPluginFilter]);
+
+    const totalNpcPages = Math.max(1, Math.ceil(filteredNpcData.length / PERSONA_PAGE_SIZE));
+    const pagedNpcData = useMemo(() => {
+        const start = (npcPage - 1) * PERSONA_PAGE_SIZE;
+        return filteredNpcData.slice(start, start + PERSONA_PAGE_SIZE);
+    }, [filteredNpcData, npcPage]);
+
+    const applyNPCFilters = () => {
+        setAppliedNpcSearch(npcSearchInput);
+        setAppliedPluginFilter(pluginFilterInput);
+        setNpcPage(1);
+    };
+
+    const clearNPCFilters = () => {
+        setNpcSearchInput('');
+        setPluginFilterInput('');
+        setAppliedNpcSearch('');
+        setAppliedPluginFilter('');
+        setNpcPage(1);
+    };
+
     const handlePickJson = async () => {
         const selected = await SelectJSONFile();
         if (!selected) {
@@ -233,7 +308,7 @@ const MasterPersona: React.FC = () => {
         setActiveTaskStatus('pending');
 
         try {
-            const taskID = await StartMasterPersonTask({ source_json_path: jsonPath });
+            const taskID = await StartMasterPersonTask({ source_json_path: jsonPath, overwrite_existing: overwriteExisting });
             setActiveTaskId(taskID);
         } catch (error) {
             setIsGenerating(false);
@@ -259,6 +334,7 @@ const MasterPersona: React.FC = () => {
         if (sourceJSONPath) {
             setJsonPath(sourceJSONPath);
         }
+        setOverwriteExisting(Boolean(task.metadata?.overwrite_existing));
     };
 
     const handleResumeCurrentTask = async () => {
@@ -478,12 +554,19 @@ const MasterPersona: React.FC = () => {
             const rows: NpcRow[] = records
                 .map((record) => {
                     const speakerID = pickString(record.speaker_id ?? record.SpeakerID);
+                    const personaID = Number(record.persona_id ?? record.PersonaID ?? 0);
                     const npcName = pickString(record.npc_name ?? record.NPCName);
                     const updatedAt = formatUpdatedAt(pickString(record.updated_at ?? record.UpdatedAt));
                     const dialogueCount = Number(record.dialogue_count ?? record.DialogueCount ?? 0);
                     return {
+                        id: String(personaID),
+                        personaId: personaID,
                         formId: speakerID,
+                        sourcePlugin: pickString(record.source_plugin ?? record.SourcePlugin),
                         name: npcName || 'Unknown NPC',
+                        race: pickString(record.race ?? record.Race),
+                        sex: pickString(record.sex ?? record.Sex),
+                        voiceType: pickString(record.voice_type ?? record.VoiceType),
                         dialogueCount: Number.isFinite(dialogueCount) ? dialogueCount : 0,
                         status: '完了' as NpcStatus,
                         updatedAt,
@@ -492,40 +575,39 @@ const MasterPersona: React.FC = () => {
                         dialogues: [],
                     };
                 })
-                .filter((row) => row.formId !== '');
-            setNpcData(rows);
+                .filter((row) => row.personaId > 0);
+            setAllNpcData(rows);
             if (rows.length === 0) {
                 setSelectedRow(null);
                 setSelectedRowId(null);
-            } else if (!rows.some((row) => row.formId === selectedRowId)) {
+            } else if (!rows.some((row) => row.id === selectedRowId)) {
                 setSelectedRow(rows[0]);
-                setSelectedRowId(rows[0].formId);
+                setSelectedRowId(rows[0].id);
             }
         } catch (error) {
             console.error('failed to refresh npc rows from persona service', { error });
         }
     };
 
-    const loadDialoguesForSpeaker = async (speakerID: string) => {
+    const loadDialoguesForPersona = async (personaID: number) => {
         try {
-            const records = (await ListDialoguesBySpeaker(speakerID) as unknown as PersonaDialogueRecord[]) || [];
+            const records = (await ListDialoguesByPersonaID(personaID) as unknown as PersonaDialogueRecord[]) || [];
             const dialogues = records.map((row) => ({
                 recordType: pickString(row.record_type ?? row.RecordType),
                 editorId: pickString(row.editor_id ?? row.EditorID),
                 source: pickString(row.source_text ?? row.SourceText),
-                translation: pickString(row.translated_text ?? row.TranslatedText),
             }));
-            setNpcData((prev) =>
-                prev.map((row) => (row.formId === speakerID ? { ...row, dialogues } : row)),
+            setAllNpcData((prev) =>
+                prev.map((row) => (row.personaId === personaID ? { ...row, dialogues } : row)),
             );
             setSelectedRow((prev) => {
-                if (!prev || prev.formId !== speakerID) {
+                if (!prev || prev.personaId !== personaID) {
                     return prev;
                 }
                 return { ...prev, dialogues };
             });
         } catch (error) {
-            console.error('failed to load dialogues from persona service', { speakerID, error });
+            console.error('failed to load dialogues from persona service', { personaID, error });
         }
     };
 
@@ -541,8 +623,17 @@ const MasterPersona: React.FC = () => {
         if (!selectedRowId) {
             return;
         }
-        void loadDialoguesForSpeaker(selectedRowId);
+        const personaID = Number.parseInt(selectedRowId, 10);
+        if (Number.isFinite(personaID) && personaID > 0) {
+            void loadDialoguesForPersona(personaID);
+        }
     }, [selectedRowId]);
+
+    useEffect(() => {
+        if (npcPage > totalNpcPages) {
+            setNpcPage(totalNpcPages);
+        }
+    }, [npcPage, totalNpcPages]);
 
     useEffect(() => {
         const navState = location.state as { taskId?: string; resumeFromDashboard?: boolean } | null;
@@ -658,6 +749,7 @@ const MasterPersona: React.FC = () => {
             }
             if (task.status === 'request_generated') {
                 setStatusMessage('リクエスト生成完了。実行を開始します...');
+                startQueuedExecution(task.id);
             }
         });
 
@@ -708,6 +800,16 @@ const MasterPersona: React.FC = () => {
                                 <input type="text" readOnly value={jsonPath} placeholder="JSONファイルを選択してください" className="input input-bordered w-full max-w-xl font-mono text-xs" />
                                 <button className="btn btn-outline btn-primary" onClick={handlePickJson}>JSON選択</button>
                             </div>
+                            <label className="label cursor-pointer justify-start gap-3">
+                                <input
+                                    type="checkbox"
+                                    className="checkbox checkbox-primary checkbox-sm"
+                                    checked={overwriteExisting}
+                                    onChange={(event) => setOverwriteExisting(event.target.checked)}
+                                    disabled={isGenerating}
+                                />
+                                <span className="label-text">重複時に既存ペルソナを上書きする</span>
+                            </label>
                             <div>
                                 <span className="mt-2 mb-1 block text-sm text-base-content/70 font-bold">全体進捗</span>
                                 <progress className="progress progress-primary w-full" value={progressPercent} max="100"></progress>
@@ -748,11 +850,54 @@ const MasterPersona: React.FC = () => {
                 <div className="w-1/2 flex flex-col min-h-0 border border-base-200 rounded-xl bg-base-100 overflow-hidden">
                     <DataTable
                         columns={NPC_COLUMNS}
-                        data={npcData}
+                        data={pagedNpcData}
                         title="NPC処理ステータス (Skyrim.esm)"
+                        headerActions={
+                            <div className="flex flex-wrap items-center gap-2">
+                                <input
+                                    type="text"
+                                    className="input input-bordered input-xs w-44"
+                                    placeholder="NPC / FormID / ペルソナ検索"
+                                    value={npcSearchInput}
+                                    onChange={(event) => setNpcSearchInput(event.target.value)}
+                                />
+                                <select
+                                    className="select select-bordered select-xs w-40"
+                                    value={pluginFilterInput}
+                                    onChange={(event) => setPluginFilterInput(event.target.value)}
+                                >
+                                    <option value="">全プラグイン</option>
+                                    {pluginOptions.map((plugin) => (
+                                        <option key={plugin} value={plugin}>{plugin}</option>
+                                    ))}
+                                </select>
+                                <button className="btn btn-primary btn-xs" onClick={applyNPCFilters}>
+                                    検索
+                                </button>
+                                <button className="btn btn-ghost btn-xs" onClick={clearNPCFilters}>
+                                    解除
+                                </button>
+                                <span className="text-xs text-base-content/60">
+                                    {filteredNpcData.length.toLocaleString()} 件 / {npcPage} / {totalNpcPages} ページ
+                                </span>
+                                <button
+                                    className="btn btn-outline btn-xs"
+                                    disabled={npcPage <= 1}
+                                    onClick={() => setNpcPage((prev) => Math.max(1, prev - 1))}
+                                >
+                                    前へ
+                                </button>
+                                <button
+                                    className="btn btn-outline btn-xs"
+                                    disabled={npcPage >= totalNpcPages}
+                                    onClick={() => setNpcPage((prev) => Math.min(totalNpcPages, prev + 1))}
+                                >
+                                    次へ
+                                </button>
+                            </div>
+                        }
                         selectedRowId={selectedRowId}
                         onRowSelect={handleRowSelect}
-                        enableColumnFilter
                     />
                 </div>
 

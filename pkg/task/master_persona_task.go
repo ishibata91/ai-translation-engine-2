@@ -19,7 +19,8 @@ import (
 )
 
 type StartMasterPersonTaskInput struct {
-	SourceJSONPath string `json:"source_json_path"`
+	SourceJSONPath    string `json:"source_json_path"`
+	OverwriteExisting bool   `json:"overwrite_existing"`
 }
 
 type personaSaveSummary struct {
@@ -36,9 +37,10 @@ func (b *Bridge) StartMasterPersonTask(input StartMasterPersonTaskInput) (string
 	}
 
 	metadata := TaskMetadata{
-		"source_json_path": input.SourceJSONPath,
-		"entrypoint":       "master_persona",
-		"phase":            "prepare_requests",
+		"source_json_path":   input.SourceJSONPath,
+		"overwrite_existing": input.OverwriteExisting,
+		"entrypoint":         "master_persona",
+		"phase":              "prepare_requests",
 	}
 
 	taskID, err := b.manager.AddTaskWithCompletionStatus(
@@ -66,6 +68,8 @@ func (b *Bridge) StartMasterPersonTask(input StartMasterPersonTaskInput) (string
 			update("building_persona_input", 40)
 			b.reportProgress(runCtx, taskID, 40, progress.StatusInProgress, "ペルソナ入力を構築中")
 			personaInput := pipeline.ToPersonaGenInput(parsed)
+			personaInput.SourceJSONPath = input.SourceJSONPath
+			personaInput.OverwriteExisting = input.OverwriteExisting
 
 			update("preparing_requests", 75)
 			b.reportProgress(runCtx, taskID, 75, progress.StatusInProgress, "リクエストを生成中")
@@ -80,10 +84,12 @@ func (b *Bridge) StartMasterPersonTask(input StartMasterPersonTaskInput) (string
 			}
 
 			taskMetadata := TaskMetadata{
-				"source_json_path": input.SourceJSONPath,
-				"entrypoint":       "master_persona",
-				"phase":            "request_enqueued",
-				"resume_cursor":    0,
+				"source_json_path":   input.SourceJSONPath,
+				"overwrite_existing": input.OverwriteExisting,
+				"entrypoint":         "master_persona",
+				"phase":              "request_enqueued",
+				"resume_cursor":      0,
+				"request_count":      len(requests),
 			}
 
 			if b.queue == nil {
@@ -195,7 +201,7 @@ func (b *Bridge) runPersonaExecution(ctx context.Context, task *Task, update fun
 			DefaultProvider:     "lmstudio",
 			SelectedProviderKey: "selected_provider",
 		},
-		Hooks:                  hooks,
+		Hooks: hooks,
 	})
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
@@ -271,6 +277,12 @@ func (b *Bridge) persistPersonaResponses(ctx context.Context, task *Task) (perso
 		if parseErr != nil {
 			out.Failed++
 			continue
+		}
+		if resp.Metadata == nil {
+			resp.Metadata = map[string]interface{}{}
+		}
+		if _, ok := resp.Metadata["overwrite_existing"]; !ok {
+			resp.Metadata["overwrite_existing"] = metadataBool(task.Metadata["overwrite_existing"])
 		}
 
 		if hasReporter {
@@ -367,6 +379,17 @@ func mergeMetadata(primary map[string]interface{}, fallback map[string]interface
 		merged[k] = v
 	}
 	return merged
+}
+
+func metadataBool(raw interface{}) bool {
+	switch v := raw.(type) {
+	case bool:
+		return v
+	case string:
+		return strings.EqualFold(v, "true")
+	default:
+		return false
+	}
 }
 
 func toPercent(current int, total int) float64 {

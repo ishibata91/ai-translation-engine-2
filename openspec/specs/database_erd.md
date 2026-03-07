@@ -130,7 +130,8 @@ erDiagram
     npc_personas ||--o{ npc_dialogues : "1 NPC = N dialogues"
 
     npc_personas {
-        TEXT speaker_id PK "NPC識別子 (SpeakerID)"
+        INTEGER id PK "自動採番ID"
+        TEXT speaker_id "NPC識別子 (SpeakerID)"
         TEXT editor_id "NPC Editor ID"
         TEXT npc_name "NPC名"
         TEXT race "種族"
@@ -138,17 +139,18 @@ erDiagram
         TEXT voice_type "声の種類"
         TEXT persona_text "生成されたペルソナテキスト"
         INTEGER dialogue_count "ペルソナ生成に使用した会話件数"
-        TEXT source_plugin "ソースプラグイン名"
+        TEXT source_plugin "ソースプラグイン名 (UNIQUE with speaker_id)"
         DATETIME updated_at "更新日時"
     }
 
     npc_dialogues {
         INTEGER id PK "自動採番ID"
-        TEXT speaker_id FK "npc_personas.speaker_id"
+        INTEGER persona_id FK "npc_personas.id"
+        TEXT source_plugin "ソースプラグイン名"
+        TEXT speaker_id "NPC識別子 (検索補助)"
         TEXT editor_id "会話レコードのEditor ID"
         TEXT record_type "会話レコード種別"
         TEXT source_text "原文"
-        TEXT translated_text "訳文"
         TEXT quest_id "関連Quest ID (nullable)"
         INTEGER is_services_branch "services分岐フラグ (0/1)"
         INTEGER dialogue_order "元データ上の並び順"

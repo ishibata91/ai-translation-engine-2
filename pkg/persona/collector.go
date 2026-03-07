@@ -67,8 +67,9 @@ func (c *DefaultDialogueCollector) CollectByNPC(ctx context.Context, data Person
 	var result []NPCDialogueData
 	for speakerID, dialogues := range speakerDialogues {
 		npcData := NPCDialogueData{
-			SpeakerID: speakerID,
-			Dialogues: dialogues,
+			SpeakerID:  speakerID,
+			Dialogues:  dialogues,
+			SourceHint: data.SourceJSONPath,
 		}
 
 		// Enrich with NPC metadata if available

@@ -14,8 +14,8 @@ import (
 	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/llm"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/progress"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/queue"
-	"github.com/ishibata91/ai-translation-engine-2/pkg/persona"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/parser"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/persona"
 	_ "modernc.org/sqlite"
 )
 
@@ -137,7 +137,9 @@ func (m *taskTestConfigStore) Get(ctx context.Context, namespace string, key str
 func (m *taskTestConfigStore) Set(ctx context.Context, namespace string, key string, value string) error {
 	return nil
 }
-func (m *taskTestConfigStore) Delete(ctx context.Context, namespace string, key string) error { return nil }
+func (m *taskTestConfigStore) Delete(ctx context.Context, namespace string, key string) error {
+	return nil
+}
 func (m *taskTestConfigStore) GetAll(ctx context.Context, namespace string) (map[string]string, error) {
 	return nil, nil
 }
@@ -153,7 +155,9 @@ func (m *taskTestSecretStore) GetSecret(ctx context.Context, namespace string, k
 func (m *taskTestSecretStore) SetSecret(ctx context.Context, namespace string, key string, value string) error {
 	return nil
 }
-func (m *taskTestSecretStore) DeleteSecret(ctx context.Context, namespace string, key string) error { return nil }
+func (m *taskTestSecretStore) DeleteSecret(ctx context.Context, namespace string, key string) error {
+	return nil
+}
 func (m *taskTestSecretStore) ListSecretKeys(ctx context.Context, namespace string) ([]string, error) {
 	return nil, nil
 }
@@ -275,7 +279,7 @@ func TestBridge_StartMasterPersonTask_SuccessStatusAndInfoLog(t *testing.T) {
 		nil,
 	)
 
-	taskID, err := bridge.StartMasterPersonTask(StartMasterPersonTaskInput{SourceJSONPath: "dummy.json"})
+	taskID, err := bridge.StartMasterPersonTask(StartMasterPersonTaskInput{SourceJSONPath: "dummy.json", OverwriteExisting: true})
 	if err != nil {
 		t.Fatalf("StartMasterPersonTask failed: %v", err)
 	}
@@ -283,6 +287,12 @@ func TestBridge_StartMasterPersonTask_SuccessStatusAndInfoLog(t *testing.T) {
 	task := waitTaskStatus(t, bridge, taskID, StatusRequestGenerated, 3*time.Second)
 	if task.Phase != "REQUEST_GENERATED" {
 		t.Fatalf("unexpected task phase: got=%s", task.Phase)
+	}
+	if got, ok := task.Metadata["overwrite_existing"].(bool); !ok || !got {
+		t.Fatalf("expected overwrite_existing metadata=true, got=%v", task.Metadata["overwrite_existing"])
+	}
+	if got := int(task.Metadata["request_count"].(float64)); got != 1 {
+		t.Fatalf("expected request_count metadata=1, got=%d", got)
 	}
 
 	logs := loggerSink.findByMessage("persona.requests.generated")
@@ -390,7 +400,7 @@ func TestBridge_ResumeMasterPersonaTask_SkipsAlreadySavedRequests(t *testing.T) 
 		worker,
 	)
 
-	taskID, err := bridge.StartMasterPersonTask(StartMasterPersonTaskInput{SourceJSONPath: "dummy.json"})
+	taskID, err := bridge.StartMasterPersonTask(StartMasterPersonTaskInput{SourceJSONPath: "dummy.json", OverwriteExisting: false})
 	if err != nil {
 		t.Fatalf("StartMasterPersonTask failed: %v", err)
 	}
@@ -424,6 +434,9 @@ func TestBridge_ResumeMasterPersonaTask_SkipsAlreadySavedRequests(t *testing.T) 
 		}
 		if _, ok := task.Metadata["saved_request_ids"]; !ok {
 			t.Fatalf("expected saved_request_ids metadata to be persisted")
+		}
+		if got, ok := task.Metadata["overwrite_existing"].(bool); !ok || got {
+			t.Fatalf("expected overwrite_existing metadata=false, got=%v", task.Metadata["overwrite_existing"])
 		}
 		return
 	}

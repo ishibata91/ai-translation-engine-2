@@ -47,7 +47,7 @@ func (m *mockSecretStore) ListSecretKeys(ctx context.Context, namespace string) 
 }
 
 func setupTestDB(t *testing.T) (*sql.DB, func()) {
-	db, err := sql.Open("sqlite", "file:personas?mode=memory&cache=shared")
+	db, err := sql.Open("sqlite", "file:"+t.Name()+"?mode=memory&cache=shared")
 	if err != nil {
 		t.Fatalf("failed to open personas db: %v", err)
 	}
@@ -198,7 +198,7 @@ func TestPersonaGenSlice_TableDriven(t *testing.T) {
 
 			// Verify DB
 			for id := range tc.input.NPCs {
-				personaText, err := store.GetPersona(ctx, id)
+				personaText, err := store.GetPersona(ctx, "", id)
 				if err != nil {
 					t.Fatalf("Failed to get persona for %s: %v", id, err)
 				}
