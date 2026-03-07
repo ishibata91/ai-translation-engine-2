@@ -53,7 +53,7 @@ func (w *Worker) SetPollingInterval(d time.Duration) {
 // Recover should be called at startup to reset any IN_PROGRESS jobs to PENDING.
 func (w *Worker) Recover(ctx context.Context) error {
 	w.logger.DebugContext(ctx, "ENTER Recover")
-	res, err := w.queue.db.ExecContext(ctx, "UPDATE llm_jobs SET status = ?, updated_at = ? WHERE status = ?", StatusPending, time.Now().UTC(), StatusInProgress)
+	res, err := w.queue.db.ExecContext(ctx, "UPDATE llm_jobs SET status = ?, request_state = ?, updated_at = ? WHERE status = ?", StatusPending, RequestStatePending, time.Now().UTC(), StatusInProgress)
 	if err != nil {
 		return fmt.Errorf("recover fail: %w", err)
 	}

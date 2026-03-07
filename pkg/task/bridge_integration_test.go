@@ -11,6 +11,7 @@ import (
 
 	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/llm"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/progress"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/queue"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/parser"
 	_ "modernc.org/sqlite"
 )
@@ -97,6 +98,15 @@ func setupTaskTestDB(t *testing.T) *sql.DB {
 	return db
 }
 
+func setupRequestQueue(t *testing.T, logger *slog.Logger) *queue.Queue {
+	t.Helper()
+	q, err := queue.NewQueue(context.Background(), ":memory:", logger)
+	if err != nil {
+		t.Fatalf("failed to setup queue: %v", err)
+	}
+	return q
+}
+
 func waitTaskStatus(t *testing.T, bridge *Bridge, id string, status TaskStatus, timeout time.Duration) Task {
 	t.Helper()
 	deadline := time.Now().Add(timeout)
@@ -122,6 +132,8 @@ func TestBridge_StartMasterPersonTask_SuccessStatusAndInfoLog(t *testing.T) {
 
 	loggerSink := &captureHandler{}
 	logger := slog.New(loggerSink)
+	requestQueue := setupRequestQueue(t, logger)
+	defer requestQueue.Close()
 
 	manager := NewManager(nil, logger, NewStore(db))
 	bridge := NewMasterPersonaBridge(
@@ -145,6 +157,7 @@ func TestBridge_StartMasterPersonTask_SuccessStatusAndInfoLog(t *testing.T) {
 			},
 		},
 		progress.NewNoopNotifier(),
+		requestQueue,
 	)
 
 	taskID, err := bridge.StartMasterPersonTask(StartMasterPersonTaskInput{SourceJSONPath: "dummy.json"})
@@ -179,6 +192,8 @@ func TestBridge_StartMasterPersonTask_FailureStatusAndErrorLog(t *testing.T) {
 
 	loggerSink := &captureHandler{}
 	logger := slog.New(loggerSink)
+	requestQueue := setupRequestQueue(t, logger)
+	defer requestQueue.Close()
 
 	manager := NewManager(nil, logger, NewStore(db))
 	bridge := NewMasterPersonaBridge(
@@ -189,6 +204,7 @@ func TestBridge_StartMasterPersonTask_FailureStatusAndErrorLog(t *testing.T) {
 		},
 		&mockPersonaGenerator{},
 		progress.NewNoopNotifier(),
+		requestQueue,
 	)
 
 	taskID, err := bridge.StartMasterPersonTask(StartMasterPersonTaskInput{SourceJSONPath: "dummy.json"})

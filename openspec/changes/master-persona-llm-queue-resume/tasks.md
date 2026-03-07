@@ -1,9 +1,9 @@
 ## 1. フェーズ1: MasterPersona request のキュー保存
 
-- [ ] 1.1 `pkg/task/master_persona_task.go` で `PreparePrompts` 結果を Queue 登録 DTO に変換する
-- [ ] 1.2 Queue 永続化層へ MasterPersona request state（pending/running/completed/failed/canceled）を保存する
-- [ ] 1.3 `task` メタデータへ再開に必要なキー（phase/resume_cursor）を保存する
-- [ ] 1.4 キューマネージャーから task/request 状態を取得できる API を追加する
+- [x] 1.1 `pkg/task/master_persona_task.go` で `PreparePrompts` 結果を Queue 登録 DTO に変換する
+- [x] 1.2 Queue 永続化層へ MasterPersona request state（pending/running/completed/failed/canceled）を保存する
+- [x] 1.3 `task` メタデータへ再開に必要なキー（phase/resume_cursor）を保存する
+- [x] 1.4 キューマネージャーから task/request 状態を取得できる API を追加する
 - [ ] 1.5 ユーザー動作テスト: 開始後に再起動しても request が失われないことを確認する
 
 ## 2. フェーズ2: MasterPersona LLM config 永続化

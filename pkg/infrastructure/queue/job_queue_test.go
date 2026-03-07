@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -14,11 +15,11 @@ import (
 
 // mockLLMClient simulates LLM completion
 type mockLLMClient struct {
-	delay   time.Duration
-	failIdx int
-	count   int
-	loadErr error
-	loadCnt int
+	delay     time.Duration
+	failIdx   int
+	count     int
+	loadErr   error
+	loadCnt   int
 	unloadCnt int
 }
 
@@ -309,5 +310,79 @@ func TestQueue_NullMetadataColumnsCanBeScanned(t *testing.T) {
 	}
 	if jobs[0].Provider != "" || jobs[0].Model != "" || jobs[0].RequestFingerprint != "" || jobs[0].StructuredOutputSchemaVersion != "" {
 		t.Fatalf("expected nullable metadata to be normalized to empty strings, got %+v", jobs[0])
+	}
+}
+
+func TestQueue_SubmitTaskRequests_StoresTaskStateAndCursor(t *testing.T) {
+	ctx := context.Background()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	q, err := NewQueue(ctx, ":memory:", logger)
+	if err != nil {
+		t.Fatalf("failed to create queue: %v", err)
+	}
+	defer q.Close()
+
+	taskID := "task-001"
+	reqs := []llm.Request{
+		{UserPrompt: "p1"},
+		{UserPrompt: "p2"},
+	}
+	if err := q.SubmitTaskRequests(ctx, taskID, "persona_extraction", reqs); err != nil {
+		t.Fatalf("SubmitTaskRequests failed: %v", err)
+	}
+
+	state, err := q.GetTaskRequestState(ctx, taskID)
+	if err != nil {
+		t.Fatalf("GetTaskRequestState failed: %v", err)
+	}
+	if state.TaskType != "persona_extraction" || state.Total != 2 || state.Pending != 2 {
+		t.Fatalf("unexpected state: %+v", state)
+	}
+
+	items, err := q.GetTaskRequests(ctx, taskID)
+	if err != nil {
+		t.Fatalf("GetTaskRequests failed: %v", err)
+	}
+	if len(items) != 2 {
+		t.Fatalf("expected 2 requests, got %d", len(items))
+	}
+	if items[0].ResumeCursor != 0 || items[1].ResumeCursor != 0 {
+		t.Fatalf("unexpected resume cursors: %d, %d", items[0].ResumeCursor, items[1].ResumeCursor)
+	}
+	if items[0].RequestState != RequestStatePending {
+		t.Fatalf("unexpected request state: %s", items[0].RequestState)
+	}
+}
+
+func TestQueue_TaskRequests_SurviveReopen(t *testing.T) {
+	ctx := context.Background()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	dbPath := filepath.Join(t.TempDir(), "llm_jobs_test.db")
+
+	q1, err := NewQueue(ctx, dbPath, logger)
+	if err != nil {
+		t.Fatalf("failed to create queue: %v", err)
+	}
+	taskID := "task-reopen"
+	if err := q1.SubmitTaskRequests(ctx, taskID, "persona_extraction", []llm.Request{{UserPrompt: "persist"}}); err != nil {
+		t.Fatalf("SubmitTaskRequests failed: %v", err)
+	}
+	_ = q1.Close()
+
+	q2, err := NewQueue(ctx, dbPath, logger)
+	if err != nil {
+		t.Fatalf("failed to reopen queue: %v", err)
+	}
+	defer q2.Close()
+
+	items, err := q2.GetTaskRequests(ctx, taskID)
+	if err != nil {
+		t.Fatalf("GetTaskRequests failed: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("expected 1 persisted request, got %d", len(items))
+	}
+	if items[0].RequestState != RequestStatePending {
+		t.Fatalf("unexpected persisted request state: %s", items[0].RequestState)
 	}
 }

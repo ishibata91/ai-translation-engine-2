@@ -77,10 +77,25 @@ func (b *Bridge) StartMasterPersonTask(input StartMasterPersonTaskInput) (string
 			taskMetadata := TaskMetadata{
 				"source_json_path": input.SourceJSONPath,
 				"entrypoint":       "master_persona",
-				"phase":            "prepare_requests",
+				"phase":            "request_enqueued",
+				"resume_cursor":    0,
 				"request_count":    summary.RequestCount,
 				"npc_count":        summary.NPCCount,
 			}
+
+			if b.queue == nil {
+				return fmt.Errorf("request queue is not configured")
+			}
+			if err := b.queue.SubmitTaskRequests(runCtx, taskID, string(TypePersonaExtraction), requests); err != nil {
+				b.reportProgress(runCtx, taskID, 80, progress.StatusFailed, "キュー保存に失敗")
+				b.logger.ErrorContext(runCtx, "persona.requests.queue_save_failed",
+					slog.String("task_id", taskID),
+					slog.String("reason", err.Error()),
+				)
+				return err
+			}
+			b.reportProgress(runCtx, taskID, 90, progress.StatusInProgress, "リクエストをキューへ保存")
+
 			if err := b.manager.store.SaveMetadata(runCtx, taskID, taskMetadata); err != nil {
 				b.logger.WarnContext(runCtx, "failed to persist persona task summary",
 					slog.String("task_id", taskID),

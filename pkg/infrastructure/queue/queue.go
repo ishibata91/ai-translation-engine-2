@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -22,23 +24,50 @@ const (
 	StatusInProgress = "IN_PROGRESS"
 	StatusCompleted  = "COMPLETED"
 	StatusFailed     = "FAILED"
+	StatusCancelled  = "CANCELLED"
+)
+
+// Request states for slice-agnostic resume control.
+const (
+	RequestStatePending   = "pending"
+	RequestStateRunning   = "running"
+	RequestStateCompleted = "completed"
+	RequestStateFailed    = "failed"
+	RequestStateCanceled  = "canceled"
 )
 
 // JobRequest represents a single request inside the queue
 type JobRequest struct {
-	ID           string
-	ProcessID    string
-	RequestJSON  string
-	Status       string
-	Provider     string
-	Model        string
+	ID                            string
+	ProcessID                     string
+	TaskID                        string `json:"task_id"`
+	TaskType                      string `json:"task_type"`
+	RequestState                  string `json:"request_state"`
+	ResumeCursor                  int    `json:"resume_cursor"`
+	RequestJSON                   string
+	Status                        string
+	Provider                      string
+	Model                         string
 	RequestFingerprint            string
 	StructuredOutputSchemaVersion string
-	BatchJobID   *string
-	ResponseJSON *string
-	ErrorMessage *string
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	BatchJobID                    *string
+	ResponseJSON                  *string
+	ErrorMessage                  *string
+	CreatedAt                     time.Time
+	UpdatedAt                     time.Time
+}
+
+// TaskRequestState aggregates request states for one task.
+type TaskRequestState struct {
+	TaskID       string `json:"task_id"`
+	TaskType     string `json:"task_type"`
+	Total        int    `json:"total"`
+	Pending      int    `json:"pending"`
+	Running      int    `json:"running"`
+	Completed    int    `json:"completed"`
+	Failed       int    `json:"failed"`
+	Canceled     int    `json:"canceled"`
+	ResumeCursor int    `json:"resume_cursor"`
 }
 
 // Queue manages the llm_jobs sqlite database connection and operations.
@@ -49,9 +78,14 @@ type Queue struct {
 
 // NewQueue opens the SQLite connection to llm_jobs, sets pragmas, and runs DDL.
 func NewQueue(ctx context.Context, defaultDSN string, logger *slog.Logger) (*Queue, error) {
-	db, err := sql.Open("sqlite3", defaultDSN)
+	resolvedDSN, err := resolveDSN(defaultDSN)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open llm_jobs db: %w", err)
+		return nil, fmt.Errorf("failed to resolve queue dsn: %w", err)
+	}
+
+	db, err := sql.Open("sqlite3", resolvedDSN)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open llm_queue db: %w", err)
 	}
 
 	// PRAGMA settings for performance and concurrency
@@ -68,7 +102,7 @@ func NewQueue(ctx context.Context, defaultDSN string, logger *slog.Logger) (*Que
 	}
 
 	if err := runMigrations(ctx, db); err != nil {
-		return nil, fmt.Errorf("migration failed for llm_jobs db: %w", err)
+		return nil, fmt.Errorf("migration failed for llm_queue db: %w", err)
 	}
 
 	q := &Queue{
@@ -77,6 +111,35 @@ func NewQueue(ctx context.Context, defaultDSN string, logger *slog.Logger) (*Que
 	}
 
 	return q, nil
+}
+
+func resolveDSN(raw string) (string, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return "", fmt.Errorf("dsn is required")
+	}
+	// Keep in-memory and URI style DSN unchanged.
+	if strings.Contains(trimmed, ":memory:") || strings.HasPrefix(trimmed, "file:") {
+		return trimmed, nil
+	}
+	wd, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+
+	// Relative path is placed under workspace db/.
+	if !filepath.IsAbs(trimmed) {
+		path := filepath.Join(wd, "db", trimmed)
+		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+			return "", err
+		}
+		return path, nil
+	}
+
+	if err := os.MkdirAll(filepath.Dir(trimmed), 0755); err != nil {
+		return "", err
+	}
+	return trimmed, nil
 }
 
 func runMigrations(ctx context.Context, db *sql.DB) error {
@@ -155,6 +218,48 @@ func runMigrations(ctx context.Context, db *sql.DB) error {
 			return err
 		}
 	}
+	if version < 3 {
+		tx, err := db.BeginTx(ctx, nil)
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback()
+
+		ddl := []string{
+			`ALTER TABLE llm_jobs ADD COLUMN task_id TEXT;`,
+			`ALTER TABLE llm_jobs ADD COLUMN task_type TEXT;`,
+			`ALTER TABLE llm_jobs ADD COLUMN request_state TEXT;`,
+			`ALTER TABLE llm_jobs ADD COLUMN resume_cursor INTEGER NOT NULL DEFAULT 0;`,
+		}
+		for _, q := range ddl {
+			if _, err := tx.ExecContext(ctx, q); err != nil && !isDuplicateColumnError(err) {
+				return err
+			}
+		}
+
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE llm_jobs
+			SET task_id = COALESCE(NULLIF(task_id, ''), process_id),
+				request_state = CASE
+					WHEN request_state IS NOT NULL AND request_state != '' THEN request_state
+					WHEN status = 'PENDING' THEN 'pending'
+					WHEN status = 'IN_PROGRESS' THEN 'running'
+					WHEN status = 'COMPLETED' THEN 'completed'
+					WHEN status = 'FAILED' THEN 'failed'
+					WHEN status = 'CANCELLED' THEN 'canceled'
+					ELSE 'pending'
+				END
+		`); err != nil {
+			return err
+		}
+
+		if _, err := tx.ExecContext(ctx, "INSERT INTO schema_version (version, applied_at) VALUES (3, ?)", time.Now().UTC()); err != nil {
+			return err
+		}
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+	}
 
 	return nil
 }
@@ -168,6 +273,19 @@ func (q *Queue) Close() error {
 
 // SubmitJobs saves incoming requests to the queue.
 func (q *Queue) SubmitJobs(ctx context.Context, processID string, reqs []any) error {
+	return q.submitJobsInternal(ctx, processID, processID, "", reqs)
+}
+
+// SubmitTaskRequests saves incoming task requests with task metadata for resume/state queries.
+func (q *Queue) SubmitTaskRequests(ctx context.Context, taskID string, taskType string, reqs []llm.Request) error {
+	requests := make([]any, 0, len(reqs))
+	for _, req := range reqs {
+		requests = append(requests, req)
+	}
+	return q.submitJobsInternal(ctx, taskID, taskID, taskType, requests)
+}
+
+func (q *Queue) submitJobsInternal(ctx context.Context, processID string, taskID string, taskType string, reqs []any) error {
 	defer telemetry.StartSpan(ctx, telemetry.ActionDBQuery)()
 	q.logger.DebugContext(ctx, "submitting jobs", slog.String("process_id", processID), slog.Int("job_count", len(reqs)))
 
@@ -181,10 +299,10 @@ func (q *Queue) SubmitJobs(ctx context.Context, processID string, reqs []any) er
 	stmt, err := tx.PrepareContext(ctx, `
 		INSERT INTO llm_jobs (
 			id, process_id, request_json, status,
-			provider, model, request_fingerprint, structured_output_schema_version,
+			provider, model, request_fingerprint, structured_output_schema_version, task_id, task_type, request_state, resume_cursor,
 			created_at, updated_at
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
 		return fmt.Errorf("SubmitJobs prepare failed: %w", err)
@@ -192,10 +310,10 @@ func (q *Queue) SubmitJobs(ctx context.Context, processID string, reqs []any) er
 	defer stmt.Close()
 
 	now := time.Now().UTC()
-	for i, req := range reqs {
+	for _, req := range reqs {
 		data, err := json.Marshal(req)
 		if err != nil {
-			return fmt.Errorf("failed to marshal request at index %d: %w", i, err)
+			return fmt.Errorf("failed to marshal request: %w", err)
 		}
 
 		fingerprint := hashRequest(string(data))
@@ -211,6 +329,10 @@ func (q *Queue) SubmitJobs(ctx context.Context, processID string, reqs []any) er
 			"",
 			fingerprint,
 			schemaVersion,
+			taskID,
+			taskType,
+			RequestStatePending,
+			0,
 			now,
 			now,
 		); err != nil {
@@ -238,7 +360,7 @@ func (q *Queue) GetResults(ctx context.Context, processID string) ([]JobRequest,
 	rows, err := q.db.QueryContext(ctx, `
 		SELECT
 			id, process_id, request_json, status,
-			provider, model, request_fingerprint, structured_output_schema_version,
+			provider, model, request_fingerprint, structured_output_schema_version, task_id, task_type, request_state, resume_cursor,
 			batch_job_id, response_json, error_message, created_at, updated_at
 		FROM llm_jobs
 		WHERE process_id = ?
@@ -255,9 +377,10 @@ func (q *Queue) GetResults(ctx context.Context, processID string) ([]JobRequest,
 		var provider, model, requestFingerprint, schemaVersion sql.NullString
 		var batchJobID, responseJSON, errorMsg sql.NullString
 
+		var taskID, taskType, requestState sql.NullString
 		if err := rows.Scan(
 			&job.ID, &job.ProcessID, &job.RequestJSON, &job.Status,
-			&provider, &model, &requestFingerprint, &schemaVersion,
+			&provider, &model, &requestFingerprint, &schemaVersion, &taskID, &taskType, &requestState, &job.ResumeCursor,
 			&batchJobID, &responseJSON, &errorMsg,
 			&job.CreatedAt, &job.UpdatedAt,
 		); err != nil {
@@ -267,6 +390,9 @@ func (q *Queue) GetResults(ctx context.Context, processID string) ([]JobRequest,
 		job.Model = nullableString(model)
 		job.RequestFingerprint = nullableString(requestFingerprint)
 		job.StructuredOutputSchemaVersion = nullableString(schemaVersion)
+		job.TaskID = nullableString(taskID)
+		job.TaskType = nullableString(taskType)
+		job.RequestState = nullableString(requestState)
 
 		if batchJobID.Valid {
 			job.BatchJobID = &batchJobID.String
@@ -308,7 +434,7 @@ func (q *Queue) GetJobsByStatus(ctx context.Context, processID string, status st
 	rows, err := q.db.QueryContext(ctx, `
 		SELECT
 			id, process_id, request_json, status,
-			provider, model, request_fingerprint, structured_output_schema_version,
+			provider, model, request_fingerprint, structured_output_schema_version, task_id, task_type, request_state, resume_cursor,
 			batch_job_id, response_json, error_message, created_at, updated_at
 		FROM llm_jobs
 		WHERE process_id = ? AND status = ?
@@ -325,9 +451,10 @@ func (q *Queue) GetJobsByStatus(ctx context.Context, processID string, status st
 		var provider, model, requestFingerprint, schemaVersion sql.NullString
 		var batchJobID, responseJSON, errorMsg sql.NullString
 
+		var taskID, taskType, requestState sql.NullString
 		if err := rows.Scan(
 			&job.ID, &job.ProcessID, &job.RequestJSON, &job.Status,
-			&provider, &model, &requestFingerprint, &schemaVersion,
+			&provider, &model, &requestFingerprint, &schemaVersion, &taskID, &taskType, &requestState, &job.ResumeCursor,
 			&batchJobID, &responseJSON, &errorMsg,
 			&job.CreatedAt, &job.UpdatedAt,
 		); err != nil {
@@ -337,6 +464,9 @@ func (q *Queue) GetJobsByStatus(ctx context.Context, processID string, status st
 		job.Model = nullableString(model)
 		job.RequestFingerprint = nullableString(requestFingerprint)
 		job.StructuredOutputSchemaVersion = nullableString(schemaVersion)
+		job.TaskID = nullableString(taskID)
+		job.TaskType = nullableString(taskType)
+		job.RequestState = nullableString(requestState)
 
 		if batchJobID.Valid {
 			job.BatchJobID = &batchJobID.String
@@ -361,9 +491,9 @@ func (q *Queue) UpdateJob(ctx context.Context, jobID string, status string, resp
 
 	res, err := q.db.ExecContext(ctx, `
 		UPDATE llm_jobs 
-		SET status = ?, response_json = ?, error_message = ?, batch_job_id = ?, updated_at = ?
+		SET status = ?, request_state = ?, response_json = ?, error_message = ?, batch_job_id = ?, updated_at = ?
 		WHERE id = ?
-	`, status, responseJSON, errorMsg, batchJobID, time.Now().UTC(), jobID)
+	`, status, requestStateFromStatus(status), responseJSON, errorMsg, batchJobID, time.Now().UTC(), jobID)
 
 	if err != nil {
 		attrs := append(telemetry.ErrorAttrs(err), slog.String("job_id", jobID))
@@ -378,6 +508,92 @@ func (q *Queue) UpdateJob(ctx context.Context, jobID string, status string, resp
 		slog.Int64("affected_rows", affected),
 	)
 	return nil
+}
+
+// GetTaskRequests returns all requests for one task ordered by resume cursor.
+func (q *Queue) GetTaskRequests(ctx context.Context, taskID string) ([]JobRequest, error) {
+	rows, err := q.db.QueryContext(ctx, `
+		SELECT
+			id, process_id, request_json, status,
+			provider, model, request_fingerprint, structured_output_schema_version, task_id, task_type, request_state, resume_cursor,
+			batch_job_id, response_json, error_message, created_at, updated_at
+		FROM llm_jobs
+		WHERE task_id = ?
+		ORDER BY resume_cursor ASC, created_at ASC
+	`, taskID)
+	if err != nil {
+		return nil, fmt.Errorf("GetTaskRequests query failed: %w", err)
+	}
+	defer rows.Close()
+
+	var jobs []JobRequest
+	for rows.Next() {
+		var job JobRequest
+		var provider, model, requestFingerprint, schemaVersion sql.NullString
+		var dbTaskID, taskType, requestState sql.NullString
+		var batchJobID, responseJSON, errorMsg sql.NullString
+		if err := rows.Scan(
+			&job.ID, &job.ProcessID, &job.RequestJSON, &job.Status,
+			&provider, &model, &requestFingerprint, &schemaVersion, &dbTaskID, &taskType, &requestState, &job.ResumeCursor,
+			&batchJobID, &responseJSON, &errorMsg,
+			&job.CreatedAt, &job.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("GetTaskRequests scan failed: %w", err)
+		}
+		job.Provider = nullableString(provider)
+		job.Model = nullableString(model)
+		job.RequestFingerprint = nullableString(requestFingerprint)
+		job.StructuredOutputSchemaVersion = nullableString(schemaVersion)
+		job.TaskID = nullableString(dbTaskID)
+		job.TaskType = nullableString(taskType)
+		job.RequestState = nullableString(requestState)
+		if batchJobID.Valid {
+			job.BatchJobID = &batchJobID.String
+		}
+		if responseJSON.Valid {
+			job.ResponseJSON = &responseJSON.String
+		}
+		if errorMsg.Valid {
+			job.ErrorMessage = &errorMsg.String
+		}
+		jobs = append(jobs, job)
+	}
+	return jobs, nil
+}
+
+// GetTaskRequestState returns aggregate state for one task.
+func (q *Queue) GetTaskRequestState(ctx context.Context, taskID string) (TaskRequestState, error) {
+	state := TaskRequestState{TaskID: taskID}
+	var maxCursor sql.NullInt64
+	err := q.db.QueryRowContext(ctx, `
+		SELECT
+			COALESCE(MAX(task_type), ''),
+			COUNT(*),
+			SUM(CASE WHEN request_state = 'pending' THEN 1 ELSE 0 END),
+			SUM(CASE WHEN request_state = 'running' THEN 1 ELSE 0 END),
+			SUM(CASE WHEN request_state = 'completed' THEN 1 ELSE 0 END),
+			SUM(CASE WHEN request_state = 'failed' THEN 1 ELSE 0 END),
+			SUM(CASE WHEN request_state = 'canceled' THEN 1 ELSE 0 END),
+			MAX(resume_cursor)
+		FROM llm_jobs
+		WHERE task_id = ?
+	`, taskID).Scan(
+		&state.TaskType,
+		&state.Total,
+		&state.Pending,
+		&state.Running,
+		&state.Completed,
+		&state.Failed,
+		&state.Canceled,
+		&maxCursor,
+	)
+	if err != nil {
+		return TaskRequestState{}, fmt.Errorf("GetTaskRequestState failed: %w", err)
+	}
+	if maxCursor.Valid {
+		state.ResumeCursor = int(maxCursor.Int64)
+	}
+	return state, nil
 }
 
 // UpdateProcessMetadata stores provider/model for all jobs in the process.
@@ -424,4 +640,21 @@ func nullableString(v sql.NullString) string {
 		return ""
 	}
 	return v.String
+}
+
+func requestStateFromStatus(status string) string {
+	switch strings.ToUpper(strings.TrimSpace(status)) {
+	case StatusPending:
+		return RequestStatePending
+	case StatusInProgress:
+		return RequestStateRunning
+	case StatusCompleted:
+		return RequestStateCompleted
+	case StatusFailed:
+		return RequestStateFailed
+	case StatusCancelled:
+		return RequestStateCanceled
+	default:
+		return RequestStatePending
+	}
 }

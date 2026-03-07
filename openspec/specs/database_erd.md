@@ -212,8 +212,8 @@ erDiagram
 
 ## queue (LLMジョブキュー)
 
-インフラ層の汎用ジョブキュー。ドメイン知識を一切持たず、`ProcessID` と `Request` のペアを永続化します。完了済みジョブはスライスへの結果渡し後に即時物理削除（Hard Delete）されるため、テーブルは常に最小サイズを維持します。
-**データベース名:** `llm_jobs.db` (インフラ専用・全Mod共通)
+インフラ層の汎用ジョブキュー。ドメイン知識を一切持たず、`process_id` / `task_id` / `task_type` と `request` のペアを永続化し、request単位の再開状態を保持します。
+**データベース名:** `llm_queue.db` (インフラ専用・全Mod共通)
 
 ```mermaid
 %%{init: {'theme': 'dark', 'themeVariables': {
@@ -232,8 +232,16 @@ erDiagram
     llm_jobs {
         TEXT id PK "ジョブID (UUID)"
         TEXT process_id "処理単位ID (UUID, INDEX) ProcessManagerが刈り取りに使用"
+        TEXT task_id "タスクID (UUID, 再開単位)"
+        TEXT task_type "タスク種別 (e.g. persona_extraction)"
         TEXT request_json "LLMリクエスト (JSON)"
-        TEXT status "PENDING / IN_PROGRESS / COMPLETED / FAILED"
+        TEXT status "PENDING / IN_PROGRESS / COMPLETED / FAILED / CANCELLED"
+        TEXT request_state "pending / running / completed / failed / canceled"
+        INTEGER resume_cursor "再開位置カーソル (未進行は0)"
+        TEXT provider "実行プロバイダ (nullable)"
+        TEXT model "実行モデル (nullable)"
+        TEXT request_fingerprint "リクエスト一意性ハッシュ (nullable)"
+        TEXT structured_output_schema_version "構造化出力スキーマ版 (nullable)"
         TEXT batch_job_id "Batch API ジョブID (batch戦略時のみ使用, nullable)"
         TEXT response_json "完了時のLLMレスポンス (JSON, nullable)"
         TEXT error_message "エラーメッセージ (FAILED時のみ, nullable)"

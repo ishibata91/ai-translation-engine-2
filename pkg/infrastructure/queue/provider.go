@@ -15,5 +15,5 @@ var ProviderSet = wire.NewSet(
 
 // NewQueueProvider is a wire-compatible wrapper for creating the Queue.
 func NewQueueProvider(ctx context.Context, logger *slog.Logger) (*Queue, error) {
-	return NewQueue(ctx, "llm_jobs.db", logger)
+	return NewQueue(ctx, "llm_queue.db", logger)
 }

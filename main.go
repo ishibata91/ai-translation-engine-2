@@ -9,6 +9,7 @@ import (
 	"github.com/ishibata91/ai-translation-engine-2/pkg/dictionary"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/datastore"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/progress"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/queue"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/telemetry"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/parser"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/persona"
@@ -79,6 +80,14 @@ func main() {
 
 	// 6. Setup Persona + Parser dependencies for task bridge.
 	parserLoader := parser.ProvideParser(configStore)
+	llmQueue, err := queue.NewQueue(context.Background(), "llm_queue.db", logger)
+	if err != nil {
+		log.Fatalf("failed to initialize llm queue: %v", err)
+	}
+	defer func() {
+		_ = llmQueue.Close()
+	}()
+
 	personaStore := persona.NewPersonaStore(db)
 	if err := personaStore.InitSchema(context.Background()); err != nil {
 		log.Fatalf("failed to initialize persona schema: %v", err)
@@ -92,7 +101,7 @@ func main() {
 	)
 
 	// 7. Setup Bridge
-	taskBridge := task.NewMasterPersonaBridge(taskManager, logger, parserLoader, personaGenerator, personaProgressNotifier)
+	taskBridge := task.NewMasterPersonaBridge(taskManager, logger, parserLoader, personaGenerator, personaProgressNotifier, llmQueue)
 
 	// Create an instance of the app structure
 	app := NewApp()
