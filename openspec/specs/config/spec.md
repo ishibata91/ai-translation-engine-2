@@ -43,6 +43,8 @@ Interface-First AIDD v2 アーキテクチャに則り、各Sliceや上位層が
 7. **名前空間による分離**: 各Slice（`dictionary`, `translator` 等）やシステム（`ui`, `llm`）ごとに名前空間を持つ。
 8. **デフォルト値**: キーが未設定の場合にデフォルト値を返す仕組みを提供する。プロンプトテンプレートについては、未設定時にアプリケーション組み込みのデフォルトテンプレートを返す。
 9. **変更通知**: 特定の名前空間/キーの変更を監視し、コールバックで通知する。
+10. **Provider別設定分離**: 同一機能内で複数プロバイダを切り替える設定は、`<base_namespace>.<provider>` 単位で独立保存できなければならない。
+11. **選択中プロバイダ保存**: Provider別設定を利用する機能は、ベース名前空間に `selected_provider` を保存し、起動時に復元できなければならない。
 
 ### 非機能要件
 1. **スレッドセーフ**: 複数のGoroutineから同時にアクセスしても安全であること。
@@ -93,7 +95,42 @@ Interface-First AIDD v2 アーキテクチャに則り、各Sliceや上位層が
 | `llm.gemini` | Geminiプロバイダー固有 | `endpoint` | `https://generativelanguage.googleapis.com` |
 | `llm.openai` | OpenAIプロバイダー固有 | `endpoint` | `https://api.openai.com` |
 | `llm.local` | ローカルLLM固有 | `server_url`, `model_path` | `http://localhost:1234`, `/models/gemma` |
+| `master_persona.llm` | MasterPersona ベース設定 | `selected_provider` | `lmstudio`, `gemini` |
+| `master_persona.llm.lmstudio` | MasterPersona LM Studio設定 | `model`, `endpoint`, `temperature`, `max_tokens` | `qwen3-30b`, `http://localhost:1234`, `0.3`, `500` |
+| `master_persona.llm.gemini` | MasterPersona Gemini設定 | `model`, `endpoint`, `api_key`, `temperature`, `max_tokens` | `gemini-2.0-flash`, `https://...`, `***`, `0.3`, `500` |
+| `master_persona.llm.openai` | MasterPersona OpenAI設定 | `model`, `endpoint`, `api_key`, `temperature`, `max_tokens` | `gpt-4o`, `https://...`, `***`, `0.3`, `500` |
+| `master_persona.llm.xai` | MasterPersona xAI設定 | `model`, `endpoint`, `api_key`, `temperature`, `max_tokens` | `grok-3`, `https://...`, `***`, `0.3`, `500` |
 | `prompt_template` | プロンプトテンプレート | `dialogue`, `weapon`, `armor`, `book`, `quest`, `npc`, `default` | `You are a translator specializing in ...`（レコード種別ごとのシステムプロンプト全文） |
+
+### Requirement: Provider別設定の独立保存
+同一画面/機能でプロバイダを切り替える設定は、`<base_namespace>.<provider>` に分離保存しなければならない。別プロバイダへの切替時に、他プロバイダ設定を上書きしてはならない。
+
+#### Scenario: MasterPersonaでプロバイダ別設定を保持する
+- **WHEN** ユーザーが `master_persona.llm` で `lmstudio` と `gemini` を切り替えて各設定を保存する
+- **THEN** `master_persona.llm.lmstudio` と `master_persona.llm.gemini` は独立して保持される
+- **AND** 再度切り替えた際に、直前に保存した各プロバイダ固有値が復元される
+
+### Requirement: 選択中プロバイダの復元
+Provider別設定を採用する機能は、ベース名前空間の `selected_provider` から初期プロバイダを復元しなければならない。
+
+#### Scenario: 再起動後に選択中プロバイダを復元する
+- **WHEN** ユーザーが `master_persona.llm.selected_provider = gemini` を保存してアプリを再起動する
+- **THEN** 初回表示時に `gemini` が選択され、`master_persona.llm.gemini` の設定が読み込まれる
+
+### Requirement: MasterPersona LLM 設定は永続化・再読込できなければならない
+`config` は MasterPersona 用 LLM 設定（provider/model/endpoint/apiKey/temperature/maxTokens）を namespace 管理で保存し、画面起動時に再読込できなければならない。
+
+#### Scenario: 設定保存後に再起動しても復元される
+- **WHEN** ユーザーが MasterPersona 画面で設定を保存した後にアプリを再起動する
+- **THEN** 画面初期化時に保存済み設定が読み込まれ、入力欄へ反映されなければならない
+
+#### Scenario: 未保存時は安全な既定値を返す
+- **WHEN** MasterPersona 設定が未保存である
+- **THEN** `config` は空値エラーを返さず、既定値または空初期値を返さなければならない
+
+#### Scenario: apiKey はローカル用途として平文保存される
+- **WHEN** ユーザーが MasterPersona の `apiKey` を保存する
+- **THEN** `config` は暗号化を必須とせず、ローカル設定値として保存・再読込できなければならない
 
 ### `ui_state` テーブル（UIステート）
 | 名前空間 | 用途 | キー例 | 値の例 |

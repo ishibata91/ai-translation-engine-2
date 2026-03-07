@@ -8,9 +8,11 @@ import (
 	"github.com/ishibata91/ai-translation-engine-2/pkg/config"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/dictionary"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/datastore"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/llm"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/progress"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/queue"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/telemetry"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/modelcatalog"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/parser"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/persona"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/task"
@@ -77,6 +79,8 @@ func main() {
 		log.Fatalf("failed to initialize config store: %v", err)
 	}
 	configService := config.NewConfigService(configStore)
+	llmManager := llm.NewLLMManager(logger)
+	modelCatalogService := modelcatalog.NewModelCatalogService(configStore, configStore, llmManager, logger)
 
 	// 6. Setup Persona + Parser dependencies for task bridge.
 	parserLoader := parser.ProvideParser(configStore)
@@ -135,6 +139,7 @@ func main() {
 			app,
 			taskBridge,
 			configService,
+			modelCatalogService,
 		},
 	})
 

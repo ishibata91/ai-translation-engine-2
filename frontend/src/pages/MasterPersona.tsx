@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
 import ModelSettings from '../components/ModelSettings';
 import DataTable from '../components/DataTable';
@@ -6,7 +6,9 @@ import PersonaDetail from '../components/PersonaDetail';
 import { type NpcRow, type NpcStatus, STATUS_BADGE } from '../types/npc';
 import { SelectJSONFile } from '../wailsjs/go/main/App';
 import { StartMasterPersonTask } from '../wailsjs/go/task/Bridge';
+import { ConfigGetAll, ConfigSet } from '../wailsjs/go/config/ConfigService';
 import type { PhaseCompletedEvent, FrontendTask } from '../types/task';
+import { DEFAULT_MASTER_PERSONA_LLM_CONFIG, type MasterPersonaLLMConfig } from '../types/masterPersona';
 import * as Events from '../wailsjs/runtime/runtime';
 
 type PersonaProgressStatus = 'IN_PROGRESS' | 'COMPLETED' | 'FAILED';
@@ -24,6 +26,27 @@ interface PersonaRequestSummary {
     request_count: number;
     npc_count: number;
 }
+
+const MASTER_PERSONA_LLM_NAMESPACE = 'master_persona.llm';
+const SELECTED_PROVIDER_KEY = 'selected_provider';
+
+const normalizeProvider = (value: string | undefined): MasterPersonaLLMConfig['provider'] => {
+    if (value === 'lmstudio' || value === 'gemini' || value === 'openai' || value === 'xai') {
+        return value;
+    }
+    return DEFAULT_MASTER_PERSONA_LLM_CONFIG.provider;
+};
+
+const providerNamespace = (provider: MasterPersonaLLMConfig['provider']): string =>
+    `${MASTER_PERSONA_LLM_NAMESPACE}.${provider}`;
+
+const buildProviderConfigPairs = (cfg: MasterPersonaLLMConfig): Record<string, string> => ({
+    model: cfg.model,
+    endpoint: cfg.endpoint,
+    api_key: cfg.provider === 'lmstudio' ? '' : cfg.apiKey,
+    temperature: String(cfg.temperature),
+    max_tokens: String(cfg.maxTokens),
+});
 
 // ── 列定義 ───────────────────────────────────────────────
 const NPC_COLUMNS: ColumnDef<NpcRow, unknown>[] = [
@@ -67,6 +90,33 @@ const MasterPersona: React.FC = () => {
     const [statusMessage, setStatusMessage] = useState<string>('待機中');
     const [errorMessage, setErrorMessage] = useState<string>('');
     const [summary, setSummary] = useState<PersonaRequestSummary | null>(null);
+    const [llmConfig, setLLMConfig] = useState<MasterPersonaLLMConfig>(DEFAULT_MASTER_PERSONA_LLM_CONFIG);
+    const [isLLMConfigHydrated, setIsLLMConfigHydrated] = useState<boolean>(false);
+    const lastSavedLLMConfigRef = useRef<Partial<Record<MasterPersonaLLMConfig['provider'], MasterPersonaLLMConfig>>>({});
+    const latestLLMConfigRef = useRef<MasterPersonaLLMConfig>(DEFAULT_MASTER_PERSONA_LLM_CONFIG);
+    const selectedProviderRef = useRef<MasterPersonaLLMConfig['provider']>(DEFAULT_MASTER_PERSONA_LLM_CONFIG.provider);
+    const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
+    const isSwitchingProviderRef = useRef<boolean>(false);
+    const previousProviderRef = useRef<MasterPersonaLLMConfig['provider']>(DEFAULT_MASTER_PERSONA_LLM_CONFIG.provider);
+
+    const loadProviderConfig = async (
+        provider: MasterPersonaLLMConfig['provider'],
+        legacyRoot?: Record<string, string>,
+    ): Promise<MasterPersonaLLMConfig> => {
+        const loaded = await ConfigGetAll(providerNamespace(provider));
+        const source = Object.keys(loaded).length > 0 ? loaded : (legacyRoot ?? {});
+        const loadedTemperature = Number.parseFloat(source.temperature ?? '');
+        const loadedMaxTokens = Number.parseInt(source.max_tokens ?? '', 10);
+        const config = {
+            provider,
+            model: source.model ?? DEFAULT_MASTER_PERSONA_LLM_CONFIG.model,
+            endpoint: source.endpoint || DEFAULT_MASTER_PERSONA_LLM_CONFIG.endpoint,
+            apiKey: source.api_key ?? DEFAULT_MASTER_PERSONA_LLM_CONFIG.apiKey,
+            temperature: Number.isFinite(loadedTemperature) ? loadedTemperature : DEFAULT_MASTER_PERSONA_LLM_CONFIG.temperature,
+            maxTokens: Number.isFinite(loadedMaxTokens) && loadedMaxTokens > 0 ? loadedMaxTokens : DEFAULT_MASTER_PERSONA_LLM_CONFIG.maxTokens,
+        };
+        return config;
+    };
 
     const handleRowSelect = (row: NpcRow | null, rowId: string | null) => {
         setSelectedRow(row);
@@ -102,6 +152,157 @@ const MasterPersona: React.FC = () => {
             setErrorMessage(error instanceof Error ? error.message : '不明なエラーが発生しました');
         }
     };
+
+    useEffect(() => {
+        let alive = true;
+        (async () => {
+            for (let attempt = 0; attempt < 3; attempt += 1) {
+                try {
+                    const root = await ConfigGetAll(MASTER_PERSONA_LLM_NAMESPACE);
+                    if (!alive) {
+                        return;
+                    }
+
+                    const selected = normalizeProvider(root[SELECTED_PROVIDER_KEY] || root.provider);
+                    const hydrated = await loadProviderConfig(selected, root);
+                    setLLMConfig(hydrated);
+                    lastSavedLLMConfigRef.current[selected] = hydrated;
+                    latestLLMConfigRef.current = hydrated;
+                    selectedProviderRef.current = selected;
+                    previousProviderRef.current = selected;
+                    setIsLLMConfigHydrated(true);
+                    return;
+                } catch {
+                    if (!alive) {
+                        return;
+                    }
+                    if (attempt < 2) {
+                        await new Promise((resolve) => setTimeout(resolve, 150));
+                    }
+                }
+            }
+            if (!alive) {
+                return;
+            }
+            setLLMConfig(DEFAULT_MASTER_PERSONA_LLM_CONFIG);
+            lastSavedLLMConfigRef.current[DEFAULT_MASTER_PERSONA_LLM_CONFIG.provider] = DEFAULT_MASTER_PERSONA_LLM_CONFIG;
+            latestLLMConfigRef.current = DEFAULT_MASTER_PERSONA_LLM_CONFIG;
+            selectedProviderRef.current = DEFAULT_MASTER_PERSONA_LLM_CONFIG.provider;
+            previousProviderRef.current = DEFAULT_MASTER_PERSONA_LLM_CONFIG.provider;
+            setIsLLMConfigHydrated(true);
+        })();
+        return () => {
+            alive = false;
+        };
+    }, []);
+
+    useEffect(() => {
+        latestLLMConfigRef.current = llmConfig;
+    }, [llmConfig]);
+
+    const persistLLMConfigDiff = (currentRaw: MasterPersonaLLMConfig) => {
+        const current = {
+            ...currentRaw,
+            apiKey: currentRaw.provider === 'lmstudio' ? '' : currentRaw.apiKey,
+        };
+        const currentPairs = buildProviderConfigPairs(current);
+        const previous = lastSavedLLMConfigRef.current[current.provider];
+        const previousPairs = previous ? buildProviderConfigPairs(previous) : {};
+
+        const writes: Array<[string, string]> = [];
+        for (const key of Object.keys(currentPairs)) {
+            const k = key as keyof typeof currentPairs;
+            if (previousPairs[k] !== currentPairs[k]) {
+                writes.push([k, currentPairs[k]]);
+            }
+        }
+        const persistProvider = writes.length === 0
+            ? Promise.resolve()
+            : Promise.all(
+                writes.map(([key, val]) => ConfigSet(providerNamespace(current.provider), key, val)),
+            ).then(() => {
+                lastSavedLLMConfigRef.current[current.provider] = current;
+            });
+
+        if (selectedProviderRef.current === current.provider) {
+            return persistProvider;
+        }
+        return persistProvider.then(() =>
+            ConfigSet(MASTER_PERSONA_LLM_NAMESPACE, SELECTED_PROVIDER_KEY, current.provider),
+        ).then(() => {
+            selectedProviderRef.current = current.provider;
+        });
+    };
+
+    useEffect(() => {
+        if (!isLLMConfigHydrated) {
+            return;
+        }
+        const currentProvider = llmConfig.provider;
+        const previousProvider = previousProviderRef.current;
+        if (currentProvider === previousProvider) {
+            return;
+        }
+        previousProviderRef.current = currentProvider;
+        isSwitchingProviderRef.current = true;
+        let alive = true;
+        void loadProviderConfig(currentProvider)
+            .then((nextConfig) => {
+                if (!alive) {
+                    return;
+                }
+                setLLMConfig(nextConfig);
+                latestLLMConfigRef.current = nextConfig;
+                if (lastSavedLLMConfigRef.current[currentProvider] == null) {
+                    lastSavedLLMConfigRef.current[currentProvider] = nextConfig;
+                }
+            })
+            .finally(() => {
+                if (alive) {
+                    isSwitchingProviderRef.current = false;
+                    const snapshot = latestLLMConfigRef.current;
+                    saveQueueRef.current = saveQueueRef.current
+                        .then(() => persistLLMConfigDiff(snapshot))
+                        .catch((err) => {
+                            console.error('failed to persist provider switch config', err);
+                        });
+                }
+            });
+        return () => {
+            alive = false;
+        };
+    }, [isLLMConfigHydrated, llmConfig.provider]);
+
+    useEffect(() => {
+        if (!isLLMConfigHydrated) {
+            return;
+        }
+        if (isSwitchingProviderRef.current) {
+            return;
+        }
+        const snapshot = latestLLMConfigRef.current;
+        saveQueueRef.current = saveQueueRef.current
+            .then(() => persistLLMConfigDiff(snapshot))
+            .catch((err) => {
+                // 設定保存失敗時は次回変更時に再試行する。
+                console.error('failed to persist master_persona.llm config', err);
+            });
+    }, [isLLMConfigHydrated, llmConfig]);
+
+    useEffect(() => {
+        return () => {
+            if (!isLLMConfigHydrated) {
+                return;
+            }
+            const snapshot = latestLLMConfigRef.current;
+            saveQueueRef.current = saveQueueRef.current
+                .then(() => persistLLMConfigDiff(snapshot))
+                .catch((err) => {
+                    // アンマウント時は失敗しても次回起動時に再入力可能。
+                    console.error('failed to flush master_persona.llm config on unmount', err);
+                });
+        };
+    }, [isLLMConfigHydrated]);
 
     useEffect(() => {
         const offProgress = Events.EventsOn('persona:progress', (event: PersonaProgressEvent) => {
@@ -231,7 +432,21 @@ const MasterPersona: React.FC = () => {
 
             {/* モデル設定 */}
             <div className="shrink-0">
-                <ModelSettings title="ペルソナ生成モデル設定" />
+                {isLLMConfigHydrated ? (
+                    <ModelSettings
+                        title="ペルソナ生成モデル設定"
+                        value={llmConfig}
+                        onChange={setLLMConfig}
+                        enabled={isLLMConfigHydrated}
+                        namespace={providerNamespace(llmConfig.provider)}
+                    />
+                ) : (
+                    <div className="card bg-base-100 border border-base-200 shadow-sm">
+                        <div className="card-body py-4">
+                            <span className="text-sm text-base-content/60">モデル設定を読み込み中...</span>
+                        </div>
+                    </div>
+                )}
             </div>
 
             {/* 2ペインレイアウト (左: NPC テーブル, 右: PersonaDetail) */}

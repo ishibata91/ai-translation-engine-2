@@ -8,10 +8,10 @@
 
 ## 2. フェーズ2: MasterPersona LLM config 永続化
 
-- [ ] 2.1 `config` に `master_persona.llm` namespace の保存/読込 API を追加する
-- [ ] 2.2 `frontend/src/pages/MasterPersona.tsx` で初期ロード時に保存設定を読み込む
-- [ ] 2.3 `ModelSettings` 変更値を開始時に `master_persona.llm` として保存する
-- [ ] 2.4 未保存時の既定値フォールバック（空/既定パラメータ）を実装する
+- [x] 2.1 `config` に `master_persona.llm` namespace の保存/読込 API を追加する
+- [x] 2.2 `frontend/src/pages/MasterPersona.tsx` で初期ロード時に保存設定を読み込む
+- [x] 2.3 `ModelSettings` 変更値を開始時に `master_persona.llm` として保存する
+- [x] 2.4 未保存時の既定値フォールバック（空/既定パラメータ）を実装する
 - [ ] 2.5 ユーザー動作テスト: 設定保存後にアプリ再起動して値が復元されることを確認する
 
 ## 3. フェーズ3: LM Studio 経由の request 実行
