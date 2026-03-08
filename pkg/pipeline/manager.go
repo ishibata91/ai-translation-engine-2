@@ -251,7 +251,7 @@ func (m *Manager) submitJobs(ctx context.Context, processID string, requests []l
 }
 
 func (m *Manager) runProcessInBackground(ctx context.Context, processID string) {
-	bgCtx := telemetry.WithTraceID(ctx)
+	bgCtx := telemetry.WithTraceID(context.WithoutCancel(ctx))
 	bgCtx = telemetry.WithAction(bgCtx, telemetry.ActionPipelineExecute, telemetry.ResourceTask, processID)
 	defer telemetry.StartSpan(bgCtx, telemetry.ActionPipelineExecute)()
 

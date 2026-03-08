@@ -108,6 +108,43 @@ func TestProcessManager_Integration(t *testing.T) {
 	}
 }
 
+func TestProcessManager_ExecuteSliceIgnoresRequestContextCancellation(t *testing.T) {
+	baseCtx := context.Background()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+	q, _ := queue.NewQueue(baseCtx, ":memory:", logger)
+	defer q.Close()
+
+	mockLLM := &mockLLMManagerForPM{}
+	worker := queue.NewWorker(q, mockLLM, &mockCfgForPM{}, &mockSecForPM{}, &mockNotifierForPM{}, logger)
+	worker.SetPollingInterval(10 * time.Millisecond)
+
+	store, _ := NewStore(baseCtx, ":memory:")
+	defer store.Close()
+
+	manager := NewManager(store, q, worker, logger)
+	slice := &mockSlice{id: "TestSlice"}
+	manager.RegisterSlice(slice)
+
+	reqCtx, cancel := context.WithCancel(baseCtx)
+	processID, err := manager.ExecuteSlice(reqCtx, "TestSlice", "test-input", "test.json")
+	if err != nil {
+		t.Fatalf("ExecuteSlice failed: %v", err)
+	}
+	cancel()
+
+	time.Sleep(100 * time.Millisecond)
+
+	if slice.saveCalls != 1 {
+		t.Fatalf("Expected SaveResults to be called once after request context cancel, got %d", slice.saveCalls)
+	}
+
+	state, _ := store.GetState(baseCtx, processID)
+	if state != nil {
+		t.Fatalf("Expected state to be deleted after completion, but it exists")
+	}
+}
+
 // Mocks for PM Integration Test
 type mockLLMManagerForPM struct{}
 
