@@ -1,0 +1,30 @@
+package progress
+
+import (
+	"log/slog"
+
+	"github.com/google/wire"
+	base "github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/progress"
+)
+
+// Hub aliases the concrete runtime progress hub implementation.
+type Hub = base.Hub
+
+// WailsNotifier aliases the Wails-backed progress notifier.
+type WailsNotifier = base.WailsNotifier
+
+// NewHub creates a runtime progress hub.
+func NewHub() *Hub {
+	return base.NewHub()
+}
+
+// NewWailsNotifier creates a Wails-backed runtime progress notifier.
+func NewWailsNotifier(logger *slog.Logger) *WailsNotifier {
+	return base.NewWailsNotifier(logger)
+}
+
+// ProviderSet exposes runtime progress providers.
+var ProviderSet = wire.NewSet(
+	NewHub,
+	wire.Bind(new(ProgressNotifier), new(*Hub)),
+)

@@ -19,6 +19,7 @@ import (
 const (
 	goimportsVersion    = "golang.org/x/tools/cmd/goimports@v0.38.0"
 	golangciLintVersion = "github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8"
+	goCleanarchVersion  = "github.com/roblaszczak/go-cleanarch@v1.2.0"
 	govulncheckVersion  = "golang.org/x/vuln/cmd/govulncheck@v1.1.4"
 )
 
@@ -114,7 +115,10 @@ func runLint() error {
 	}
 	args := []string{"run", golangciLintVersion, "run", "--config", ".golangci.yml"}
 	args = append(args, patterns...)
-	return runCmd(args...)
+	if err := runCmd(args...); err != nil {
+		return err
+	}
+	return runCleanarch()
 }
 
 func runLintFile(args []string) error {
@@ -157,6 +161,20 @@ func runTest() error {
 
 func runVuln() error {
 	return runCmd("run", govulncheckVersion, "./pkg/...")
+}
+
+func runCleanarch() error {
+	args := []string{
+		"run",
+		goCleanarchVersion,
+		"-ignore-tests",
+		"-application", "workflow",
+		"-interfaces", "controller",
+		"-infrastructure", "runtime",
+		"-domain", "gateway",
+		"./pkg",
+	}
+	return runCmd(args...)
 }
 
 func runWatch(args []string) error {
