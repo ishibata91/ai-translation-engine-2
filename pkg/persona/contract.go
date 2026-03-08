@@ -3,7 +3,7 @@ package persona
 import (
 	"context"
 
-	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/llm"
+	gatewayllm "github.com/ishibata91/ai-translation-engine-2/pkg/gateway/llm"
 )
 
 // PersonaGenInput is the input data required for persona generation.
@@ -49,10 +49,10 @@ type NPCPersonaGenerator interface {
 	ID() string
 
 	// PreparePrompts (Phase 1) generates LLM requests.
-	PreparePrompts(ctx context.Context, input any) ([]llm.Request, error)
+	PreparePrompts(ctx context.Context, input any) ([]gatewayllm.Request, error)
 
 	// SaveResults (Phase 2) persists LLM responses.
-	SaveResults(ctx context.Context, responses []llm.Response) error
+	SaveResults(ctx context.Context, responses []gatewayllm.Response) error
 }
 
 // SaveResultsSummary reports phase-2 persistence outcomes.
@@ -63,7 +63,7 @@ type SaveResultsSummary struct {
 
 // SaveResultsReporter optionally exposes detailed save summary for orchestration.
 type SaveResultsReporter interface {
-	SaveResultsWithSummary(ctx context.Context, responses []llm.Response) (SaveResultsSummary, error)
+	SaveResultsWithSummary(ctx context.Context, responses []gatewayllm.Response) (SaveResultsSummary, error)
 }
 
 // DialogueCollector collects per-NPC dialogue data from PersonaGenInput,

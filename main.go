@@ -16,6 +16,7 @@ import (
 	"github.com/ishibata91/ai-translation-engine-2/pkg/parser"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/persona"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/task"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/workflow"
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
@@ -118,7 +119,12 @@ func main() {
 	personaService := persona.NewService(personaStore, logger)
 
 	// 7. Setup Bridge
-	taskBridge := task.NewMasterPersonaBridge(taskManager, logger, parserLoader, personaGenerator, personaProgressNotifier, llmQueue, queueWorker)
+	masterPersonaWorkflow := workflow.NewMasterPersonaService(taskManager, logger, parserLoader, personaGenerator, personaProgressNotifier, llmQueue, queueWorker)
+	taskManager.RegisterRunner(task.TypePersonaExtraction, masterPersonaWorkflow)
+	taskManager.RegisterCompletionHook(task.TypePersonaExtraction, func(ctx context.Context, currentTask *task.Task) error {
+		return llmQueue.DeleteTaskRequests(ctx, currentTask.ID)
+	})
+	taskBridge := task.NewMasterPersonaBridge(taskManager, logger, masterPersonaWorkflow)
 
 	// Create an instance of the app structure
 	app := NewApp()

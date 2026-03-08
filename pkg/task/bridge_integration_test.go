@@ -1,4 +1,4 @@
-package task
+package task_test
 
 import (
 	"context"
@@ -11,11 +11,14 @@ import (
 	"time"
 
 	"github.com/ishibata91/ai-translation-engine-2/pkg/config"
+	gatewayllm "github.com/ishibata91/ai-translation-engine-2/pkg/gateway/llm"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/llm"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/progress"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/queue"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/parser"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/persona"
+	. "github.com/ishibata91/ai-translation-engine-2/pkg/task"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/workflow"
 	_ "modernc.org/sqlite"
 )
 
@@ -32,7 +35,7 @@ func (m *mockParser) LoadExtractedJSON(ctx context.Context, path string) (*parse
 }
 
 type mockPersonaGenerator struct {
-	reqs          []llm.Request
+	reqs          []gatewayllm.Request
 	err           error
 	mu            sync.Mutex
 	saveCalls     int
@@ -40,13 +43,13 @@ type mockPersonaGenerator struct {
 }
 
 func (m *mockPersonaGenerator) ID() string { return "PersonaMock" }
-func (m *mockPersonaGenerator) PreparePrompts(ctx context.Context, input any) ([]llm.Request, error) {
+func (m *mockPersonaGenerator) PreparePrompts(ctx context.Context, input any) ([]gatewayllm.Request, error) {
 	if m.err != nil {
 		return nil, m.err
 	}
 	return m.reqs, nil
 }
-func (m *mockPersonaGenerator) SaveResults(ctx context.Context, responses []llm.Response) error {
+func (m *mockPersonaGenerator) SaveResults(ctx context.Context, responses []gatewayllm.Response) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.saveCalls += len(responses)
@@ -61,7 +64,7 @@ func (m *mockPersonaGenerator) SaveResults(ctx context.Context, responses []llm.
 	return nil
 }
 
-func (m *mockPersonaGenerator) SaveResultsWithSummary(ctx context.Context, responses []llm.Response) (persona.SaveResultsSummary, error) {
+func (m *mockPersonaGenerator) SaveResultsWithSummary(ctx context.Context, responses []gatewayllm.Response) (persona.SaveResultsSummary, error) {
 	if err := m.SaveResults(ctx, responses); err != nil {
 		return persona.SaveResultsSummary{}, err
 	}
@@ -285,7 +288,7 @@ func TestBridge_StartMasterPersonTask_SuccessStatusAndInfoLog(t *testing.T) {
 	defer requestQueue.Close()
 
 	manager := NewManager(nil, logger, NewStore(db)) //nolint:staticcheck // Wails context is intentionally absent in unit tests.
-	bridge := NewMasterPersonaBridge(
+	masterPersonaWorkflow := workflow.NewMasterPersonaService(
 		manager,
 		logger,
 		&mockParser{
@@ -296,7 +299,7 @@ func TestBridge_StartMasterPersonTask_SuccessStatusAndInfoLog(t *testing.T) {
 			},
 		},
 		&mockPersonaGenerator{
-			reqs: []llm.Request{
+			reqs: []gatewayllm.Request{
 				{
 					Metadata: map[string]interface{}{
 						"speaker_id": "npc-1",
@@ -309,6 +312,7 @@ func TestBridge_StartMasterPersonTask_SuccessStatusAndInfoLog(t *testing.T) {
 		requestQueue,
 		nil,
 	)
+	bridge := NewMasterPersonaBridge(manager, logger, masterPersonaWorkflow)
 
 	taskID, err := bridge.StartMasterPersonTask(StartMasterPersonTaskInput{SourceJSONPath: "dummy.json", OverwriteExisting: true})
 	if err != nil {
@@ -352,7 +356,7 @@ func TestBridge_StartMasterPersonTask_FailureStatusAndErrorLog(t *testing.T) {
 	defer requestQueue.Close()
 
 	manager := NewManager(nil, logger, NewStore(db)) //nolint:staticcheck // Wails context is intentionally absent in unit tests.
-	bridge := NewMasterPersonaBridge(
+	masterPersonaWorkflow := workflow.NewMasterPersonaService(
 		manager,
 		logger,
 		&mockParser{
@@ -363,6 +367,7 @@ func TestBridge_StartMasterPersonTask_FailureStatusAndErrorLog(t *testing.T) {
 		requestQueue,
 		nil,
 	)
+	bridge := NewMasterPersonaBridge(manager, logger, masterPersonaWorkflow)
 
 	taskID, err := bridge.StartMasterPersonTask(StartMasterPersonTaskInput{SourceJSONPath: "dummy.json"})
 	if err != nil {
@@ -401,7 +406,7 @@ func TestBridge_ResumeMasterPersonaTask_CleansQueueAfterCompletion(t *testing.T)
 
 	manager := NewManager(nil, logger, NewStore(db)) //nolint:staticcheck // Wails context is intentionally absent in unit tests.
 	personaGen := &mockPersonaGenerator{
-		reqs: []llm.Request{
+		reqs: []gatewayllm.Request{
 			{Metadata: map[string]interface{}{"speaker_id": "npc-1", "npc_name": "Aela"}},
 			{Metadata: map[string]interface{}{"speaker_id": "npc-2", "npc_name": "Farkas"}},
 		},
@@ -414,7 +419,7 @@ func TestBridge_ResumeMasterPersonaTask_CleansQueueAfterCompletion(t *testing.T)
 		progress.NewNoopNotifier(),
 		logger,
 	)
-	bridge := NewMasterPersonaBridge(
+	masterPersonaWorkflow := workflow.NewMasterPersonaService(
 		manager,
 		logger,
 		&mockParser{
@@ -430,6 +435,11 @@ func TestBridge_ResumeMasterPersonaTask_CleansQueueAfterCompletion(t *testing.T)
 		requestQueue,
 		worker,
 	)
+	manager.RegisterRunner(TypePersonaExtraction, masterPersonaWorkflow)
+	manager.RegisterCompletionHook(TypePersonaExtraction, func(ctx context.Context, currentTask *Task) error {
+		return requestQueue.DeleteTaskRequests(ctx, currentTask.ID)
+	})
+	bridge := NewMasterPersonaBridge(manager, logger, masterPersonaWorkflow)
 
 	taskID, err := bridge.StartMasterPersonTask(StartMasterPersonTaskInput{SourceJSONPath: "dummy.json", OverwriteExisting: false})
 	if err != nil {
@@ -486,7 +496,7 @@ func TestBridge_CancelledMasterPersonaTask_KeepsQueuedRequests(t *testing.T) {
 
 	manager := NewManager(nil, logger, NewStore(db)) //nolint:staticcheck // Wails context is intentionally absent in unit tests.
 	personaGen := &mockPersonaGenerator{
-		reqs: []llm.Request{
+		reqs: []gatewayllm.Request{
 			{Metadata: map[string]interface{}{"speaker_id": "npc-1", "npc_name": "Aela"}},
 			{Metadata: map[string]interface{}{"speaker_id": "npc-2", "npc_name": "Farkas"}},
 		},
@@ -499,7 +509,7 @@ func TestBridge_CancelledMasterPersonaTask_KeepsQueuedRequests(t *testing.T) {
 		progress.NewNoopNotifier(),
 		logger,
 	)
-	bridge := NewMasterPersonaBridge(
+	masterPersonaWorkflow := workflow.NewMasterPersonaService(
 		manager,
 		logger,
 		&mockParser{
@@ -515,6 +525,8 @@ func TestBridge_CancelledMasterPersonaTask_KeepsQueuedRequests(t *testing.T) {
 		requestQueue,
 		worker,
 	)
+	manager.RegisterRunner(TypePersonaExtraction, masterPersonaWorkflow)
+	bridge := NewMasterPersonaBridge(manager, logger, masterPersonaWorkflow)
 
 	taskID, err := bridge.StartMasterPersonTask(StartMasterPersonTaskInput{SourceJSONPath: "dummy.json", OverwriteExisting: false})
 	if err != nil {

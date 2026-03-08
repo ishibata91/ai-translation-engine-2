@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/ishibata91/ai-translation-engine-2/pkg/config"
-	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/llm"
+	gatewayllm "github.com/ishibata91/ai-translation-engine-2/pkg/gateway/llm"
 	persona "github.com/ishibata91/ai-translation-engine-2/pkg/persona"
 	_ "modernc.org/sqlite"
 )
@@ -197,12 +197,12 @@ func TestPersonaGenSlice_TableDriven(t *testing.T) {
 			}
 
 			// Simulate JobQueue/Pipeline calling LLM
-			llmResponses := make([]llm.Response, 0, len(requests))
+			llmResponses := make([]gatewayllm.Response, 0, len(requests))
 			for i, content := range tc.mockLLMOutput {
 				if i >= len(requests) {
 					break
 				}
-				llmResponses = append(llmResponses, llm.Response{
+				llmResponses = append(llmResponses, gatewayllm.Response{
 					Content:  content,
 					Success:  true,
 					Metadata: requests[i].Metadata,

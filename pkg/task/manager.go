@@ -200,6 +200,10 @@ func (m *Manager) SetContext(ctx context.Context) {
 	m.ctx = ctx
 }
 
+func (m *Manager) Store() *Store {
+	return m.store
+}
+
 func (m *Manager) Initialize(ctx context.Context) error {
 	m.logger.InfoContext(ctx, "Initializing TaskManager")
 

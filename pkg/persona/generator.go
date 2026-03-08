@@ -7,8 +7,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/ishibata91/ai-translation-engine-2/pkg/config"
-	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/llm"
+	gatewayconfig "github.com/ishibata91/ai-translation-engine-2/pkg/gateway/config"
+	gatewayllm "github.com/ishibata91/ai-translation-engine-2/pkg/gateway/llm"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/telemetry"
 )
 
@@ -17,8 +17,8 @@ type DefaultPersonaGenerator struct {
 	Collector   DialogueCollector
 	Evaluator   ContextEvaluator
 	Store       PersonaStore
-	Config      config.Config
-	SecretStore config.SecretStore
+	Config      gatewayconfig.Config
+	SecretStore gatewayconfig.SecretStore
 }
 
 // NewPersonaGenerator creates a new NPCPersonaGenerator.
@@ -26,8 +26,8 @@ func NewPersonaGenerator(
 	collector DialogueCollector,
 	evaluator ContextEvaluator,
 	store PersonaStore,
-	configStore config.Config,
-	secretStore config.SecretStore,
+	configStore gatewayconfig.Config,
+	secretStore gatewayconfig.SecretStore,
 ) *DefaultPersonaGenerator {
 	return &DefaultPersonaGenerator{
 		Collector:   collector,
@@ -47,7 +47,7 @@ func (g *DefaultPersonaGenerator) ID() string {
 func (g *DefaultPersonaGenerator) PreparePrompts(
 	ctx context.Context,
 	input any,
-) ([]llm.Request, error) {
+) ([]gatewayllm.Request, error) {
 	defer telemetry.StartSpan(ctx, telemetry.ActionProcessTranslation)() // Persona generation is part of translation process
 	data, ok := input.(PersonaGenInput)
 	if !ok {
@@ -78,7 +78,7 @@ func (g *DefaultPersonaGenerator) PreparePrompts(
 		return nil, fmt.Errorf("failed to collect NPC dialogues: %w", err)
 	}
 
-	var requests []llm.Request
+	var requests []gatewayllm.Request
 	skippedCount := 0
 	thresholdCount := 0
 
@@ -122,7 +122,7 @@ func (g *DefaultPersonaGenerator) PreparePrompts(
 			continue
 		}
 
-		request := llm.Request{
+		request := gatewayllm.Request{
 			SystemPrompt: promptCfg.SystemPrompt,
 			UserPrompt:   buildPersonaUserPrompt(promptCfg, npcData, selectedDialogues),
 			Temperature:  0.3,
@@ -163,14 +163,14 @@ func (g *DefaultPersonaGenerator) PreparePrompts(
 	return requests, nil
 }
 
-func formatGenerationRequest(request llm.Request) string {
+func formatGenerationRequest(request gatewayllm.Request) string {
 	return strings.TrimSpace(fmt.Sprintf("System Prompt:\n%s\n\nUser Prompt:\n%s", request.SystemPrompt, request.UserPrompt))
 }
 
 // SaveResults parses LLM responses and persists them to the store (Phase 2).
 func (g *DefaultPersonaGenerator) SaveResults(
 	ctx context.Context,
-	results []llm.Response,
+	results []gatewayllm.Response,
 ) error {
 	_, err := g.SaveResultsWithSummary(ctx, results)
 	return err
@@ -179,7 +179,7 @@ func (g *DefaultPersonaGenerator) SaveResults(
 // SaveResultsWithSummary parses responses, persists valid personas, and returns save counts.
 func (g *DefaultPersonaGenerator) SaveResultsWithSummary(
 	ctx context.Context,
-	results []llm.Response,
+	results []gatewayllm.Response,
 ) (SaveResultsSummary, error) {
 	defer telemetry.StartSpan(ctx, telemetry.ActionProcessTranslation)()
 	slog.DebugContext(ctx, "saving persona results",

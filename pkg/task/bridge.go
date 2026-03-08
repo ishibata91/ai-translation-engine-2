@@ -5,20 +5,21 @@ import (
 	"errors"
 	"log/slog"
 
-	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/progress"
-	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/queue"
-	"github.com/ishibata91/ai-translation-engine-2/pkg/parser"
-	"github.com/ishibata91/ai-translation-engine-2/pkg/persona"
+	runtimequeue "github.com/ishibata91/ai-translation-engine-2/pkg/runtime/queue"
 )
 
+type masterPersonaWorkflow interface {
+	StartMasterPersonTask(input StartMasterPersonTaskInput) (string, error)
+	ResumeMasterPersonaTask(taskID string) error
+	CancelTask(taskID string)
+	GetTaskRequestState(ctx context.Context, taskID string) (runtimequeue.TaskRequestState, error)
+	GetTaskRequests(ctx context.Context, taskID string) ([]runtimequeue.JobRequest, error)
+}
+
 type Bridge struct {
-	manager          *Manager
-	logger           *slog.Logger
-	parser           parser.Parser
-	personaGenerator persona.NPCPersonaGenerator
-	notifier         progress.ProgressNotifier
-	queue            *queue.Queue
-	worker           *queue.Worker
+	manager               *Manager
+	logger                *slog.Logger
+	masterPersonaWorkflow masterPersonaWorkflow
 }
 
 func NewBridge(
@@ -34,24 +35,10 @@ func NewBridge(
 func NewMasterPersonaBridge(
 	manager *Manager,
 	logger *slog.Logger,
-	parser parser.Parser,
-	personaGenerator persona.NPCPersonaGenerator,
-	notifier progress.ProgressNotifier,
-	requestQueue *queue.Queue,
-	requestWorker *queue.Worker,
+	masterPersona masterPersonaWorkflow,
 ) *Bridge {
 	bridge := NewBridge(manager, logger)
-	bridge.parser = parser
-	bridge.personaGenerator = personaGenerator
-	bridge.notifier = notifier
-	bridge.queue = requestQueue
-	bridge.worker = requestWorker
-	manager.RegisterRunner(TypePersonaExtraction, bridge)
-	if requestQueue != nil {
-		manager.RegisterCompletionHook(TypePersonaExtraction, func(ctx context.Context, task *Task) error {
-			return requestQueue.DeleteTaskRequests(ctx, task.ID)
-		})
-	}
+	bridge.masterPersonaWorkflow = masterPersona
 	return bridge
 }
 
@@ -68,60 +55,30 @@ func (b *Bridge) ResumeTask(taskID string) error {
 }
 
 func (b *Bridge) ResumeMasterPersonaTask(taskID string) error {
-	return b.manager.ResumeTask(taskID)
+	if b.masterPersonaWorkflow == nil {
+		return errors.New("master persona workflow is not configured")
+	}
+	return b.masterPersonaWorkflow.ResumeMasterPersonaTask(taskID)
 }
 
 func (b *Bridge) CancelTask(taskID string) {
+	if b.masterPersonaWorkflow != nil {
+		b.masterPersonaWorkflow.CancelTask(taskID)
+		return
+	}
 	b.manager.CancelTask(taskID)
 }
 
-func (b *Bridge) GetTaskRequestState(taskID string) (queue.TaskRequestState, error) {
-	if b.queue == nil {
-		return queue.TaskRequestState{}, errors.New("request queue is not configured")
+func (b *Bridge) GetTaskRequestState(taskID string) (runtimequeue.TaskRequestState, error) {
+	if b.masterPersonaWorkflow == nil {
+		return runtimequeue.TaskRequestState{}, errors.New("master persona workflow is not configured")
 	}
-	return b.queue.GetTaskRequestState(context.Background(), taskID)
+	return b.masterPersonaWorkflow.GetTaskRequestState(context.Background(), taskID)
 }
 
-func (b *Bridge) GetTaskRequests(taskID string) ([]queue.JobRequest, error) {
-	if b.queue == nil {
-		return nil, errors.New("request queue is not configured")
+func (b *Bridge) GetTaskRequests(taskID string) ([]runtimequeue.JobRequest, error) {
+	if b.masterPersonaWorkflow == nil {
+		return nil, errors.New("master persona workflow is not configured")
 	}
-	return b.queue.GetTaskRequests(context.Background(), taskID)
-}
-
-func (b *Bridge) reportProgress(ctx context.Context, correlationID string, completed int, status string, message string) {
-	if b.notifier == nil {
-		return
-	}
-	b.notifier.OnProgress(ctx, progress.ProgressEvent{
-		CorrelationID: correlationID,
-		Total:         100,
-		Completed:     completed,
-		Status:        status,
-		Message:       message,
-	})
-}
-
-func (b *Bridge) reportTaskPhaseProgress(ctx context.Context, taskID string, taskType TaskType, phase string, current int, total int, status string, message string) {
-	if b.notifier == nil {
-		return
-	}
-	b.notifier.OnProgress(ctx, progress.ProgressEvent{
-		CorrelationID: taskID,
-		TaskID:        taskID,
-		TaskType:      string(taskType),
-		Phase:         phase,
-		Current:       current,
-		Total:         total,
-		Completed:     current,
-		Status:        status,
-		Message:       message,
-	})
-}
-
-func (b *Bridge) Run(ctx context.Context, task *Task, update func(phase string, progress float64)) error {
-	if task.Type != TypePersonaExtraction {
-		return errors.New("unsupported task type for bridge runner")
-	}
-	return b.runPersonaExecution(ctx, task, update)
+	return b.masterPersonaWorkflow.GetTaskRequests(context.Background(), taskID)
 }

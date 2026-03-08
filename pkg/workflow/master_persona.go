@@ -16,7 +16,7 @@ type StartMasterPersonaInput struct {
 type MasterPersona interface {
 	StartMasterPersona(ctx context.Context, input StartMasterPersonaInput) (string, error)
 	ResumeMasterPersona(ctx context.Context, taskID string) error
-	CancelTask(ctx context.Context, taskID string) error
+	CancelMasterPersona(ctx context.Context, taskID string) error
 	GetTaskRequestState(ctx context.Context, taskID string) (runtimequeue.TaskRequestState, error)
 	GetTaskRequests(ctx context.Context, taskID string) ([]runtimequeue.JobRequest, error)
 }
