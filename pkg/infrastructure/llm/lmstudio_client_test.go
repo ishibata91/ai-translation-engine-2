@@ -140,6 +140,44 @@ func TestLMStudioClient_Complete_ReturnsMessageContentAsIs(t *testing.T) {
 	}
 }
 
+func TestLMStudioClient_GenerateStructured_AcceptsJSONObjectContent(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/chat/completions" {
+			http.NotFound(w, r)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"choices": []map[string]any{{
+				"message": map[string]any{
+					"content": map[string]any{
+						"ok":    true,
+						"value": "structured",
+					},
+				},
+			}},
+			"usage": map[string]any{"prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3},
+		})
+	}))
+	defer srv.Close()
+
+	client := NewLMStudioClient(slog.New(slog.NewTextHandler(os.Stdout, nil)), LLMConfig{
+		Provider: "lmstudio",
+		Endpoint: srv.URL,
+		Model:    "m1",
+	})
+	resp, err := client.GenerateStructured(context.Background(), Request{
+		UserPrompt:     "test",
+		ResponseSchema: map[string]interface{}{"type": "object"},
+	})
+	if err != nil {
+		t.Fatalf("GenerateStructured failed: %v", err)
+	}
+	if resp.Content != `{"ok":true,"value":"structured"}` {
+		t.Fatalf("expected structured object content to be normalized JSON, got: %q", resp.Content)
+	}
+}
+
 func TestStructuredOutputNotSupportedProviders(t *testing.T) {
 	t.Parallel()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))

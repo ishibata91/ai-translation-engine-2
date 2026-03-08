@@ -9,14 +9,15 @@ import (
 )
 
 type masterPersonaWorkflow interface {
-	StartMasterPersonTask(input StartMasterPersonTaskInput) (string, error)
-	ResumeMasterPersonaTask(taskID string) error
-	CancelTask(taskID string)
+	StartMasterPersonTask(ctx context.Context, input StartMasterPersonTaskInput) (string, error)
+	ResumeMasterPersonaTask(ctx context.Context, taskID string) error
+	CancelTask(ctx context.Context, taskID string)
 	GetTaskRequestState(ctx context.Context, taskID string) (runtimequeue.TaskRequestState, error)
 	GetTaskRequests(ctx context.Context, taskID string) ([]runtimequeue.JobRequest, error)
 }
 
 type Bridge struct {
+	ctx                   context.Context
 	manager               *Manager
 	logger                *slog.Logger
 	masterPersonaWorkflow masterPersonaWorkflow
@@ -27,6 +28,7 @@ func NewBridge(
 	logger *slog.Logger,
 ) *Bridge {
 	return &Bridge{
+		ctx:     context.Background(),
 		manager: manager,
 		logger:  logger.With("module", "task_bridge"),
 	}
@@ -46,24 +48,32 @@ func (b *Bridge) GetActiveTasks() []Task {
 	return b.manager.GetActiveTasks()
 }
 
+func (b *Bridge) SetContext(ctx context.Context) {
+	if ctx == nil {
+		b.ctx = context.Background()
+		return
+	}
+	b.ctx = ctx
+}
+
 func (b *Bridge) GetAllTasks() ([]Task, error) {
-	return b.manager.store.GetAllTasks(context.Background())
+	return b.manager.store.GetAllTasks(b.context())
 }
 
 func (b *Bridge) ResumeTask(taskID string) error {
 	return b.manager.ResumeTask(taskID)
 }
 
-func (b *Bridge) ResumeMasterPersonaTask(taskID string) error {
+func (b *Bridge) ResumeMasterPersonaTask(ctx context.Context, taskID string) error {
 	if b.masterPersonaWorkflow == nil {
 		return errors.New("master persona workflow is not configured")
 	}
-	return b.masterPersonaWorkflow.ResumeMasterPersonaTask(taskID)
+	return b.masterPersonaWorkflow.ResumeMasterPersonaTask(ctx, taskID)
 }
 
-func (b *Bridge) CancelTask(taskID string) {
+func (b *Bridge) CancelTask(ctx context.Context, taskID string) {
 	if b.masterPersonaWorkflow != nil {
-		b.masterPersonaWorkflow.CancelTask(taskID)
+		b.masterPersonaWorkflow.CancelTask(ctx, taskID)
 		return
 	}
 	b.manager.CancelTask(taskID)
@@ -73,12 +83,22 @@ func (b *Bridge) GetTaskRequestState(taskID string) (runtimequeue.TaskRequestSta
 	if b.masterPersonaWorkflow == nil {
 		return runtimequeue.TaskRequestState{}, errors.New("master persona workflow is not configured")
 	}
-	return b.masterPersonaWorkflow.GetTaskRequestState(context.Background(), taskID)
+	return b.masterPersonaWorkflow.GetTaskRequestState(b.context(), taskID)
 }
 
 func (b *Bridge) GetTaskRequests(taskID string) ([]runtimequeue.JobRequest, error) {
 	if b.masterPersonaWorkflow == nil {
 		return nil, errors.New("master persona workflow is not configured")
 	}
-	return b.masterPersonaWorkflow.GetTaskRequests(context.Background(), taskID)
+	return b.masterPersonaWorkflow.GetTaskRequests(b.context(), taskID)
+}
+
+func (b *Bridge) context() context.Context {
+	if b.ctx != nil {
+		return b.ctx
+	}
+	if b.manager != nil && b.manager.ctx != nil {
+		return b.manager.ctx
+	}
+	return context.Background()
 }

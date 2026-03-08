@@ -100,7 +100,6 @@ func (p *ParallelProcessor) waitAndCollectErrors(ctx context.Context, errChan ch
 
 // postProcess applies normalization to the loaded data.
 func (p *ParallelProcessor) postProcess(data *ParserOutput) {
-	slog.Debug("ENTER ParallelProcessor.postProcess")
 	normalizeData(data)
 }
 
@@ -219,8 +218,6 @@ func (p *ParallelProcessor) unmarshalLoadScreens(data *ParserOutput) error {
 // --- Normalization ---
 
 func normalizeData(data *ParserOutput) {
-	slog.Debug("ENTER normalizeData")
-
 	var wg sync.WaitGroup
 
 	if len(data.NPCs) > 0 {
@@ -244,8 +241,6 @@ func normalizeData(data *ParserOutput) {
 
 // normalizeQuestMetadata ensures parent ID and EditorID are propagated to stages and objectives.
 func normalizeQuestMetadata(data *ParserOutput) {
-	slog.Debug("ENTER normalizeQuestMetadata")
-
 	for i := range data.Quests {
 		q := &data.Quests[i]
 		parentID := q.ID
@@ -278,8 +273,6 @@ func normalizeQuestMetadata(data *ParserOutput) {
 
 // normalizeNPCNames trims whitespace from NPC names.
 func normalizeNPCNames(data *ParserOutput) {
-	slog.Debug("ENTER normalizeNPCNames")
-
 	for k, npc := range data.NPCs {
 		npc.Name = strings.TrimSpace(npc.Name)
 		data.NPCs[k] = npc

@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/ishibata91/ai-translation-engine-2/pkg/config"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/controller"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/dictionary"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/telemetry"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -14,7 +14,7 @@ import (
 type App struct {
 	ctx           context.Context
 	dictService   *dictionary.DictionaryService
-	configService *config.ConfigService
+	configService *controller.ConfigController
 }
 
 // NewApp creates a new App application struct
@@ -28,7 +28,7 @@ func (a *App) SetDictService(dictService *dictionary.DictionaryService) {
 }
 
 // SetConfigService sets the config service instance
-func (a *App) SetConfigService(configService *config.ConfigService) {
+func (a *App) SetConfigService(configService *controller.ConfigController) {
 	a.configService = configService
 }
 

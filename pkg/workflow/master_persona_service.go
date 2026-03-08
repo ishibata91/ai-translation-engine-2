@@ -73,100 +73,34 @@ func (s *MasterPersonaService) StartMasterPersona(ctx context.Context, input Sta
 		"phase":              "prepare_requests",
 	}
 
-	taskID, err := s.manager.AddTaskWithCompletionStatus(
+	taskID, err := s.manager.AddTaskWithCompletionStatusContext(
+		ctx,
 		"Master Persona Request Generation",
 		task.TypePersonaExtraction,
 		"pending",
 		metadata,
 		task.StatusRequestGenerated,
 		func(runCtx context.Context, taskID string, update func(phase string, progress float64)) error {
-			runCtx = telemetry.WithTraceID(runCtx)
-			s.reportProgress(runCtx, taskID, 0, runtimeprogress.StatusInProgress, "マスターペルソナ生成タスクを開始")
-			update("loading_json", 10)
-			s.reportProgress(runCtx, taskID, 10, runtimeprogress.StatusInProgress, "JSONを読み込み中")
-
-			parsed, err := s.parser.LoadExtractedJSON(runCtx, input.SourceJSONPath)
-			if err != nil {
-				s.reportProgress(runCtx, taskID, 10, runtimeprogress.StatusFailed, "JSON読み込みに失敗")
-				s.logger.ErrorContext(runCtx, "persona.requests.failed",
-					slog.String("task_id", taskID),
-					slog.String("reason", err.Error()),
-				)
-				return err
-			}
-
-			update("building_persona_input", 40)
-			s.reportProgress(runCtx, taskID, 40, runtimeprogress.StatusInProgress, "ペルソナ入力を構築中")
-			personaInput := pipeline.ToPersonaGenInput(parsed)
-			personaInput.SourceJSONPath = input.SourceJSONPath
-			personaInput.OverwriteExisting = input.OverwriteExisting
-
-			update("preparing_requests", 75)
-			s.reportProgress(runCtx, taskID, 75, runtimeprogress.StatusInProgress, "リクエストを生成中")
-			requests, err := s.personaGenerator.PreparePrompts(runCtx, personaInput)
-			if err != nil {
-				s.reportProgress(runCtx, taskID, 75, runtimeprogress.StatusFailed, "リクエスト生成に失敗")
-				s.logger.ErrorContext(runCtx, "persona.requests.failed",
-					slog.String("task_id", taskID),
-					slog.String("reason", err.Error()),
-				)
-				return err
-			}
-
-			taskMetadata := task.TaskMetadata{
-				"source_json_path":   input.SourceJSONPath,
-				"overwrite_existing": input.OverwriteExisting,
-				"entrypoint":         "master_persona",
-				"phase":              "request_enqueued",
-				"resume_cursor":      0,
-				"request_count":      len(requests),
-			}
-
-			if s.queue == nil {
-				return fmt.Errorf("request queue is not configured")
-			}
-			if err := s.queue.SubmitTaskRequests(runCtx, taskID, string(task.TypePersonaExtraction), requests); err != nil {
-				s.reportProgress(runCtx, taskID, 80, runtimeprogress.StatusFailed, "キュー保存に失敗")
-				s.logger.ErrorContext(runCtx, "persona.requests.queue_save_failed",
-					slog.String("task_id", taskID),
-					slog.String("reason", err.Error()),
-				)
-				return err
-			}
-			s.reportProgress(runCtx, taskID, 90, runtimeprogress.StatusInProgress, "リクエストをキューへ保存")
-
-			if err := s.manager.Store().SaveMetadata(runCtx, taskID, taskMetadata); err != nil {
-				s.logger.WarnContext(runCtx, "failed to persist persona task summary",
-					slog.String("task_id", taskID),
-					slog.String("reason", err.Error()),
-				)
-			}
-
-			update("REQUEST_GENERATED", 100)
-			s.reportProgress(runCtx, taskID, 100, runtimeprogress.StatusCompleted, "リクエスト生成が完了")
-			s.manager.EmitPhaseCompleted(taskID, "REQUEST_GENERATED", nil)
-			s.logger.InfoContext(runCtx, "persona.requests.generated",
-				slog.Int("request_count", len(requests)),
-				slog.Int("npc_count", len(personaInput.NPCs)),
-				slog.String("task_id", taskID),
-				slog.Any("requests", buildRequestLogPayload(requests)),
-			)
-			return nil
+			return s.executeRequestPreparation(runCtx, taskID, input, update)
 		},
 	)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("start master persona task source_json_path=%s: %w", input.SourceJSONPath, err)
 	}
 	return taskID, nil
 }
 
 // ResumeMasterPersona resumes queued work for one task.
-func (s *MasterPersonaService) ResumeMasterPersona(_ context.Context, taskID string) error {
-	return s.manager.ResumeTask(taskID)
+func (s *MasterPersonaService) ResumeMasterPersona(ctx context.Context, taskID string) error {
+	if err := s.manager.ResumeTaskWithContext(ctx, taskID); err != nil {
+		return fmt.Errorf("resume master persona task_id=%s: %w", taskID, err)
+	}
+	return nil
 }
 
 // CancelMasterPersona requests cancellation for one task.
-func (s *MasterPersonaService) CancelMasterPersona(_ context.Context, taskID string) error {
+func (s *MasterPersonaService) CancelMasterPersona(ctx context.Context, taskID string) error {
+	s.logger.InfoContext(ctx, "persona.task.cancel_requested", slog.String("task_id", taskID))
 	s.manager.CancelTask(taskID)
 	return nil
 }
@@ -176,7 +110,11 @@ func (s *MasterPersonaService) GetTaskRequestState(ctx context.Context, taskID s
 	if s.queue == nil {
 		return runtimequeue.TaskRequestState{}, fmt.Errorf("request queue is not configured")
 	}
-	return s.queue.GetTaskRequestState(ctx, taskID)
+	state, err := s.queue.GetTaskRequestState(ctx, taskID)
+	if err != nil {
+		return runtimequeue.TaskRequestState{}, fmt.Errorf("get task request state task_id=%s: %w", taskID, err)
+	}
+	return state, nil
 }
 
 // GetTaskRequests returns queued requests for one task.
@@ -184,25 +122,32 @@ func (s *MasterPersonaService) GetTaskRequests(ctx context.Context, taskID strin
 	if s.queue == nil {
 		return nil, fmt.Errorf("request queue is not configured")
 	}
-	return s.queue.GetTaskRequests(ctx, taskID)
+	requests, err := s.queue.GetTaskRequests(ctx, taskID)
+	if err != nil {
+		return nil, fmt.Errorf("get task requests task_id=%s: %w", taskID, err)
+	}
+	return requests, nil
 }
 
 // StartMasterPersonTask is the controller-facing wrapper used by task.Bridge.
-func (s *MasterPersonaService) StartMasterPersonTask(input task.StartMasterPersonTaskInput) (string, error) {
-	return s.StartMasterPersona(context.Background(), StartMasterPersonaInput{
+func (s *MasterPersonaService) StartMasterPersonTask(ctx context.Context, input task.StartMasterPersonTaskInput) (string, error) {
+	return s.StartMasterPersona(ctx, StartMasterPersonaInput{
 		SourceJSONPath:    input.SourceJSONPath,
 		OverwriteExisting: input.OverwriteExisting,
 	})
 }
 
 // ResumeMasterPersonaTask is the controller-facing wrapper used by task.Bridge.
-func (s *MasterPersonaService) ResumeMasterPersonaTask(taskID string) error {
-	return s.ResumeMasterPersona(context.Background(), taskID)
+func (s *MasterPersonaService) ResumeMasterPersonaTask(ctx context.Context, taskID string) error {
+	return s.ResumeMasterPersona(ctx, taskID)
 }
 
 // CancelTask is the controller-facing wrapper used by task.Bridge.
-func (s *MasterPersonaService) CancelTask(taskID string) {
-	_ = s.CancelMasterPersona(context.Background(), taskID)
+func (s *MasterPersonaService) CancelTask(ctx context.Context, taskID string) {
+	if err := s.CancelMasterPersona(ctx, taskID); err != nil {
+		s.logger.WarnContext(ctx, "persona.task.cancel_failed",
+			append(telemetry.ErrorAttrs(err), slog.String("task_id", taskID))...)
+	}
 }
 
 // CleanupCompletedTask removes queued requests after a MasterPersona task is confirmed completed.
@@ -213,7 +158,10 @@ func (s *MasterPersonaService) CleanupCompletedTask(ctx context.Context, current
 	if s.queue == nil {
 		return fmt.Errorf("request queue is not configured")
 	}
-	return s.queue.DeleteTaskRequests(ctx, currentTask.ID)
+	if err := s.queue.DeleteTaskRequests(ctx, currentTask.ID); err != nil {
+		return fmt.Errorf("delete completed task requests task_id=%s: %w", currentTask.ID, err)
+	}
+	return nil
 }
 
 // Run satisfies task.Runner and keeps task execution in workflow.
@@ -259,12 +207,9 @@ func (s *MasterPersonaService) runPersonaExecution(ctx context.Context, currentT
 		return fmt.Errorf("request queue worker is not configured")
 	}
 
-	state, err := s.queue.GetTaskRequestState(ctx, currentTask.ID)
+	state, err := s.loadTaskRequestState(ctx, currentTask.ID)
 	if err != nil {
 		return err
-	}
-	if state.Total == 0 {
-		return fmt.Errorf("task %s has no queued requests", currentTask.ID)
 	}
 
 	s.reportTaskPhaseProgress(ctx, currentTask.ID, currentTask.Type, "REQUEST_ENQUEUED", state.Completed, state.Total, runtimeprogress.StatusInProgress, "リクエスト再開準備")
@@ -272,10 +217,120 @@ func (s *MasterPersonaService) runPersonaExecution(ctx context.Context, currentT
 
 	baseCompleted := state.Completed
 	overallTotal := state.Total
+
 	if err := s.queue.PrepareTaskResume(ctx, currentTask.ID); err != nil {
+		return fmt.Errorf("prepare task resume task_id=%s: %w", currentTask.ID, err)
+	}
+
+	if err := s.processQueuedRequests(ctx, currentTask, state, update, baseCompleted, overallTotal); err != nil {
 		return err
 	}
 
+	updatedState, err := s.loadUpdatedTaskState(ctx, currentTask.ID)
+	if err != nil {
+		return err
+	}
+
+	return s.finalizePersonaExecution(ctx, currentTask, updatedState)
+}
+
+func (s *MasterPersonaService) executeRequestPreparation(ctx context.Context, taskID string, input StartMasterPersonaInput, update func(phase string, progress float64)) error {
+	runCtx := telemetry.WithTraceID(ctx)
+	s.reportProgress(runCtx, taskID, 0, runtimeprogress.StatusInProgress, "マスターペルソナ生成タスクを開始")
+	update("loading_json", 10)
+	s.reportProgress(runCtx, taskID, 10, runtimeprogress.StatusInProgress, "JSONを読み込み中")
+
+	parsed, err := s.parser.LoadExtractedJSON(runCtx, input.SourceJSONPath)
+	if err != nil {
+		wrappedErr := fmt.Errorf("load extracted json source_json_path=%s: %w", input.SourceJSONPath, err)
+		s.reportProgress(runCtx, taskID, 10, runtimeprogress.StatusFailed, "JSON読み込みに失敗")
+		s.logger.ErrorContext(runCtx, "persona.requests.failed",
+			slog.String("task_id", taskID),
+			slog.String("reason", wrappedErr.Error()),
+		)
+		return wrappedErr
+	}
+
+	update("building_persona_input", 40)
+	s.reportProgress(runCtx, taskID, 40, runtimeprogress.StatusInProgress, "ペルソナ入力を構築中")
+	personaInput := pipeline.ToPersonaGenInput(parsed)
+	personaInput.SourceJSONPath = input.SourceJSONPath
+	personaInput.OverwriteExisting = input.OverwriteExisting
+
+	update("preparing_requests", 75)
+	s.reportProgress(runCtx, taskID, 75, runtimeprogress.StatusInProgress, "リクエストを生成中")
+	requests, err := s.personaGenerator.PreparePrompts(runCtx, personaInput)
+	if err != nil {
+		wrappedErr := fmt.Errorf("prepare prompts task_id=%s source_json_path=%s: %w", taskID, input.SourceJSONPath, err)
+		s.reportProgress(runCtx, taskID, 75, runtimeprogress.StatusFailed, "リクエスト生成に失敗")
+		s.logger.ErrorContext(runCtx, "persona.requests.failed",
+			slog.String("task_id", taskID),
+			slog.String("reason", wrappedErr.Error()),
+		)
+		return wrappedErr
+	}
+
+	taskMetadata := task.TaskMetadata{
+		"source_json_path":   input.SourceJSONPath,
+		"overwrite_existing": input.OverwriteExisting,
+		"entrypoint":         "master_persona",
+		"phase":              "request_enqueued",
+		"resume_cursor":      0,
+		"request_count":      len(requests),
+	}
+
+	if s.queue == nil {
+		return fmt.Errorf("request queue is not configured")
+	}
+	if err := s.queue.SubmitTaskRequests(runCtx, taskID, string(task.TypePersonaExtraction), requests); err != nil {
+		wrappedErr := fmt.Errorf("submit task requests task_id=%s request_count=%d: %w", taskID, len(requests), err)
+		s.reportProgress(runCtx, taskID, 80, runtimeprogress.StatusFailed, "キュー保存に失敗")
+		s.logger.ErrorContext(runCtx, "persona.requests.queue_save_failed",
+			slog.String("task_id", taskID),
+			slog.String("reason", wrappedErr.Error()),
+		)
+		return wrappedErr
+	}
+
+	s.reportProgress(runCtx, taskID, 90, runtimeprogress.StatusInProgress, "リクエストをキューへ保存")
+
+	if err := s.manager.Store().SaveMetadata(runCtx, taskID, taskMetadata); err != nil {
+		wrappedErr := fmt.Errorf("save persona task metadata task_id=%s: %w", taskID, err)
+		s.logger.WarnContext(runCtx, "persona.requests.metadata_persist_failed",
+			append(telemetry.ErrorAttrs(wrappedErr), slog.String("task_id", taskID))...)
+	}
+
+	update("REQUEST_GENERATED", 100)
+	s.reportProgress(runCtx, taskID, 100, runtimeprogress.StatusCompleted, "リクエスト生成が完了")
+	s.manager.EmitPhaseCompleted(taskID, "REQUEST_GENERATED", nil)
+	s.logger.InfoContext(runCtx, "persona.requests.generated",
+		slog.Int("request_count", len(requests)),
+		slog.Int("npc_count", len(personaInput.NPCs)),
+		slog.String("task_id", taskID),
+		slog.Any("requests", buildRequestLogPayload(requests)),
+	)
+	return nil
+}
+
+func (s *MasterPersonaService) loadTaskRequestState(ctx context.Context, taskID string) (runtimequeue.TaskRequestState, error) {
+	state, err := s.queue.GetTaskRequestState(ctx, taskID)
+	if err != nil {
+		return runtimequeue.TaskRequestState{}, fmt.Errorf("get task request state task_id=%s: %w", taskID, err)
+	}
+	if state.Total == 0 {
+		return runtimequeue.TaskRequestState{}, fmt.Errorf("task %s has no queued requests", taskID)
+	}
+	return state, nil
+}
+
+func (s *MasterPersonaService) processQueuedRequests(
+	ctx context.Context,
+	currentTask *task.Task,
+	state runtimequeue.TaskRequestState,
+	update func(phase string, progress float64),
+	baseCompleted int,
+	overallTotal int,
+) error {
 	hooks := &runtimequeue.ProcessHooks{
 		OnDispatch: func(current int, _ int) {
 			progressCurrent := baseCompleted + current
@@ -302,7 +357,7 @@ func (s *MasterPersonaService) runPersonaExecution(ctx context.Context, currentT
 		},
 	}
 
-	err = s.worker.ProcessProcessIDWithOptions(ctx, currentTask.ID, runtimequeue.ProcessOptions{
+	err := s.worker.ProcessProcessIDWithOptions(ctx, currentTask.ID, runtimequeue.ProcessOptions{
 		ConfigNamespace:        "master_persona.llm",
 		UseConfigProviderModel: true,
 		ConfigRead: runtimequeue.ConfigReadOptions{
@@ -314,17 +369,27 @@ func (s *MasterPersonaService) runPersonaExecution(ctx context.Context, currentT
 	})
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			_ = s.queue.MarkTaskRequestsCanceled(context.Background(), currentTask.ID)
+			if cancelErr := s.queue.MarkTaskRequestsCanceled(ctx, currentTask.ID); cancelErr != nil {
+				wrappedErr := fmt.Errorf("mark task requests canceled task_id=%s: %w", currentTask.ID, cancelErr)
+				s.logger.WarnContext(ctx, "persona.requests.cancel_mark_failed",
+					append(telemetry.ErrorAttrs(wrappedErr), slog.String("task_id", currentTask.ID))...)
+			}
 		}
 		s.reportTaskPhaseProgress(ctx, currentTask.ID, currentTask.Type, "REQUEST_DISPATCHING", state.Completed, state.Total, runtimeprogress.StatusFailed, err.Error())
-		return err
+		return fmt.Errorf("process queued requests task_id=%s: %w", currentTask.ID, err)
 	}
+	return nil
+}
 
-	updatedState, stateErr := s.queue.GetTaskRequestState(ctx, currentTask.ID)
-	if stateErr != nil {
-		return nil
+func (s *MasterPersonaService) loadUpdatedTaskState(ctx context.Context, taskID string) (runtimequeue.TaskRequestState, error) {
+	state, err := s.queue.GetTaskRequestState(ctx, taskID)
+	if err != nil {
+		return runtimequeue.TaskRequestState{}, fmt.Errorf("refresh task request state task_id=%s: %w", taskID, err)
 	}
+	return state, nil
+}
 
+func (s *MasterPersonaService) finalizePersonaExecution(ctx context.Context, currentTask *task.Task, updatedState runtimequeue.TaskRequestState) error {
 	saveSummary, saveErr := s.persistPersonaResponses(ctx, currentTask)
 	metadata := mergeTaskMetadata(currentTask.Metadata, task.TaskMetadata{
 		"phase":                "REQUEST_COMPLETED",
@@ -333,7 +398,13 @@ func (s *MasterPersonaService) runPersonaExecution(ctx context.Context, currentT
 		"persona_saved_count":  saveSummary.Saved,
 		"persona_failed_count": saveSummary.Failed,
 	})
-	_ = s.manager.Store().SaveMetadata(context.Background(), currentTask.ID, metadata)
+
+	if err := s.manager.Store().SaveMetadata(ctx, currentTask.ID, metadata); err != nil {
+		wrappedErr := fmt.Errorf("save completed metadata task_id=%s: %w", currentTask.ID, err)
+		s.logger.WarnContext(ctx, "persona.responses.metadata_persist_failed",
+			append(telemetry.ErrorAttrs(wrappedErr), slog.String("task_id", currentTask.ID))...)
+	}
+
 	s.manager.EmitPhaseCompleted(currentTask.ID, "REQUEST_COMPLETED", map[string]int{
 		"total":                updatedState.Total,
 		"completed":            updatedState.Completed,
@@ -343,9 +414,10 @@ func (s *MasterPersonaService) runPersonaExecution(ctx context.Context, currentT
 		"persona_save_success": saveSummary.Saved,
 		"persona_save_failed":  saveSummary.Failed,
 	})
+
 	if saveErr != nil {
 		s.reportTaskPhaseProgress(ctx, currentTask.ID, currentTask.Type, "REQUEST_COMPLETED", updatedState.Completed, updatedState.Total, runtimeprogress.StatusFailed, saveErr.Error())
-		return saveErr
+		return fmt.Errorf("persist persona responses task_id=%s: %w", currentTask.ID, saveErr)
 	}
 	return nil
 }
@@ -358,7 +430,7 @@ func (s *MasterPersonaService) persistPersonaResponses(ctx context.Context, curr
 
 	jobs, err := s.queue.GetTaskRequests(ctx, currentTask.ID)
 	if err != nil {
-		return out, err
+		return out, fmt.Errorf("load task requests task_id=%s: %w", currentTask.ID, err)
 	}
 
 	savedSet := metadataStringSet(currentTask.Metadata["saved_request_ids"])
@@ -375,6 +447,12 @@ func (s *MasterPersonaService) persistPersonaResponses(ctx context.Context, curr
 		resp, parseErr := buildPersonaResponseFromJob(job)
 		out.Attempted++
 		if parseErr != nil {
+			s.logger.WarnContext(ctx, "persona.responses.decode_failed",
+				append(telemetry.ErrorAttrs(parseErr),
+					slog.String("task_id", currentTask.ID),
+					slog.String("request_id", job.ID),
+				)...,
+			)
 			out.Failed++
 			continue
 		}
@@ -388,7 +466,7 @@ func (s *MasterPersonaService) persistPersonaResponses(ctx context.Context, curr
 		if hasReporter {
 			sum, saveErr := reporter.SaveResultsWithSummary(ctx, []gatewayllm.Response{resp})
 			if saveErr != nil {
-				return out, saveErr
+				return out, fmt.Errorf("save persona response with summary task_id=%s request_id=%s: %w", currentTask.ID, job.ID, saveErr)
 			}
 			out.Saved += sum.SuccessCount
 			out.Failed += sum.FailCount
@@ -399,7 +477,7 @@ func (s *MasterPersonaService) persistPersonaResponses(ctx context.Context, curr
 		}
 
 		if err := s.personaGenerator.SaveResults(ctx, []gatewayllm.Response{resp}); err != nil {
-			return out, err
+			return out, fmt.Errorf("save persona response task_id=%s request_id=%s: %w", currentTask.ID, job.ID, err)
 		}
 		out.Saved++
 		savedSet[job.ID] = struct{}{}

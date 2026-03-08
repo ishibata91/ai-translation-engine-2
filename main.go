@@ -75,12 +75,12 @@ func main() {
 	dictImporter := dictionary.NewImporter(dictConfig, dictStore, wailsNotifier, logger)
 	dictService := dictionary.NewDictionaryService(dictStore, dictImporter, logger)
 
-	// 5. Setup Config Service (UIStateStore Wails binding)
+	// 5. Setup Config Controller (UIStateStore Wails binding)
 	configStore, err := config.NewSQLiteStore(context.Background(), db, logger)
 	if err != nil {
 		log.Fatalf("failed to initialize config store: %v", err)
 	}
-	configService := config.NewConfigService(configStore)
+	configController := controller.NewConfigController(configStore, logger)
 	llmManager := llm.NewLLMManager(logger)
 	modelCatalogService := modelcatalog.NewModelCatalogService(configStore, configStore, llmManager, logger)
 
@@ -129,7 +129,7 @@ func main() {
 	// Create an instance of the app structure
 	app := NewApp()
 	app.SetDictService(dictService)
-	app.SetConfigService(configService)
+	app.SetConfigService(configController)
 
 	// Create application with options
 	err = wails.Run(&options.App{
@@ -146,6 +146,9 @@ func main() {
 			wailsLogH.SetContext(ctx)
 			// Pass Wails context to TaskManager and Initialize it
 			taskManager.SetContext(ctx)
+			configController.SetContext(ctx)
+			taskController.SetContext(ctx)
+			personaTaskController.SetContext(ctx)
 			if err := taskManager.Initialize(ctx); err != nil {
 				log.Printf("failed to initialize task manager: %v", err)
 			}
@@ -158,7 +161,7 @@ func main() {
 			app,
 			taskController,
 			personaTaskController,
-			configService,
+			configController,
 			modelCatalogService,
 			personaService,
 		},

@@ -20,7 +20,6 @@ type Manager struct {
 	worker   *queue.Worker
 	logger   *slog.Logger
 
-	// Slice registration
 	muSlices sync.RWMutex
 	slices   map[string]Slice
 }
@@ -32,14 +31,13 @@ func NewManager(
 	worker *queue.Worker,
 	logger *slog.Logger,
 ) *Manager {
-	m := &Manager{
+	return &Manager{
 		store:    store,
 		jobQueue: jobQueue,
 		worker:   worker,
-		logger:   logger.With("slice", "Pipeline"),
+		logger:   logger.With("slice", "pipeline"),
 		slices:   make(map[string]Slice),
 	}
-	return m
 }
 
 // RegisterSlice registers a vertical slice to be orchestrated.
@@ -58,29 +56,170 @@ func (m *Manager) getSlice(id string) Slice {
 // ExecuteSlice initiates the orchestration of a slice.
 func (m *Manager) ExecuteSlice(ctx context.Context, sliceID string, input any, inputFile string) (string, error) {
 	defer telemetry.StartSpan(ctx, telemetry.ActionPipelineExecute)()
-	m.logger.InfoContext(ctx, "starting pipeline execution",
+	m.logger.InfoContext(ctx, "pipeline.execute.started",
 		slog.String("slice", sliceID),
 		slog.String("input_file", inputFile),
 	)
 
-	// 1. Resolve Slice
-	slice := m.getSlice(sliceID)
-	if slice == nil {
-		err := fmt.Errorf("slice not registered: %s", sliceID)
-		m.logger.ErrorContext(ctx, "pipeline start failed", telemetry.ErrorAttrs(err)...)
+	registeredSlice, err := m.resolveSlice(ctx, sliceID)
+	if err != nil {
 		return "", err
 	}
 
-	// 2. Phase 1: Prepare Prompts
-	reqs, err := slice.PreparePrompts(ctx, input)
+	requests, err := m.prepareRequests(ctx, registeredSlice, sliceID, input)
 	if err != nil {
-		m.logger.ErrorContext(ctx, "failed to prepare prompts",
-			append(telemetry.ErrorAttrs(err), slog.String("slice", sliceID))...)
-		return "", fmt.Errorf("failed to prepare prompts for %s: %w", sliceID, err)
+		return "", err
 	}
 
-	// 3. Generate ProcessID & Save State
 	processID := uuid.New().String()
+	if err := m.persistDispatchedState(ctx, processID, sliceID, inputFile); err != nil {
+		return "", err
+	}
+	if err := m.submitJobs(ctx, processID, requests); err != nil {
+		return "", err
+	}
+
+	go m.runProcessInBackground(ctx, processID)
+
+	m.logger.InfoContext(ctx, "pipeline.execute.dispatched",
+		slog.String("process_id", processID),
+		slog.String("slice", sliceID),
+		slog.Int("job_count", len(requests)),
+	)
+	return processID, nil
+}
+
+func (m *Manager) handleCompletion(ctx context.Context, processID string, workerErr error) {
+	defer telemetry.StartSpan(ctx, telemetry.ActionPipelineExecute)()
+	m.logger.DebugContext(ctx, "pipeline.completion.started", slog.String("process_id", processID))
+
+	if workerErr != nil {
+		m.logger.ErrorContext(ctx, "pipeline.worker.failed",
+			append(telemetry.ErrorAttrs(workerErr), slog.String("process_id", processID))...)
+		if err := m.updatePhase(ctx, processID, PhaseFailed); err != nil {
+			m.logger.WarnContext(ctx, "pipeline.phase_update_failed",
+				append(telemetry.ErrorAttrs(err), slog.String("process_id", processID))...)
+		}
+		return
+	}
+
+	state, err := m.store.GetState(ctx, processID)
+	if err != nil {
+		m.logger.ErrorContext(ctx, "pipeline.state_load_failed",
+			append(telemetry.ErrorAttrs(err), slog.String("process_id", processID))...)
+		return
+	}
+	if state == nil {
+		m.logger.WarnContext(ctx, "pipeline.state_missing", slog.String("process_id", processID))
+		return
+	}
+
+	registeredSlice := m.getSlice(state.TargetSlice)
+	if registeredSlice == nil {
+		m.logger.ErrorContext(ctx, "pipeline.slice_missing",
+			slog.String("process_id", processID),
+			slog.String("slice", state.TargetSlice),
+		)
+		return
+	}
+
+	jobRequests, err := m.jobQueue.GetResults(ctx, processID)
+	if err != nil {
+		m.logger.ErrorContext(ctx, "pipeline.results_load_failed",
+			append(telemetry.ErrorAttrs(fmt.Errorf("get job results process_id=%s: %w", processID, err)),
+				slog.String("process_id", processID),
+			)...,
+		)
+		return
+	}
+
+	responses := m.buildResponses(ctx, jobRequests)
+	if err := registeredSlice.SaveResults(ctx, responses); err != nil {
+		saveErr := fmt.Errorf("save slice results process_id=%s slice=%s: %w", processID, state.TargetSlice, err)
+		m.logger.ErrorContext(ctx, "pipeline.results_save_failed",
+			append(telemetry.ErrorAttrs(saveErr),
+				slog.String("process_id", processID),
+				slog.String("slice", state.TargetSlice),
+			)...,
+		)
+		if err := m.updatePhase(ctx, processID, PhaseFailed); err != nil {
+			m.logger.WarnContext(ctx, "pipeline.phase_update_failed",
+				append(telemetry.ErrorAttrs(err), slog.String("process_id", processID))...)
+		}
+		return
+	}
+
+	m.cleanupProcess(ctx, processID)
+	m.logger.InfoContext(ctx, "pipeline.completion.succeeded",
+		slog.String("process_id", processID),
+		slog.String("slice", state.TargetSlice),
+	)
+}
+
+func (m *Manager) updatePhase(ctx context.Context, processID string, phase string) error {
+	state, err := m.store.GetState(ctx, processID)
+	if err != nil {
+		return fmt.Errorf("get process state for phase update process_id=%s: %w", processID, err)
+	}
+	if state == nil {
+		return fmt.Errorf("process state not found for process_id=%s", processID)
+	}
+	state.CurrentPhase = phase
+	if err := m.store.SaveState(ctx, *state); err != nil {
+		return fmt.Errorf("save process phase process_id=%s phase=%s: %w", processID, phase, err)
+	}
+	return nil
+}
+
+// Recover matches the orchestration state with the infrastructure state and resumes jobs.
+func (m *Manager) Recover(ctx context.Context) error {
+	m.logger.InfoContext(ctx, "pipeline.recover.started")
+
+	if err := m.worker.Recover(ctx); err != nil {
+		return fmt.Errorf("recover job queue infrastructure: %w", err)
+	}
+
+	states, err := m.store.ListActiveStates(ctx)
+	if err != nil {
+		return fmt.Errorf("list active process states: %w", err)
+	}
+
+	for _, state := range states {
+		m.logger.InfoContext(ctx, "pipeline.recover.process",
+			slog.String("process_id", state.ProcessID),
+			slog.String("slice", state.TargetSlice),
+			slog.String("input_file", state.InputFile),
+			slog.String("phase", state.CurrentPhase),
+		)
+		go m.runProcessInBackground(ctx, state.ProcessID)
+	}
+
+	m.logger.InfoContext(ctx, "pipeline.recover.completed", slog.Int("recovered_count", len(states)))
+	return nil
+}
+
+func (m *Manager) resolveSlice(ctx context.Context, sliceID string) (Slice, error) {
+	registeredSlice := m.getSlice(sliceID)
+	if registeredSlice == nil {
+		err := fmt.Errorf("slice not registered: %s", sliceID)
+		m.logger.ErrorContext(ctx, "pipeline.execute.failed", telemetry.ErrorAttrs(err)...)
+		return nil, err
+	}
+	return registeredSlice, nil
+}
+
+func (m *Manager) prepareRequests(ctx context.Context, registeredSlice Slice, sliceID string, input any) ([]llm.Request, error) {
+	requests, err := registeredSlice.PreparePrompts(ctx, input)
+	if err != nil {
+		wrappedErr := fmt.Errorf("prepare prompts for slice=%s: %w", sliceID, err)
+		m.logger.ErrorContext(ctx, "pipeline.prepare_prompts_failed",
+			append(telemetry.ErrorAttrs(wrappedErr), slog.String("slice", sliceID))...)
+		return nil, wrappedErr
+	}
+	return requests, nil
+}
+
+func (m *Manager) persistDispatchedState(ctx context.Context, processID, sliceID, inputFile string) error {
 	state := ProcessState{
 		ProcessID:    processID,
 		TargetSlice:  sliceID,
@@ -88,151 +227,71 @@ func (m *Manager) ExecuteSlice(ctx context.Context, sliceID string, input any, i
 		CurrentPhase: PhaseDispatched,
 	}
 	if err := m.store.SaveState(ctx, state); err != nil {
-		m.logger.ErrorContext(ctx, "failed to save process state",
-			append(telemetry.ErrorAttrs(err), slog.String("process_id", processID))...)
-		return "", fmt.Errorf("failed to save process state: %w", err)
+		wrappedErr := fmt.Errorf("save process state process_id=%s: %w", processID, err)
+		m.logger.ErrorContext(ctx, "pipeline.state_save_failed",
+			append(telemetry.ErrorAttrs(wrappedErr), slog.String("process_id", processID))...)
+		return wrappedErr
 	}
-
-	// 4. Submit to JobQueue
-	anyReqs := make([]any, len(reqs))
-	for i, r := range reqs {
-		anyReqs[i] = r
-	}
-	if err := m.jobQueue.SubmitJobs(ctx, processID, anyReqs); err != nil {
-		m.logger.ErrorContext(ctx, "failed to submit jobs to queue",
-			append(telemetry.ErrorAttrs(err), slog.String("process_id", processID))...)
-		return "", fmt.Errorf("failed to submit jobs to queue: %w", err)
-	}
-
-	// 5. Run Worker in background
-	go func() {
-		// リクエストIDを引き継ぐための簡易的なコンテキスト作成
-		bgCtx := telemetry.WithAttrs(context.Background(), slog.String("request_id", "pipeline-"+processID))
-		defer telemetry.StartSpan(bgCtx, telemetry.ActionPipelineExecute)()
-
-		m.logger.InfoContext(bgCtx, "background worker started", slog.String("process_id", processID))
-		// ProcessID processing blocks until done
-		err := m.worker.ProcessProcessID(bgCtx, processID)
-		m.handleCompletion(bgCtx, processID, err)
-	}()
-
-	m.logger.InfoContext(ctx, "pipeline dispatched successfully",
-		slog.String("process_id", processID),
-		slog.Int("job_count", len(reqs)),
-	)
-	return processID, nil
+	return nil
 }
 
-func (m *Manager) handleCompletion(ctx context.Context, processID string, workerErr error) {
-	defer telemetry.StartSpan(ctx, telemetry.ActionPipelineExecute)()
-	m.logger.DebugContext(ctx, "handling pipeline completion", slog.String("process_id", processID))
-
-	if workerErr != nil {
-		m.logger.ErrorContext(ctx, "pipeline processing failed in worker",
-			append(telemetry.ErrorAttrs(workerErr), slog.String("process_id", processID))...)
-		_ = m.updatePhase(ctx, processID, PhaseFailed)
-		return
+func (m *Manager) submitJobs(ctx context.Context, processID string, requests []llm.Request) error {
+	anyRequests := make([]any, len(requests))
+	for i, req := range requests {
+		anyRequests[i] = req
 	}
 
-	// 1. Get State
-	state, err := m.store.GetState(ctx, processID)
-	if err != nil || state == nil {
-		m.logger.ErrorContext(ctx, "failed to fetch state for completion callback",
-			slog.String("process_id", processID))
-		return
+	if err := m.jobQueue.SubmitJobs(ctx, processID, anyRequests); err != nil {
+		wrappedErr := fmt.Errorf("submit jobs process_id=%s: %w", processID, err)
+		m.logger.ErrorContext(ctx, "pipeline.job_submit_failed",
+			append(telemetry.ErrorAttrs(wrappedErr), slog.String("process_id", processID))...)
+		return wrappedErr
 	}
+	return nil
+}
 
-	// 2. Resolve Slice
-	slice := m.getSlice(state.TargetSlice)
-	if slice == nil {
-		m.logger.ErrorContext(ctx, "slice disappeared during execution",
-			slog.String("process_id", processID),
-			slog.String("slice", state.TargetSlice))
-		return
-	}
+func (m *Manager) runProcessInBackground(ctx context.Context, processID string) {
+	bgCtx := telemetry.WithTraceID(context.WithoutCancel(ctx))
+	bgCtx = telemetry.WithAction(bgCtx, telemetry.ActionPipelineExecute, telemetry.ResourceTask, processID)
+	defer telemetry.StartSpan(bgCtx, telemetry.ActionPipelineExecute)()
 
-	// 3. Get Results from JobQueue
-	jobRequests, err := m.jobQueue.GetResults(ctx, processID)
-	if err != nil {
-		m.logger.ErrorContext(ctx, "failed to get job results",
-			append(telemetry.ErrorAttrs(err), slog.String("process_id", processID))...)
-		return
-	}
+	m.logger.InfoContext(bgCtx, "pipeline.worker.started", slog.String("process_id", processID))
+	err := m.worker.ProcessProcessID(bgCtx, processID)
+	m.handleCompletion(bgCtx, processID, err)
+}
 
-	// 4. Phase 2: Save Results
+func (m *Manager) buildResponses(ctx context.Context, jobRequests []queue.JobRequest) []llm.Response {
 	responses := make([]llm.Response, len(jobRequests))
-	for i, jr := range jobRequests {
-		if jr.ResponseJSON != nil {
-			if err := json.Unmarshal([]byte(*jr.ResponseJSON), &responses[i]); err != nil {
-				m.logger.ErrorContext(ctx, "failed to unmarshal job response",
-					append(telemetry.ErrorAttrs(err), slog.String("job_id", jr.ID))...)
+	for i, jobRequest := range jobRequests {
+		if jobRequest.ResponseJSON != nil {
+			if err := json.Unmarshal([]byte(*jobRequest.ResponseJSON), &responses[i]); err != nil {
+				m.logger.WarnContext(ctx, "pipeline.response_decode_failed",
+					append(telemetry.ErrorAttrs(fmt.Errorf("decode job response job_id=%s: %w", jobRequest.ID, err)),
+						slog.String("job_id", jobRequest.ID),
+					)...,
+				)
 				responses[i].Success = false
 				responses[i].Error = fmt.Sprintf("unmarshal error: %v", err)
 			}
-		} else if jr.ErrorMessage != nil {
+			continue
+		}
+		if jobRequest.ErrorMessage != nil {
 			responses[i].Success = false
-			responses[i].Error = *jr.ErrorMessage
+			responses[i].Error = *jobRequest.ErrorMessage
 		}
 	}
+	return responses
+}
 
-	if err := slice.SaveResults(ctx, responses); err != nil {
-		m.logger.ErrorContext(ctx, "failed to save slice results",
-			append(telemetry.ErrorAttrs(err), slog.String("process_id", processID))...)
-		_ = m.updatePhase(ctx, processID, PhaseFailed)
-		return
-	}
-
-	// 5. Cleanup
+func (m *Manager) cleanupProcess(ctx context.Context, processID string) {
 	if err := m.jobQueue.DeleteJobs(ctx, processID); err != nil {
-		m.logger.WarnContext(ctx, "failed to delete jobs after completion",
-			slog.String("process_id", processID), slog.Any("error", err))
+		wrappedErr := fmt.Errorf("delete jobs process_id=%s: %w", processID, err)
+		m.logger.WarnContext(ctx, "pipeline.cleanup.jobs_delete_failed",
+			append(telemetry.ErrorAttrs(wrappedErr), slog.String("process_id", processID))...)
 	}
-	_ = m.store.DeleteState(ctx, processID)
-
-	m.logger.InfoContext(ctx, "pipeline execution completed successfully",
-		slog.String("process_id", processID),
-		slog.String("slice", state.TargetSlice))
-}
-
-func (m *Manager) updatePhase(ctx context.Context, processID string, phase string) error {
-	state, err := m.store.GetState(ctx, processID)
-	if err != nil || state == nil {
-		return err
+	if err := m.store.DeleteState(ctx, processID); err != nil {
+		wrappedErr := fmt.Errorf("delete process state process_id=%s: %w", processID, err)
+		m.logger.WarnContext(ctx, "pipeline.cleanup.state_delete_failed",
+			append(telemetry.ErrorAttrs(wrappedErr), slog.String("process_id", processID))...)
 	}
-	state.CurrentPhase = phase
-	return m.store.SaveState(ctx, *state)
-}
-
-// Recover matches the orchestration state with the infrastructure state and resumes jobs.
-func (m *Manager) Recover(ctx context.Context) error {
-	m.logger.InfoContext(ctx, "ENTER Recover")
-
-	// 1. Recover JobQueue infrastructure (resets IN_PROGRESS to PENDING)
-	if err := m.worker.Recover(ctx); err != nil {
-		return fmt.Errorf("failed to recover job queue infra: %w", err)
-	}
-
-	// 2. Load active orchestration states
-	states, err := m.store.ListActiveStates(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to list active states: %w", err)
-	}
-
-	for _, state := range states {
-		m.logger.InfoContext(ctx, "Recovering process",
-			slog.String("process_id", state.ProcessID),
-			slog.String("slice", state.TargetSlice),
-			slog.String("input_file", state.InputFile),
-			slog.String("phase", state.CurrentPhase))
-
-		// Resume the worker for this processID in background
-		go func(pid string) {
-			bgCtx := context.Background()
-			err := m.worker.ProcessProcessID(bgCtx, pid)
-			m.handleCompletion(bgCtx, pid, err)
-		}(state.ProcessID)
-	}
-
-	m.logger.InfoContext(ctx, "EXIT Recover", slog.Int("recovered_count", len(states)))
-	return nil
 }

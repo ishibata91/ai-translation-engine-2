@@ -1,3 +1,7 @@
+---
+trigger: always_on
+---
+
 # AI Assistant ルール定義
 
 このファイルはこのプロジェクト向けの常設ルールです。毎回の指示を省くため、以下に従ってください。
@@ -10,7 +14,7 @@
 - 削除・破壊的操作は必ず事前確認する。
 
 ## 進め方
-- go用に `go-llm-lens` MCPが入っている｡コードの初動探索時は基本的にこれを使うこと｡
+- go用に `go-llm-lens` MCPが入っている｡コードの初動探索時はこれを使うこと｡
 - `server-filesystem` MCPが入っている｡検索､書き込み､読み取りは"""必ず"""これを利用すること｡
 - openspecが指定された場合は必ず従う。勝手に実装を始めない。
 - [architecture.md](openspec/specs/architecture.md) を常に参照して実装・提案を行う。

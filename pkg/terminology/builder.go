@@ -1,9 +1,6 @@
 package terminology
 
-import (
-	"context"
-	"log/slog"
-)
+import "context"
 
 // TermRequestBuilderImpl implements TermRequestBuilder.
 type TermRequestBuilderImpl struct {
@@ -27,8 +24,7 @@ func getEditorID(eid *string) string {
 
 // BuildRequests constructs translation requests from extracted data, applying NPC pairing.
 func (b *TermRequestBuilderImpl) BuildRequests(ctx context.Context, data TerminologyInput) ([]TermTranslationRequest, error) {
-	slog.DebugContext(ctx, "ENTER TermRequestBuilderImpl.BuildRequests")
-	defer slog.DebugContext(ctx, "EXIT TermRequestBuilderImpl.BuildRequests")
+	_ = ctx
 
 	var requests []TermTranslationRequest
 
@@ -49,7 +45,7 @@ func (b *TermRequestBuilderImpl) BuildRequests(ctx context.Context, data Termino
 
 // buildNPCPairedRequests creates paired NPC requests (FULL + SHRT) and orphan SHRT requests.
 func (b *TermRequestBuilderImpl) buildNPCPairedRequests(ctx context.Context, data TerminologyInput) []TermTranslationRequest {
-	slog.DebugContext(ctx, "ENTER TermRequestBuilderImpl.buildNPCPairedRequests")
+	_ = ctx
 
 	npcFulls, npcShorts := b.classifyNPCs(data)
 	requests := b.pairNPCRequests(npcFulls, npcShorts)
@@ -60,8 +56,6 @@ func (b *TermRequestBuilderImpl) buildNPCPairedRequests(ctx context.Context, dat
 
 // classifyNPCs separates NPCs into FULL and SHRT maps keyed by EditorID.
 func (b *TermRequestBuilderImpl) classifyNPCs(data TerminologyInput) (map[string]*TermNPC, map[string]*TermNPC) {
-	slog.Debug("ENTER TermRequestBuilderImpl.classifyNPCs")
-
 	npcFulls := make(map[string]*TermNPC)
 	npcShorts := make(map[string]*TermNPC)
 
@@ -89,8 +83,6 @@ func (b *TermRequestBuilderImpl) classifyNPCs(data TerminologyInput) (map[string
 
 // pairNPCRequests creates paired requests from FULL NPCs matched with their SHRT counterparts.
 func (b *TermRequestBuilderImpl) pairNPCRequests(npcFulls map[string]*TermNPC, npcShorts map[string]*TermNPC) []TermTranslationRequest {
-	slog.Debug("ENTER TermRequestBuilderImpl.pairNPCRequests")
-
 	var requests []TermTranslationRequest
 
 	for editorID, fullNpc := range npcFulls {
@@ -118,8 +110,6 @@ func (b *TermRequestBuilderImpl) pairNPCRequests(npcFulls map[string]*TermNPC, n
 
 // buildOrphanNPCRequests creates requests for SHRT NPCs that had no FULL counterpart.
 func (b *TermRequestBuilderImpl) buildOrphanNPCRequests(npcShorts map[string]*TermNPC) []TermTranslationRequest {
-	slog.Debug("ENTER TermRequestBuilderImpl.buildOrphanNPCRequests")
-
 	var requests []TermTranslationRequest
 
 	for _, shortNpc := range npcShorts {
@@ -138,7 +128,7 @@ func (b *TermRequestBuilderImpl) buildOrphanNPCRequests(npcShorts map[string]*Te
 
 // buildItemRequests creates translation requests for item records.
 func (b *TermRequestBuilderImpl) buildItemRequests(ctx context.Context, data TerminologyInput) []TermTranslationRequest {
-	slog.DebugContext(ctx, "ENTER TermRequestBuilderImpl.buildItemRequests")
+	_ = ctx
 
 	var requests []TermTranslationRequest
 
@@ -168,7 +158,7 @@ func (b *TermRequestBuilderImpl) buildItemRequests(ctx context.Context, data Ter
 
 // buildMagicRequests creates translation requests for magic records.
 func (b *TermRequestBuilderImpl) buildMagicRequests(ctx context.Context, data TerminologyInput) []TermTranslationRequest {
-	slog.DebugContext(ctx, "ENTER TermRequestBuilderImpl.buildMagicRequests")
+	_ = ctx
 
 	var requests []TermTranslationRequest
 
@@ -195,7 +185,7 @@ func (b *TermRequestBuilderImpl) buildMagicRequests(ctx context.Context, data Te
 
 // buildLocationRequests creates translation requests for location records.
 func (b *TermRequestBuilderImpl) buildLocationRequests(ctx context.Context, data TerminologyInput) []TermTranslationRequest {
-	slog.DebugContext(ctx, "ENTER TermRequestBuilderImpl.buildLocationRequests")
+	_ = ctx
 
 	var requests []TermTranslationRequest
 

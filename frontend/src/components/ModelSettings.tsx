@@ -1,36 +1,10 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { type MasterPersonaLLMConfig, type MasterPersonaProvider } from '../types/masterPersona';
-import { ListModels } from '../wailsjs/go/modelcatalog/ModelCatalogService';
-
-type ModelOptionItem = { id: string; label: string };
-
-const FALLBACK_MODEL_OPTIONS: Record<MasterPersonaProvider, ModelOptionItem[]> = {
-    lmstudio: [{ id: '(model-unavailable)', label: '(モデルを取得できませんでした)' }],
-    gemini: [
-        { id: 'gemini-2.0-flash', label: 'gemini-2.0-flash' },
-        { id: 'gemini-2.0-pro', label: 'gemini-2.0-pro' },
-        { id: 'gemini-1.5-pro', label: 'gemini-1.5-pro' },
-        { id: 'gemini-1.5-flash', label: 'gemini-1.5-flash' },
-    ],
-    openai: [
-        { id: 'gpt-4o', label: 'gpt-4o' },
-        { id: 'gpt-4o-mini', label: 'gpt-4o-mini' },
-        { id: 'gpt-4-turbo', label: 'gpt-4-turbo' },
-        { id: 'gpt-3.5-turbo', label: 'gpt-3.5-turbo' },
-    ],
-    xai: [
-        { id: 'grok-3', label: 'grok-3' },
-        { id: 'grok-3-mini', label: 'grok-3-mini' },
-        { id: 'grok-2', label: 'grok-2' },
-    ],
-};
-
-const PROVIDER_LABELS: Record<MasterPersonaProvider, string> = {
-    lmstudio: 'Local LLM (LM Studio)',
-    gemini: 'Google Gemini',
-    openai: 'OpenAI (GPT)',
-    xai: 'xAI (Grok)',
-};
+import React, { useEffect, useState } from 'react';
+import { type MasterPersonaLLMConfig } from '../types/masterPersona';
+import {
+    MASTER_PERSONA_PROVIDERS,
+    PROVIDER_LABELS,
+    useModelSettings,
+} from '../hooks/features/modelSettings/useModelSettings';
 
 const CONTEXT_LENGTH_PRESETS: Array<{ label: string; value: number }> = [
     { label: '4096', value: 4096 },
@@ -49,45 +23,15 @@ interface Props {
 }
 
 const ModelSettings: React.FC<Props> = ({ title = 'モデル設定', value, onChange, enabled = true, namespace }) => {
-    const [dynamicOptionsByProvider, setDynamicOptionsByProvider] = useState<Partial<Record<MasterPersonaProvider, ModelOptionItem[]>>>({});
-    const [catalogLoading, setCatalogLoading] = useState<boolean>(false);
-    const [catalogError, setCatalogError] = useState<string>('');
     const [draftTemperature, setDraftTemperature] = useState<number>(value.temperature);
-
-    const provider = value.provider;
-    const endpoint = value.endpoint;
-    const apiKey = value.apiKey;
-    const currentModel = value.model;
     const isLMStudio = value.provider === 'lmstudio';
-
-    const modelOptions = useMemo(() => {
-        const dynamic = dynamicOptionsByProvider[value.provider] ?? [];
-        if (dynamic.length > 0) {
-            return dynamic;
-        }
-        return FALLBACK_MODEL_OPTIONS[value.provider];
-    }, [dynamicOptionsByProvider, value.provider]);
-
-    const selectableModelOptions = useMemo(() => {
-        if (modelOptions.length > 0) {
-            return modelOptions;
-        }
-        if (currentModel.trim() !== '') {
-            return [{ id: currentModel, label: currentModel }];
-        }
-        return [{ id: '(model-unavailable)', label: '(モデルを取得できませんでした)' }];
-    }, [currentModel, modelOptions]);
-
-    const selectedModelValue = useMemo(() => {
-        if (selectableModelOptions.some((x) => x.id === currentModel)) {
-            return currentModel;
-        }
-        const byLabel = selectableModelOptions.find((x) => x.label === currentModel);
-        if (byLabel) {
-            return byLabel.id;
-        }
-        return selectableModelOptions[0].id;
-    }, [currentModel, selectableModelOptions]);
+    const {
+        catalogError,
+        catalogLoading,
+        handleProviderChange,
+        selectableModelOptions,
+        selectedModelValue,
+    } = useModelSettings({ value, onChange, enabled, namespace });
 
     useEffect(() => {
         setDraftTemperature(value.temperature);
@@ -99,69 +43,6 @@ const ModelSettings: React.FC<Props> = ({ title = 'モデル設定', value, onCh
         }
     };
 
-
-    useEffect(() => {
-        if (!enabled) {
-            return;
-        }
-        let alive = true;
-        (async () => {
-            setCatalogLoading(true);
-            setCatalogError('');
-            const targetProvider = provider;
-            try {
-                const rows = await ListModels({
-                    namespace,
-                    provider: targetProvider,
-                    endpoint,
-                    apiKey: isLMStudio ? '' : apiKey,
-                });
-                if (!alive) {
-                    return;
-                }
-                const seen = new Set<string>();
-                const options: ModelOptionItem[] = [];
-                for (const row of rows) {
-                    const id = (row.id || '').trim();
-                    const label = (row.display_name || row.id || '').trim();
-                    if (id.length === 0 || seen.has(id)) {
-                        continue;
-                    }
-                    seen.add(id);
-                    options.push({ id, label: label.length > 0 ? label : id });
-                }
-                setDynamicOptionsByProvider((prev) => ({ ...prev, [targetProvider]: options }));
-                const hasCurrent = options.some((x) => x.id === currentModel || x.label === currentModel);
-                if (options.length > 0 && !hasCurrent) {
-                    onChange({ ...value, model: options[0].id });
-                }
-            } catch {
-                if (!alive) {
-                    return;
-                }
-                setDynamicOptionsByProvider((prev) => ({ ...prev, [targetProvider]: [] }));
-                setCatalogError('モデル一覧の取得に失敗しました');
-            } finally {
-                if (alive) {
-                    setCatalogLoading(false);
-                }
-            }
-        })();
-        return () => {
-            alive = false;
-        };
-    }, [apiKey, enabled, endpoint, isLMStudio, namespace, onChange, provider]);
-
-    const handleProviderChange = (nextProvider: MasterPersonaProvider) => {
-        const candidates = FALLBACK_MODEL_OPTIONS[nextProvider];
-        const nextModel = nextProvider === value.provider ? value.model : (candidates[0]?.id ?? '');
-        onChange({
-            ...value,
-            provider: nextProvider,
-            model: nextModel,
-            endpoint: nextProvider === 'lmstudio' ? value.endpoint || 'http://localhost:1234' : value.endpoint,
-        });
-    };
 
     return (
         <details className="collapse collapse-arrow bg-base-100 border border-base-200 shadow-sm" open>
@@ -178,9 +59,9 @@ const ModelSettings: React.FC<Props> = ({ title = 'モデル設定', value, onCh
                             <select
                                 className="select select-bordered select-sm w-full"
                                 value={value.provider}
-                                onChange={(e) => handleProviderChange(e.target.value as MasterPersonaProvider)}
+                                onChange={(e) => handleProviderChange(e.target.value)}
                             >
-                                {(Object.keys(PROVIDER_LABELS) as MasterPersonaProvider[]).map((p) => (
+                                {MASTER_PERSONA_PROVIDERS.map((p) => (
                                     <option key={p} value={p}>{PROVIDER_LABELS[p]}</option>
                                 ))}
                             </select>

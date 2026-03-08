@@ -15,7 +15,7 @@ export function useTheme() {
         if (savedTheme && savedTheme !== theme) {
             setTheme(savedTheme);
         }
-    }, [setTheme]);
+    }, [setTheme, theme]);
 
     // Sync theme with HTML attribute and local storage when it changes
     useEffect(() => {

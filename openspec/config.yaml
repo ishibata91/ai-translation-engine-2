@@ -7,8 +7,6 @@ context: |
   - システム全体のアーキテクチャについては `specs/architecture.md` を参照すること。
   - システム全体の仕様については､'specs/requirements.md' を参照すること｡
   - アーティファクトは全て日本語で記述すること｡
-  - 資料の図はmermaidで出力する。
-  - mermaidはダークモードで読みやすく色付けする｡
 
 rules:
   proposal:
