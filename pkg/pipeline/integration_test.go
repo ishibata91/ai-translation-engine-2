@@ -27,7 +27,6 @@ func (s *mockSlice) PreparePrompts(ctx context.Context, input any) ([]llm.Reques
 	return []llm.Request{{UserPrompt: "test prompt"}}, nil
 }
 func (s *mockSlice) SaveResults(ctx context.Context, results []llm.Response) error {
-	slog.Info("SaveResults called", slog.String("slice", s.id), slog.Int("results", len(results)))
 	s.saveCalls++
 	s.results = results
 	return nil

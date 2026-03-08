@@ -1,7 +1,6 @@
 package terminology
 
 import (
-	"log/slog"
 	"sort"
 	"strings"
 )
@@ -24,8 +23,6 @@ func NewGreedyLongestMatcher() *GreedyLongestMatcher {
 
 // Match finds the longest non-overlapping occurrences of reference terms in the text
 func (m *GreedyLongestMatcher) Match(text string, candidates []ReferenceTerm) []ReferenceTerm {
-	slog.Debug("ENTER GreedyLongestMatcher.Match", slog.String("text", text), slog.Int("candidateCount", len(candidates)))
-
 	allMatches := m.findAllCandidateMatches(text, candidates)
 	m.sortByLengthDescending(allMatches)
 	return m.selectNonOverlapping(allMatches)
@@ -33,8 +30,6 @@ func (m *GreedyLongestMatcher) Match(text string, candidates []ReferenceTerm) []
 
 // findAllCandidateMatches finds all occurrences of each candidate in the text (case-insensitive).
 func (m *GreedyLongestMatcher) findAllCandidateMatches(text string, candidates []ReferenceTerm) []PartialMatchResult {
-	slog.Debug("ENTER GreedyLongestMatcher.findAllCandidateMatches")
-
 	lowerText := strings.ToLower(text)
 	var allMatches []PartialMatchResult
 
@@ -66,8 +61,6 @@ func (m *GreedyLongestMatcher) findAllCandidateMatches(text string, candidates [
 
 // sortByLengthDescending sorts matches by length descending, then by start index ascending.
 func (m *GreedyLongestMatcher) sortByLengthDescending(allMatches []PartialMatchResult) {
-	slog.Debug("ENTER GreedyLongestMatcher.sortByLengthDescending")
-
 	sort.Slice(allMatches, func(i, j int) bool {
 		lenI := allMatches[i].EndIndex - allMatches[i].StartIndex
 		lenJ := allMatches[j].EndIndex - allMatches[j].StartIndex
@@ -80,8 +73,6 @@ func (m *GreedyLongestMatcher) sortByLengthDescending(allMatches []PartialMatchR
 
 // selectNonOverlapping applies greedy selection to prevent overlapping matches.
 func (m *GreedyLongestMatcher) selectNonOverlapping(allMatches []PartialMatchResult) []ReferenceTerm {
-	slog.Debug("ENTER GreedyLongestMatcher.selectNonOverlapping")
-
 	var selected []ReferenceTerm
 	consumedPositions := make(map[int]bool)
 	seenSources := make(map[string]bool)

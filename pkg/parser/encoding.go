@@ -3,7 +3,6 @@ package parser
 import (
 	"bufio"
 	"io"
-	"log/slog"
 	"unicode/utf8"
 
 	"golang.org/x/text/encoding/charmap"
@@ -14,8 +13,6 @@ import (
 // detectEncoding reads the beginning of the file to guess the encoding.
 // It returns a reader that converts the content to UTF-8.
 func detectEncoding(r io.Reader) (io.Reader, error) {
-	slog.Debug("ENTER detectEncoding")
-
 	bufReader := bufio.NewReader(r)
 	peekBytes, err := bufReader.Peek(4096)
 	if err != nil && err != io.EOF && err != bufio.ErrBufferFull {
@@ -35,14 +32,11 @@ func detectEncoding(r io.Reader) (io.Reader, error) {
 	}
 
 	// Default fallback: Windows-1252 (CP1252) for European languages
-	slog.Debug("detectEncoding: falling back to Windows-1252")
 	return transform.NewReader(bufReader, charmap.Windows1252.NewDecoder()), nil
 }
 
 // checkBOM checks for a UTF-8 BOM (Byte Order Mark) and discards it if found.
 func checkBOM(bufReader *bufio.Reader, peekBytes []byte) (io.Reader, bool) {
-	slog.Debug("ENTER checkBOM")
-
 	if len(peekBytes) >= 3 && peekBytes[0] == 0xEF && peekBytes[1] == 0xBB && peekBytes[2] == 0xBF {
 		if _, err := bufReader.Discard(3); err != nil {
 			return nil, false
@@ -54,14 +48,11 @@ func checkBOM(bufReader *bufio.Reader, peekBytes []byte) (io.Reader, bool) {
 
 // checkUTF8 returns true if the peeked bytes are valid UTF-8.
 func checkUTF8(peekBytes []byte) bool {
-	slog.Debug("ENTER checkUTF8")
 	return utf8.Valid(peekBytes)
 }
 
 // tryShiftJIS checks if the peeked bytes look like Shift_JIS and returns a decoding reader.
 func tryShiftJIS(bufReader *bufio.Reader, peekBytes []byte) (io.Reader, bool) {
-	slog.Debug("ENTER tryShiftJIS")
-
 	if isShiftJIS(peekBytes) {
 		return transform.NewReader(bufReader, japanese.ShiftJIS.NewDecoder()), true
 	}

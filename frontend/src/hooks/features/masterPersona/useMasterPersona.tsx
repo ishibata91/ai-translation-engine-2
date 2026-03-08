@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import type { NpcRow } from '../../../types/npc';
 import { SelectJSONFile } from '../../../wailsjs/go/main/App';
@@ -72,6 +72,8 @@ export function useMasterPersona() {
     const isSwitchingProviderRef = useRef<boolean>(false);
     const previousProviderRef = useRef<MasterPersonaLLMConfig['provider']>(DEFAULT_MASTER_PERSONA_LLM_CONFIG.provider);
     const resumeRequestedRef = useRef<boolean>(false);
+    const allNpcDataRef = useRef<NpcRow[]>([]);
+    const selectedRowIDRef = useRef<string | null>(null);
 
     const loadProviderConfig = async (
         provider: MasterPersonaLLMConfig['provider'],
@@ -305,6 +307,14 @@ export function useMasterPersona() {
         latestPromptConfigRef.current = promptConfig;
     }, [promptConfig]);
 
+    useEffect(() => {
+        allNpcDataRef.current = allNpcData;
+    }, [allNpcData]);
+
+    useEffect(() => {
+        selectedRowIDRef.current = selectedRowId;
+    }, [selectedRowId]);
+
     const persistLLMConfigDiff = (currentRaw: MasterPersonaLLMConfig) => {
         const current = {
             ...currentRaw,
@@ -519,10 +529,10 @@ export function useMasterPersona() {
         }
     };
 
-    const refreshNPCDataFromService = async () => {
+    const refreshNPCDataFromService = useCallback(async () => {
         try {
             const records = (await ListNPCs() as unknown as PersonaNPCRecord[]) || [];
-            const existingDialogues = new Map(allNpcData.map((row) => [row.personaId, row.dialogues] as const));
+            const existingDialogues = new Map(allNpcDataRef.current.map((row) => [row.personaId, row.dialogues] as const));
             const rows: NpcRow[] = records
                 .map((record) => {
                     const speakerID = pickString(record.speaker_id ?? record.SpeakerID);
@@ -553,17 +563,17 @@ export function useMasterPersona() {
             if (rows.length === 0) {
                 setSelectedRow(null);
                 setSelectedRowId(null);
-            } else if (!selectedRowId || !rows.some((row) => row.id === selectedRowId)) {
+            } else if (!selectedRowIDRef.current || !rows.some((row) => row.id === selectedRowIDRef.current)) {
                 setSelectedRow(rows[0]);
                 setSelectedRowId(rows[0].id);
             } else {
-                const nextSelectedRow = rows.find((row) => row.id === selectedRowId) ?? null;
+                const nextSelectedRow = rows.find((row) => row.id === selectedRowIDRef.current) ?? null;
                 setSelectedRow(nextSelectedRow);
             }
         } catch (error) {
             console.error('failed to refresh npc rows from persona service', { error });
         }
-    };
+    }, []);
 
     const loadDialoguesForPersona = async (personaID: number) => {
         try {
@@ -613,7 +623,7 @@ export function useMasterPersona() {
 
     useEffect(() => {
         void refreshNPCDataFromService();
-    }, [location.key]);
+    }, [location.key, refreshNPCDataFromService]);
 
     useEffect(() => {
         const navState = location.state as { taskId?: string; resumeFromDashboard?: boolean } | null;
@@ -761,7 +771,7 @@ export function useMasterPersona() {
             offTaskUpdated();
             offPhaseCompleted();
         };
-    }, [activeTaskId, isGenerating]);
+    }, [activeTaskId, isGenerating, refreshNPCDataFromService]);
 
 
     return {

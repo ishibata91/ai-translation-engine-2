@@ -1,49 +1,6 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { LogEntry } from './LogDetail';
-import { useUIStore } from '../../store/uiStore';
-import { useWailsEvent } from '../../hooks/useWailsEvent';
-import { UIStateGetJSON, UIStateSetJSON } from '../../wailsjs/go/config/ConfigService';
-
-const WAILS_LOG_EVENT = 'telemetry.log';
-const UI_NAMESPACE = 'log-viewer';
-const FILTER_KEY = 'filters';
-const MAX_LOG_ENTRIES = 500;
-
-type LogLevel = 'ALL' | 'DEBUG' | 'INFO' | 'WARN' | 'ERROR';
-
-interface LogFilters {
-    level: LogLevel;
-    traceId: string;
-}
-
-const DEFAULT_FILTERS: LogFilters = {
-    level: 'ERROR',
-    traceId: '',
-};
-
-const LEVEL_ORDER: Record<string, number> = {
-    DEBUG: 0,
-    INFO: 1,
-    WARN: 2,
-    ERROR: 3,
-};
-
-let eventCounter = 0;
-
-function matchesFilter(log: LogEntry, filters: LogFilters): boolean {
-    if (filters.level !== 'ALL') {
-        const logLevelNum = LEVEL_ORDER[log.level] ?? -1;
-        const filterLevelNum = LEVEL_ORDER[filters.level] ?? -1;
-        if (logLevelNum < filterLevelNum) return false;
-    }
-
-    if (filters.traceId.trim()) {
-        const tid = log.attributes?.['trace_id'] ?? '';
-        if (!String(tid).toLowerCase().includes(filters.traceId.trim().toLowerCase())) return false;
-    }
-
-    return true;
-}
+import { useLogViewer } from '../../hooks/features/logViewer/useLogViewer';
 
 const LogItem: React.FC<{ log: LogEntry; onClick: (log: LogEntry) => void }> = ({ log, onClick }) => {
     const [isNew, setIsNew] = useState(true);
@@ -81,103 +38,18 @@ const LogItem: React.FC<{ log: LogEntry; onClick: (log: LogEntry) => void }> = (
 };
 
 const LogViewer: React.FC = () => {
-    const { logViewerWidth: width, setLogViewerWidth: setWidth, setDetailPane } = useUIStore();
-    const [isResizing, setIsResizing] = useState(false);
-    const [isCollapsed, setIsCollapsed] = useState(true);
-    const [allLogs, setAllLogs] = useState<LogEntry[]>([]);
-    const [filters, setFilters] = useState<LogFilters>(DEFAULT_FILTERS);
-    const filtersLoaded = useRef(false);
-
-    const handleMouseDown = useCallback((e: React.MouseEvent) => {
-        e.preventDefault();
-        setIsResizing(true);
-    }, []);
-
-    useEffect(() => {
-        if (!isResizing) return;
-        const handleMouseMove = (e: MouseEvent) => {
-            let newWidth = window.innerWidth - e.clientX;
-            newWidth = Math.max(200, Math.min(newWidth, 800));
-            setWidth(newWidth);
-        };
-        const handleMouseUp = () => setIsResizing(false);
-        document.addEventListener('mousemove', handleMouseMove);
-        document.addEventListener('mouseup', handleMouseUp);
-        document.body.style.userSelect = 'none';
-        return () => {
-            document.removeEventListener('mousemove', handleMouseMove);
-            document.removeEventListener('mouseup', handleMouseUp);
-            document.body.style.userSelect = '';
-        };
-    }, [isResizing, setWidth]);
-
-    useEffect(() => {
-        UIStateGetJSON(UI_NAMESPACE, FILTER_KEY)
-            .then((jsonStr) => {
-                if (!jsonStr) return;
-                try {
-                    const parsed = JSON.parse(jsonStr) as Partial<LogFilters>;
-                    setFilters((prev) => ({
-                        ...prev,
-                        level: (parsed.level as LogLevel) ?? 'ERROR',
-                        traceId: parsed.traceId ?? '',
-                    }));
-                } catch {
-                    // noop
-                }
-            })
-            .catch(() => {
-                // noop
-            })
-            .finally(() => {
-                filtersLoaded.current = true;
-            });
-    }, []);
-
-    useEffect(() => {
-        if (!filtersLoaded.current) return;
-        const payload = { level: filters.level, traceId: filters.traceId };
-        UIStateSetJSON(UI_NAMESPACE, FILTER_KEY, payload).catch(() => {
-            // noop
-        });
-    }, [filters]);
-
-    useWailsEvent<unknown>(WAILS_LOG_EVENT, (event) => {
-        if (!event || typeof event !== 'object') return;
-        const raw = event as Record<string, unknown>;
-        const levelRaw = raw['level'];
-        const normalizedLevel: LogEntry['level'] =
-            levelRaw === 'DEBUG' || levelRaw === 'INFO' || levelRaw === 'WARN' || levelRaw === 'ERROR'
-                ? levelRaw
-                : 'INFO';
-
-        const entry: LogEntry = {
-            id: `${raw['id'] ?? Date.now()}-${eventCounter++}`,
-            level: normalizedLevel,
-            message: String(raw['message'] ?? ''),
-            timestamp: String(raw['timestamp'] ?? new Date().toISOString()),
-            attributes: (raw['attributes'] as Record<string, unknown>) ?? {},
-        };
-
-        setAllLogs((prev) => {
-            const next = [entry, ...prev];
-            return next.length > MAX_LOG_ENTRIES ? next.slice(0, MAX_LOG_ENTRIES) : next;
-        });
-    });
-
-    const filteredLogs = allLogs.filter((log) => matchesFilter(log, filters));
-
-    const handleLogClick = (log: LogEntry) => {
-        setDetailPane(true, 'log', log);
-    };
-
-    const handleLevelChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-        setFilters((prev) => ({ ...prev, level: e.target.value as LogLevel }));
-    };
-
-    const handleTraceIdChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        setFilters((prev) => ({ ...prev, traceId: e.target.value }));
-    };
+    const {
+        allLogsCount,
+        filteredLogs,
+        filters,
+        handleLevelChange,
+        handleLogClick,
+        handleMouseDown,
+        handleTraceIDChange,
+        isCollapsed,
+        setIsCollapsed,
+        width,
+    } = useLogViewer();
 
     if (isCollapsed) {
         return (
@@ -209,9 +81,9 @@ const LogViewer: React.FC = () => {
             <div className="flex items-center justify-between gap-2 text-sm z-10 relative">
                 <div className="flex items-center gap-2">
                     <div className="badge badge-outline">Telemetry Logs</div>
-                    {allLogs.length > 0 && (
+                    {allLogsCount > 0 && (
                         <span className="text-xs opacity-40">
-                            {filteredLogs.length}/{allLogs.length}
+                            {filteredLogs.length}/{allLogsCount}
                         </span>
                     )}
                 </div>
@@ -228,7 +100,7 @@ const LogViewer: React.FC = () => {
                 <select
                     className="select select-bordered select-sm w-full font-sans"
                     value={filters.level}
-                    onChange={handleLevelChange}
+                    onChange={(e) => handleLevelChange(e.target.value)}
                     id="log-level-filter"
                 >
                     <option value="ALL">All Levels</option>
@@ -243,14 +115,14 @@ const LogViewer: React.FC = () => {
                     placeholder="Filter by TraceID..."
                     className="input input-bordered input-sm w-full font-mono text-xs"
                     value={filters.traceId}
-                    onChange={handleTraceIdChange}
+                    onChange={(e) => handleTraceIDChange(e.target.value)}
                 />
             </div>
 
             <div className="flex flex-col gap-2 overflow-y-auto w-full h-full text-xs z-0 relative pr-1">
                 {filteredLogs.length === 0 && (
                     <div className="text-center opacity-30 mt-8 text-xs">
-                        {allLogs.length === 0 ? 'ログ受信待ち...' : 'フィルター条件に一致するログなし'}
+                        {allLogsCount === 0 ? 'ログ受信待ち...' : 'フィルター条件に一致するログなし'}
                     </div>
                 )}
                 {filteredLogs.map((log) => (

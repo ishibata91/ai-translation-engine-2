@@ -11,6 +11,7 @@ import (
 
 // PersonaTaskController exposes MasterPersona-specific Wails-facing task operations.
 type PersonaTaskController struct {
+	ctx                   context.Context
 	manager               *task.Manager
 	masterPersonaWorkflow workflow.MasterPersona
 }
@@ -18,14 +19,24 @@ type PersonaTaskController struct {
 // NewPersonaTaskController constructs the MasterPersona controller adapter.
 func NewPersonaTaskController(manager *task.Manager, masterPersonaWorkflow workflow.MasterPersona) *PersonaTaskController {
 	return &PersonaTaskController{
+		ctx:                   context.Background(),
 		manager:               manager,
 		masterPersonaWorkflow: masterPersonaWorkflow,
 	}
 }
 
+// SetContext injects the Wails application context for downstream propagation.
+func (c *PersonaTaskController) SetContext(ctx context.Context) {
+	if ctx == nil {
+		c.ctx = context.Background()
+		return
+	}
+	c.ctx = ctx
+}
+
 // GetAllTasks loads all persisted tasks so persona-specific tests and screens can hydrate state.
 func (c *PersonaTaskController) GetAllTasks() ([]task.Task, error) {
-	return c.manager.Store().GetAllTasks(context.Background())
+	return c.manager.Store().GetAllTasks(c.ctx)
 }
 
 // StartMasterPersonTask starts the MasterPersona workflow while keeping the existing Wails API signature.
@@ -33,7 +44,7 @@ func (c *PersonaTaskController) StartMasterPersonTask(input task.StartMasterPers
 	if c.masterPersonaWorkflow == nil {
 		return "", fmt.Errorf("master persona workflow is not configured")
 	}
-	return c.masterPersonaWorkflow.StartMasterPersona(context.Background(), workflow.StartMasterPersonaInput{
+	return c.masterPersonaWorkflow.StartMasterPersona(c.ctx, workflow.StartMasterPersonaInput{
 		SourceJSONPath:    input.SourceJSONPath,
 		OverwriteExisting: input.OverwriteExisting,
 	})
@@ -44,7 +55,7 @@ func (c *PersonaTaskController) ResumeTask(taskID string) error {
 	if c.masterPersonaWorkflow == nil {
 		return fmt.Errorf("master persona workflow is not configured")
 	}
-	return c.masterPersonaWorkflow.ResumeMasterPersona(context.Background(), taskID)
+	return c.masterPersonaWorkflow.ResumeMasterPersona(c.ctx, taskID)
 }
 
 // ResumeMasterPersonaTask resumes a MasterPersona task explicitly.
@@ -57,7 +68,7 @@ func (c *PersonaTaskController) CancelTask(taskID string) {
 	if c.masterPersonaWorkflow == nil {
 		return
 	}
-	_ = c.masterPersonaWorkflow.CancelMasterPersona(context.Background(), taskID)
+	_ = c.masterPersonaWorkflow.CancelMasterPersona(c.ctx, taskID)
 }
 
 // GetTaskRequestState returns aggregate queued request state for one task.
@@ -65,7 +76,7 @@ func (c *PersonaTaskController) GetTaskRequestState(taskID string) (runtimequeue
 	if c.masterPersonaWorkflow == nil {
 		return runtimequeue.TaskRequestState{}, fmt.Errorf("master persona workflow is not configured")
 	}
-	return c.masterPersonaWorkflow.GetTaskRequestState(context.Background(), taskID)
+	return c.masterPersonaWorkflow.GetTaskRequestState(c.ctx, taskID)
 }
 
 // GetTaskRequests returns queued requests for one task.
@@ -73,5 +84,5 @@ func (c *PersonaTaskController) GetTaskRequests(taskID string) ([]runtimequeue.J
 	if c.masterPersonaWorkflow == nil {
 		return nil, fmt.Errorf("master persona workflow is not configured")
 	}
-	return c.masterPersonaWorkflow.GetTaskRequests(context.Background(), taskID)
+	return c.masterPersonaWorkflow.GetTaskRequests(c.ctx, taskID)
 }

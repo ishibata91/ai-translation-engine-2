@@ -188,21 +188,21 @@ func (s *MasterPersonaService) GetTaskRequests(ctx context.Context, taskID strin
 }
 
 // StartMasterPersonTask is the controller-facing wrapper used by task.Bridge.
-func (s *MasterPersonaService) StartMasterPersonTask(input task.StartMasterPersonTaskInput) (string, error) {
-	return s.StartMasterPersona(context.Background(), StartMasterPersonaInput{
+func (s *MasterPersonaService) StartMasterPersonTask(ctx context.Context, input task.StartMasterPersonTaskInput) (string, error) {
+	return s.StartMasterPersona(ctx, StartMasterPersonaInput{
 		SourceJSONPath:    input.SourceJSONPath,
 		OverwriteExisting: input.OverwriteExisting,
 	})
 }
 
 // ResumeMasterPersonaTask is the controller-facing wrapper used by task.Bridge.
-func (s *MasterPersonaService) ResumeMasterPersonaTask(taskID string) error {
-	return s.ResumeMasterPersona(context.Background(), taskID)
+func (s *MasterPersonaService) ResumeMasterPersonaTask(ctx context.Context, taskID string) error {
+	return s.ResumeMasterPersona(ctx, taskID)
 }
 
 // CancelTask is the controller-facing wrapper used by task.Bridge.
-func (s *MasterPersonaService) CancelTask(taskID string) {
-	_ = s.CancelMasterPersona(context.Background(), taskID)
+func (s *MasterPersonaService) CancelTask(ctx context.Context, taskID string) {
+	_ = s.CancelMasterPersona(ctx, taskID)
 }
 
 // CleanupCompletedTask removes queued requests after a MasterPersona task is confirmed completed.
@@ -314,7 +314,7 @@ func (s *MasterPersonaService) runPersonaExecution(ctx context.Context, currentT
 	})
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			_ = s.queue.MarkTaskRequestsCanceled(context.Background(), currentTask.ID)
+			_ = s.queue.MarkTaskRequestsCanceled(ctx, currentTask.ID)
 		}
 		s.reportTaskPhaseProgress(ctx, currentTask.ID, currentTask.Type, "REQUEST_DISPATCHING", state.Completed, state.Total, runtimeprogress.StatusFailed, err.Error())
 		return err
@@ -333,7 +333,7 @@ func (s *MasterPersonaService) runPersonaExecution(ctx context.Context, currentT
 		"persona_saved_count":  saveSummary.Saved,
 		"persona_failed_count": saveSummary.Failed,
 	})
-	_ = s.manager.Store().SaveMetadata(context.Background(), currentTask.ID, metadata)
+	_ = s.manager.Store().SaveMetadata(ctx, currentTask.ID, metadata)
 	s.manager.EmitPhaseCompleted(currentTask.ID, "REQUEST_COMPLETED", map[string]int{
 		"total":                updatedState.Total,
 		"completed":            updatedState.Completed,

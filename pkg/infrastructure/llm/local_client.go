@@ -318,8 +318,8 @@ func (c *lmStudioClient) doChatCompletion(ctx context.Context, req Request, stru
 	if len(raw.Choices) == 0 {
 		return Response{}, fmt.Errorf("lmstudio: empty choices in response")
 	}
-	var content string
-	if err := json.Unmarshal(raw.Choices[0].Message.Content, &content); err != nil {
+	content, err := parseLMStudioMessageContent(raw.Choices[0].Message.Content)
+	if err != nil {
 		return Response{}, fmt.Errorf("lmstudio: response content decode failed: %w", err)
 	}
 	return Response{
@@ -337,6 +337,24 @@ func (c *lmStudioClient) setAuthHeader(req *http.Request) {
 	if c.config.APIKey != "" {
 		req.Header.Set("Authorization", "Bearer "+c.config.APIKey)
 	}
+}
+
+func parseLMStudioMessageContent(raw json.RawMessage) (string, error) {
+	var text string
+	if err := json.Unmarshal(raw, &text); err == nil {
+		return text, nil
+	}
+
+	var decoded interface{}
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		return "", err
+	}
+
+	normalized, err := json.Marshal(decoded)
+	if err != nil {
+		return "", err
+	}
+	return string(normalized), nil
 }
 
 // localStreamResponse is a fallback stream wrapper.

@@ -146,6 +146,8 @@ func main() {
 			wailsLogH.SetContext(ctx)
 			// Pass Wails context to TaskManager and Initialize it
 			taskManager.SetContext(ctx)
+			taskController.SetContext(ctx)
+			personaTaskController.SetContext(ctx)
 			if err := taskManager.Initialize(ctx); err != nil {
 				log.Printf("failed to initialize task manager: %v", err)
 			}

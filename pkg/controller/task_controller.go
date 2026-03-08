@@ -8,14 +8,25 @@ import (
 
 // TaskController exposes generic Wails-facing task operations.
 type TaskController struct {
+	ctx     context.Context
 	manager *task.Manager
 }
 
 // NewTaskController constructs the task controller adapter.
 func NewTaskController(manager *task.Manager) *TaskController {
 	return &TaskController{
+		ctx:     context.Background(),
 		manager: manager,
 	}
+}
+
+// SetContext injects the Wails application context for downstream propagation.
+func (c *TaskController) SetContext(ctx context.Context) {
+	if ctx == nil {
+		c.ctx = context.Background()
+		return
+	}
+	c.ctx = ctx
 }
 
 // GetActiveTasks returns in-memory active tasks for dashboard polling.
@@ -25,7 +36,7 @@ func (c *TaskController) GetActiveTasks() []task.Task {
 
 // GetAllTasks loads all persisted tasks.
 func (c *TaskController) GetAllTasks() ([]task.Task, error) {
-	return c.manager.Store().GetAllTasks(context.Background())
+	return c.manager.Store().GetAllTasks(c.ctx)
 }
 
 // ResumeTask resumes a generic task through task manager.
