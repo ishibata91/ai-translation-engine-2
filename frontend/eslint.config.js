@@ -7,7 +7,7 @@ import prettierConfig from 'eslint-config-prettier';
 
 export default tseslint.config(
   {
-    ignores: ['dist/**', 'wailsjs/**', 'node_modules/**'],
+    ignores: ['dist/**', 'src/wailsjs/**', 'node_modules/**'],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
@@ -58,3 +58,4 @@ export default tseslint.config(
   },
   prettierConfig,
 );
+
