@@ -6,22 +6,18 @@ compatibility: Requires openspec CLI.
 metadata:
   author: openspec
   version: "1.0"
-  generatedBy: "1.1.1"
+  generatedBy: "1.2.0"
 ---
 
 Archive a completed change in the experimental workflow.
 
-**Working Directory Requirement (Critical)**
-- `npx openspec` を必ずプロジェクトのワークスペースフォルダ（ローカル依存がある場所）で実行する。
-- グローバル `openspec` は使わない。サンドボックス環境では解決できず失敗しやすいため、常に `npx openspec ...` を使う。
-- 現在位置がワークスペースルート（`openspec/` ディレクトリがあるフォルダ）でない場合は、先に移動してから実行する。
 **Input**: Optionally specify a change name. If omitted, check if it can be inferred from conversation context. If vague or ambiguous you MUST prompt for available changes.
 
 **Steps**
 
 1. **If no change name provided, prompt for selection**
 
-   Run `npx openspec list --json` to get available changes. Use the **AskUserQuestion tool** to let the user select.
+   Run `openspec list --json` to get available changes. Use the **AskUserQuestion tool** to let the user select.
 
    Show only active changes (not already archived).
    Include the schema used for each change if available.
@@ -30,7 +26,7 @@ Archive a completed change in the experimental workflow.
 
 2. **Check artifact completion status**
 
-   Run `npx openspec status --change "<name>" --json` to check artifact completion.
+   Run `openspec status --change "<name>" --json` to check artifact completion.
 
    Parse the JSON to understand:
    - `schemaName`: The workflow being used
@@ -67,26 +63,23 @@ Archive a completed change in the experimental workflow.
    - If changes needed: "Sync now (recommended)", "Archive without syncing"
    - If already synced: "Archive now", "Sync anyway", "Cancel"
 
-   If user chooses sync, execute /opsx:sync logic (use the openspec-sync-specs skill). Proceed to archive regardless of choice.
+   If user chooses sync, use Task tool (subagent_type: "general-purpose", prompt: "Use Skill tool to invoke openspec-sync-specs for change '<name>'. Delta spec analysis: <include the analyzed delta spec summary>"). Proceed to archive regardless of choice.
 
 5. **Perform the archive**
 
-   Create the archive directory if it doesn't exist. **Note**: Use OS-specific commands (e.g., `mkdir` on Windows cmd.exe without `-p`, or PowerShell).
-
-   ```powershell
-   # Windows cmd.exe example
-   if not exist "openspec\changes\archive" mkdir "openspec\changes\archive"
+   Create the archive directory if it doesn't exist:
+   ```bash
+   mkdir -p openspec/changes/archive
    ```
 
    Generate target name using current date: `YYYY-MM-DD-<change-name>`
 
    **Check if target already exists:**
    - If yes: Fail with error, suggest renaming existing archive or using different date
-   - If no: Move the change directory to archive. **Note**: Use OS-specific move command.
+   - If no: Move the change directory to archive
 
-   ```powershell
-   # Windows cmd.exe example
-   move "openspec\changes\<name>" "openspec\changes\archive\YYYY-MM-DD-<name>"
+   ```bash
+   mv openspec/changes/<name> openspec/changes/archive/YYYY-MM-DD-<name>
    ```
 
 6. **Display summary**
@@ -119,4 +112,3 @@ All artifacts complete. All tasks complete.
 - Show clear summary of what happened
 - If sync is requested, use openspec-sync-specs approach (agent-driven)
 - If delta specs exist, always run the sync assessment and show the combined summary before prompting
-

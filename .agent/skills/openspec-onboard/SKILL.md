@@ -6,29 +6,28 @@ compatibility: Requires openspec CLI.
 metadata:
   author: openspec
   version: "1.0"
-  generatedBy: "1.1.1"
+  generatedBy: "1.2.0"
 ---
 
 Guide the user through their first complete OpenSpec workflow cycle. This is a teaching experience—you'll do real work in their codebase while explaining each step.
-**Working Directory Requirement (Critical)**
-- `npx openspec` を必ずプロジェクトのワークスペースフォルダ（ローカル依存がある場所）で実行する。
-- グローバル `openspec` は使わない。サンドボックス環境では解決できず失敗しやすいため、常に `npx openspec ...` を使う。
-- 現在位置がワークスペースルート（`openspec/` ディレクトリがあるフォルダ）でない場合は、先に移動してから実行する。
 
 ---
 
 ## Preflight
 
-Before starting, check if OpenSpec is initialized:
+Before starting, check if the OpenSpec CLI is installed:
 
-```powershell
-npx openspec status --json 2>&1 || echo "NOT_INITIALIZED"
+```bash
+# Unix/macOS
+openspec --version 2>&1 || echo "CLI_NOT_INSTALLED"
+# Windows (PowerShell)
+# if (Get-Command openspec -ErrorAction SilentlyContinue) { openspec --version } else { echo "CLI_NOT_INSTALLED" }
 ```
 
-**If not initialized:**
-> OpenSpec isn't set up in this project yet. Run `npx openspec init` first, then come back to `/opsx:onboard`.
+**If CLI not installed:**
+> OpenSpec CLI is not installed. Install it first, then come back to `/opsx:onboard`.
 
-Stop here if not initialized.
+Stop here if not installed.
 
 ---
 
@@ -70,8 +69,11 @@ Scan the codebase for small improvement opportunities. Look for:
 6. **Missing validation** - User input handlers without validation
 
 Also check recent git activity:
-```powershell
+```bash
+# Unix/macOS
 git log --oneline -10 2>/dev/null || echo "No git history"
+# Windows (PowerShell)
+# git log --oneline -10 2>$null; if ($LASTEXITCODE -ne 0) { echo "No git history" }
 ```
 
 ### Present Suggestions
@@ -171,8 +173,8 @@ Let me create one for our task.
 ```
 
 **DO:** Create the change with a derived kebab-case name:
-```powershell
-npx openspec new change "<derived-name>"
+```bash
+openspec new change "<derived-name>"
 ```
 
 **SHOW:**
@@ -240,8 +242,8 @@ Does this capture the intent? I can adjust before we save it.
 **PAUSE** - Wait for user approval/feedback.
 
 After approval, save the proposal:
-```powershell
-npx openspec instructions proposal --change "<name>" --json
+```bash
+openspec instructions proposal --change "<name>" --json
 ```
 Then write the content to `openspec/changes/<name>/proposal.md`.
 
@@ -265,8 +267,11 @@ For a small task like this, we might only need one spec file.
 ```
 
 **DO:** Create the spec file:
-```powershell
-New-Item -ItemType Directory -Path "openspec/changes/<name>/specs/<capability-name>" -Force
+```bash
+# Unix/macOS
+mkdir -p openspec/changes/<name>/specs/<capability-name>
+# Windows (PowerShell)
+# New-Item -ItemType Directory -Force -Path "openspec/changes/<name>/specs/<capability-name>"
 ```
 
 Draft the spec content:
@@ -426,8 +431,8 @@ Archived changes become your project's decision history—you can always find th
 ```
 
 **DO:**
-```powershell
-npx openspec archive "<name>"
+```bash
+openspec archive "<name>"
 ```
 
 **SHOW:**
@@ -461,21 +466,29 @@ This same rhythm works for any size change—a small fix or a major feature.
 
 ## Command Reference
 
+**Core workflow:**
+
 | Command | What it does |
 |---------|--------------|
+| `/opsx:propose` | Create a change and generate all artifacts |
 | `/opsx:explore` | Think through problems before/during work |
-| `/opsx:new` | Start a new change, step through artifacts |
-| `/opsx:ff` | Fast-forward: create all artifacts at once |
-| `/opsx:continue` | Continue working on an existing change |
 | `/opsx:apply` | Implement tasks from a change |
-| `/opsx:verify` | Verify implementation matches artifacts |
 | `/opsx:archive` | Archive a completed change |
+
+**Additional commands:**
+
+| Command | What it does |
+|---------|--------------|
+| `/opsx:new` | Start a new change, step through artifacts one at a time |
+| `/opsx:continue` | Continue working on an existing change |
+| `/opsx:ff` | Fast-forward: create all artifacts at once |
+| `/opsx:verify` | Verify implementation matches artifacts |
 
 ---
 
 ## What's Next?
 
-Try `/opsx:new` or `/opsx:ff` on something you actually want to build. You've got the rhythm now!
+Try `/opsx:propose` on something you actually want to build. You've got the rhythm now!
 ```
 
 ---
@@ -505,17 +518,25 @@ If the user says they just want to see the commands or skip the tutorial:
 ```
 ## OpenSpec Quick Reference
 
+**Core workflow:**
+
 | Command | What it does |
 |---------|--------------|
+| `/opsx:propose <name>` | Create a change and generate all artifacts |
 | `/opsx:explore` | Think through problems (no code changes) |
-| `/opsx:new <name>` | Start a new change, step by step |
-| `/opsx:ff <name>` | Fast-forward: all artifacts at once |
-| `/opsx:continue <name>` | Continue an existing change |
 | `/opsx:apply <name>` | Implement tasks |
-| `/opsx:verify <name>` | Verify implementation |
 | `/opsx:archive <name>` | Archive when done |
 
-Try `/opsx:new` to start your first change, or `/opsx:ff` if you want to move fast.
+**Additional commands:**
+
+| Command | What it does |
+|---------|--------------|
+| `/opsx:new <name>` | Start a new change, step by step |
+| `/opsx:continue <name>` | Continue an existing change |
+| `/opsx:ff <name>` | Fast-forward: all artifacts at once |
+| `/opsx:verify <name>` | Verify implementation |
+
+Try `/opsx:propose` to start your first change.
 ```
 
 Exit gracefully.
@@ -531,4 +552,3 @@ Exit gracefully.
 - **Handle exits gracefully**—never pressure the user to continue
 - **Use real codebase tasks**—don't simulate or use fake examples
 - **Adjust scope gently**—guide toward smaller tasks but respect user choice
-

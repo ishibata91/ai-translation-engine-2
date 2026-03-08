@@ -6,15 +6,11 @@ compatibility: Requires openspec CLI.
 metadata:
   author: openspec
   version: "1.0"
-  generatedBy: "1.1.1"
+  generatedBy: "1.2.0"
 ---
 
 Start a new change using the experimental artifact-driven approach.
 
-**Working Directory Requirement (Critical)**
-- `npx openspec` を必ずプロジェクトのワークスペースフォルダ（ローカル依存がある場所）で実行する。
-- グローバル `openspec` は使わない。サンドボックス環境では解決できず失敗しやすいため、常に `npx openspec ...` を使う。
-- 現在位置がワークスペースルート（`openspec/` ディレクトリがあるフォルダ）でない場合は、先に移動してから実行する。
 **Input**: The user's request should include a change name (kebab-case) OR a description of what they want to build.
 
 **Steps**
@@ -34,28 +30,28 @@ Start a new change using the experimental artifact-driven approach.
 
    **Use a different schema only if the user mentions:**
    - A specific schema name → use `--schema <name>`
-   - "show workflows" or "what workflows" → run `npx openspec schemas --json` and let them choose
+   - "show workflows" or "what workflows" → run `openspec schemas --json` and let them choose
 
    **Otherwise**: Omit `--schema` to use the default.
 
 3. **Create the change directory**
-   ```powershell
-   npx openspec new change "<name>"
+   ```bash
+   openspec new change "<name>"
    ```
    Add `--schema <name>` only if the user requested a specific workflow.
    This creates a scaffolded change at `openspec/changes/<name>/` with the selected schema.
 
 4. **Show the artifact status**
-   ```powershell
-   npx openspec status --change "<name>"
+   ```bash
+   openspec status --change "<name>"
    ```
    This shows which artifacts need to be created and which are ready (dependencies satisfied).
 
 5. **Get instructions for the first artifact**
    The first artifact depends on the schema (e.g., `proposal` for spec-driven).
    Check the status output to find the first artifact with status "ready".
-   ```powershell
-   npx openspec instructions <first-artifact-id> --change "<name>"
+   ```bash
+   openspec instructions <first-artifact-id> --change "<name>"
    ```
    This outputs the template and context for creating the first artifact.
 
@@ -76,4 +72,3 @@ After completing the steps, summarize:
 - If the name is invalid (not kebab-case), ask for a valid name
 - If a change with that name already exists, suggest continuing that change instead
 - Pass --schema if using a non-default workflow
-

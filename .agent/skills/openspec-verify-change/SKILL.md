@@ -6,22 +6,18 @@ compatibility: Requires openspec CLI.
 metadata:
   author: openspec
   version: "1.0"
-  generatedBy: "1.1.1"
+  generatedBy: "1.2.0"
 ---
 
 Verify that an implementation matches the change artifacts (specs, tasks, design).
 
-**Working Directory Requirement (Critical)**
-- `npx openspec` を必ずプロジェクトのワークスペースフォルダ（ローカル依存がある場所）で実行する。
-- グローバル `openspec` は使わない。サンドボックス環境では解決できず失敗しやすいため、常に `npx openspec ...` を使う。
-- 現在位置がワークスペースルート（`openspec/` ディレクトリがあるフォルダ）でない場合は、先に移動してから実行する。
 **Input**: Optionally specify a change name. If omitted, check if it can be inferred from conversation context. If vague or ambiguous you MUST prompt for available changes.
 
 **Steps**
 
 1. **If no change name provided, prompt for selection**
 
-   Run `npx openspec list --json` to get available changes. Use the **AskUserQuestion tool** to let the user select.
+   Run `openspec list --json` to get available changes. Use the **AskUserQuestion tool** to let the user select.
 
    Show changes that have implementation tasks (tasks artifact exists).
    Include the schema used for each change if available.
@@ -30,8 +26,8 @@ Verify that an implementation matches the change artifacts (specs, tasks, design
    **IMPORTANT**: Do NOT guess or auto-select a change. Always let the user choose.
 
 2. **Check status to understand the schema**
-   ```powershell
-   npx openspec status --change "<name>" --json
+   ```bash
+   openspec status --change "<name>" --json
    ```
    Parse the JSON to understand:
    - `schemaName`: The workflow being used (e.g., "spec-driven")
@@ -39,8 +35,8 @@ Verify that an implementation matches the change artifacts (specs, tasks, design
 
 3. **Get the change directory and load artifacts**
 
-   ```powershell
-   npx openspec instructions apply --change "<name>" --json
+   ```bash
+   openspec instructions apply --change "<name>" --json
    ```
 
    This returns the change directory and context files. Read all available artifacts from `contextFiles`.
@@ -170,4 +166,3 @@ Use clear markdown with:
 - Code references in format: `file.ts:123`
 - Specific, actionable recommendations
 - No vague suggestions like "consider reviewing"
-

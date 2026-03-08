@@ -6,22 +6,18 @@ compatibility: Requires openspec CLI.
 metadata:
   author: openspec
   version: "1.0"
-  generatedBy: "1.1.1"
+  generatedBy: "1.2.0"
 ---
 
 Continue working on a change by creating the next artifact.
 
-**Working Directory Requirement (Critical)**
-- `npx openspec` を必ずプロジェクトのワークスペースフォルダ（ローカル依存がある場所）で実行する。
-- グローバル `openspec` は使わない。サンドボックス環境では解決できず失敗しやすいため、常に `npx openspec ...` を使う。
-- 現在位置がワークスペースルート（`openspec/` ディレクトリがあるフォルダ）でない場合は、先に移動してから実行する。
 **Input**: Optionally specify a change name. If omitted, check if it can be inferred from conversation context. If vague or ambiguous you MUST prompt for available changes.
 
 **Steps**
 
 1. **If no change name provided, prompt for selection**
 
-   Run `npx openspec list --json` to get available changes sorted by most recently modified. Then use the **AskUserQuestion tool** to let the user select which change to work on.
+   Run `openspec list --json` to get available changes sorted by most recently modified. Then use the **AskUserQuestion tool** to let the user select which change to work on.
 
    Present the top 3-4 most recently modified changes as options, showing:
    - Change name
@@ -34,8 +30,8 @@ Continue working on a change by creating the next artifact.
    **IMPORTANT**: Do NOT guess or auto-select a change. Always let the user choose.
 
 2. **Check current status**
-   ```powershell
-   npx openspec status --change "<name>" --json
+   ```bash
+   openspec status --change "<name>" --json
    ```
    Parse the JSON to understand current state. The response includes:
    - `schemaName`: The workflow schema being used (e.g., "spec-driven")
@@ -57,8 +53,8 @@ Continue working on a change by creating the next artifact.
    **If artifacts are ready to create** (status shows artifacts with `status: "ready"`):
    - Pick the FIRST artifact with `status: "ready"` from the status output
    - Get its instructions:
-     ```powershell
-     npx openspec instructions <artifact-id> --change "<name>" --json
+     ```bash
+     openspec instructions <artifact-id> --change "<name>" --json
      ```
    - Parse the JSON. The key fields are:
      - `context`: Project background (constraints for you - do NOT include in output)
@@ -82,8 +78,8 @@ Continue working on a change by creating the next artifact.
    - Show status and suggest checking for issues
 
 4. **After creating an artifact, show progress**
-   ```powershell
-   npx openspec status --change "<name>"
+   ```bash
+   openspec status --change "<name>"
    ```
 
 **Output**
@@ -120,4 +116,3 @@ For other schemas, follow the `instruction` field from the CLI output.
 - **IMPORTANT**: `context` and `rules` are constraints for YOU, not content for the file
   - Do NOT copy `<context>`, `<rules>`, `<project_context>` blocks into the artifact
   - These guide what you write, but should never appear in the output
-

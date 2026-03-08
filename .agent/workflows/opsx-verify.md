@@ -19,7 +19,7 @@ Verify that an implementation matches the change artifacts (specs, tasks, design
    **IMPORTANT**: Do NOT guess or auto-select a change. Always let the user choose.
 
 2. **Check status to understand the schema**
-   ```powershell
+   ```bash
    openspec status --change "<name>" --json
    ```
    Parse the JSON to understand:
@@ -28,7 +28,7 @@ Verify that an implementation matches the change artifacts (specs, tasks, design
 
 3. **Get the change directory and load artifacts**
 
-   ```powershell
+   ```bash
    openspec instructions apply --change "<name>" --json
    ```
 
@@ -159,4 +159,3 @@ Use clear markdown with:
 - Code references in format: `file.ts:123`
 - Specific, actionable recommendations
 - No vague suggestions like "consider reviewing"
-

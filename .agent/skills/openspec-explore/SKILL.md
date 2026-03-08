@@ -6,16 +6,12 @@ compatibility: Requires openspec CLI.
 metadata:
   author: openspec
   version: "1.0"
-  generatedBy: "1.1.1"
+  generatedBy: "1.2.0"
 ---
 
 Enter explore mode. Think deeply. Visualize freely. Follow the conversation wherever it goes.
 
-**Working Directory Requirement (Critical)**
-- `npx openspec` を必ずプロジェクトのワークスペースフォルダ（ローカル依存がある場所）で実行する。
-- グローバル `openspec` は使わない。サンドボックス環境では解決できず失敗しやすいため、常に `npx openspec ...` を使う。
-- 現在位置がワークスペースルート（`openspec/` ディレクトリがあるフォルダ）でない場合は、先に移動してから実行する。
-**IMPORTANT: Explore mode is for thinking, not implementing.** You may read files, search code, and investigate the codebase, but you must NEVER write code or implement features. If the user asks you to implement something, remind them to exit explore mode first (e.g., start a change with `/opsx:new` or `/opsx:ff`). You MAY create OpenSpec artifacts (proposals, designs, specs) if the user asks—that's capturing thinking, not implementing.
+**IMPORTANT: Explore mode is for thinking, not implementing.** You may read files, search code, and investigate the codebase, but you must NEVER write code or implement features. If the user asks you to implement something, remind them to exit explore mode first and create a change proposal. You MAY create OpenSpec artifacts (proposals, designs, specs) if the user asks—that's capturing thinking, not implementing.
 
 **This is a stance, not a workflow.** There are no fixed steps, no required sequence, no mandatory outputs. You're a thinking partner helping the user explore.
 
@@ -86,8 +82,8 @@ You have full context of the OpenSpec system. Use it naturally, don't force it.
 ### Check for context
 
 At the start, quickly check what exists:
-```powershell
-npx openspec list --json
+```bash
+openspec list --json
 ```
 
 This tells you:
@@ -99,8 +95,7 @@ This tells you:
 
 Think freely. When insights crystallize, you might offer:
 
-- "This feels solid enough to start a change. Want me to create one?"
-  → Can transition to `/opsx:new` or `/opsx:ff`
+- "This feels solid enough to start a change. Want me to create a proposal?"
 - Or keep exploring - no pressure to formalize
 
 ### When a change exists
@@ -256,7 +251,7 @@ You: That changes everything.
 
 There's no required ending. Discovery might:
 
-- **Flow into action**: "Ready to start? /opsx:new or /opsx:ff"
+- **Flow into a proposal**: "Ready to start? I can create a change proposal."
 - **Result in artifact updates**: "Updated design.md with these decisions"
 - **Just provide clarity**: User has what they need, moves on
 - **Continue later**: "We can pick this up anytime"
@@ -273,8 +268,7 @@ When it feels like things are crystallizing, you might summarize:
 **Open questions**: [if any remain]
 
 **Next steps** (if ready):
-- Create a change: /opsx:new <name>
-- Fast-forward to tasks: /opsx:ff <name>
+- Create a change proposal
 - Keep exploring: just keep talking
 ```
 
@@ -292,4 +286,3 @@ But this summary is optional. Sometimes the thinking IS the value.
 - **Do visualize** - A good diagram is worth many paragraphs
 - **Do explore the codebase** - Ground discussions in reality
 - **Do question assumptions** - Including the user's and your own
-

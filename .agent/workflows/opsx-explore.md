@@ -4,7 +4,7 @@ description: Enter explore mode - think through ideas, investigate problems, cla
 
 Enter explore mode. Think deeply. Visualize freely. Follow the conversation wherever it goes.
 
-**IMPORTANT: Explore mode is for thinking, not implementing.** You may read files, search code, and investigate the codebase, but you must NEVER write code or implement features. If the user asks you to implement something, remind them to exit explore mode first (e.g., start a change with `/opsx:new` or `/opsx:ff`). You MAY create OpenSpec artifacts (proposals, designs, specs) if the user asks—that's capturing thinking, not implementing.
+**IMPORTANT: Explore mode is for thinking, not implementing.** You may read files, search code, and investigate the codebase, but you must NEVER write code or implement features. If the user asks you to implement something, remind them to exit explore mode first and create a change proposal. You MAY create OpenSpec artifacts (proposals, designs, specs) if the user asks—that's capturing thinking, not implementing.
 
 **This is a stance, not a workflow.** There are no fixed steps, no required sequence, no mandatory outputs. You're a thinking partner helping the user explore.
 
@@ -82,7 +82,7 @@ You have full context of the OpenSpec system. Use it naturally, don't force it.
 ### Check for context
 
 At the start, quickly check what exists:
-```powershell
+```bash
 openspec list --json
 ```
 
@@ -97,8 +97,7 @@ If the user mentioned a specific change name, read its artifacts for context.
 
 Think freely. When insights crystallize, you might offer:
 
-- "This feels solid enough to start a change. Want me to create one?"
-  → Can transition to `/opsx:new` or `/opsx:ff`
+- "This feels solid enough to start a change. Want me to create a proposal?"
 - Or keep exploring - no pressure to formalize
 
 ### When a change exists
@@ -117,21 +116,18 @@ If the user mentions a change or you detect one is relevant:
 
 3. **Offer to capture when decisions are made**
 
-   | Insight Type               | Where to Capture                   |
-   | -------------------------- | ---------------------------------- |
-   | New requirement discovered | `<specsPath>/<capability>/spec.md` |
-   | Requirement changed        | `<specsPath>/<capability>/spec.md` |
-   | Design decision made       | `design.md`                        |
-   | Scope changed              | `proposal.md`                      |
-   | New work identified        | `tasks.md`                         |
-   | Assumption invalidated     | Relevant artifact                  |
+   | Insight Type | Where to Capture |
+   |--------------|------------------|
+   | New requirement discovered | `specs/<capability>/spec.md` |
+   | Requirement changed | `specs/<capability>/spec.md` |
+   | Design decision made | `design.md` |
+   | Scope changed | `proposal.md` |
+   | New work identified | `tasks.md` |
+   | Assumption invalidated | Relevant artifact |
 
    Example offers:
    - "That's a design decision. Capture it in design.md?"
    - "This is a new requirement. Add it to specs?"
-     *(Note: Check `openspec/config.yaml` for `specsPath` to locate main specs)*
-
-   For each affected spec, summarize what needs to change. Ask user: "Shall I update these specs now?"
    - "This changes scope. Update the proposal?"
 
 4. **The user decides** - Offer and move on. Don't pressure. Don't auto-capture.
@@ -153,7 +149,7 @@ If the user mentions a change or you detect one is relevant:
 
 There's no required ending. Discovery might:
 
-- **Flow into action**: "Ready to start? `/opsx:new` or `/opsx:ff`"
+- **Flow into a proposal**: "Ready to start? I can create a change proposal."
 - **Result in artifact updates**: "Updated design.md with these decisions"
 - **Just provide clarity**: User has what they need, moves on
 - **Continue later**: "We can pick this up anytime"
@@ -172,4 +168,3 @@ When things crystallize, you might offer a summary - but it's optional. Sometime
 - **Do visualize** - A good diagram is worth many paragraphs
 - **Do explore the codebase** - Ground discussions in reality
 - **Do question assumptions** - Including the user's and your own
-

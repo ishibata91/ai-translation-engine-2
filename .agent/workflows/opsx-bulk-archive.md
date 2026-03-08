@@ -77,12 +77,12 @@ This skill allows you to batch-archive changes, handling spec conflicts intellig
    Display a table summarizing all changes:
 
    ```
-   | Change            | Artifacts | Tasks | Specs   | Conflicts | Status |
-   | ----------------- | --------- | ----- | ------- | --------- | ------ |
-   | schema-management | Done      | 5/5   | 2 delta | None      | Ready  |
-   | project-config    | Done      | 3/3   | 1 delta | None      | Ready  |
-   | add-oauth         | Done      | 4/4   | 1 delta | auth (!)  | Ready* |
-   | add-verify-skill  | 1 left    | 2/5   | None    | None      | Warn   |
+   | Change               | Artifacts | Tasks | Specs   | Conflicts | Status |
+   |---------------------|-----------|-------|---------|-----------|--------|
+   | schema-management   | Done      | 5/5   | 2 delta | None      | Ready  |
+   | project-config      | Done      | 3/3   | 1 delta | None      | Ready  |
+   | add-oauth           | Done      | 4/4   | 1 delta | auth (!)  | Ready* |
+   | add-verify-skill    | 1 left    | 2/5   | None    | None      | Warn   |
    ```
 
    For conflicts, show the resolution:
@@ -114,15 +114,14 @@ This skill allows you to batch-archive changes, handling spec conflicts intellig
    Process changes in the determined order (respecting conflict resolution):
 
    a. **Sync specs** if delta specs exist:
-      - Read `openspec/config.yaml` to determine the `specsPath`.
-      - Use the openspec-sync-specs approach (agent-driven intelligent merge) merging into the main spec files located at `<specsPath>/<capability>/spec.md`.
+      - Use the openspec-sync-specs approach (agent-driven intelligent merge)
       - For conflicts, apply in resolved order
       - Track if sync was done
 
    b. **Perform the archive**:
-      ```powershell
-      New-Item -ItemType Directory -Path "openspec/changes/archive" -Force
-      Move-Item -Path "openspec/changes/<name>" -Destination "openspec/changes/archive/YYYY-MM-DD-<name>"
+      ```bash
+      mkdir -p openspec/changes/archive
+      mv openspec/changes/<name> openspec/changes/archive/YYYY-MM-DD-<name>
       ```
 
    c. **Track outcome** for each change:
@@ -223,7 +222,7 @@ Failed K changes:
 ```
 ## No Changes to Archive
 
-No active changes found. Use `/opsx:new` to create a new change.
+No active changes found. Create a new change to get started.
 ```
 
 **Guardrails**
@@ -238,4 +237,3 @@ No active changes found. Use `/opsx:new` to create a new change.
 - Preserve .openspec.yaml when moving to archive
 - Archive directory target uses current date: YYYY-MM-DD-<name>
 - If archive target exists, fail that change but continue with others
-

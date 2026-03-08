@@ -6,24 +6,20 @@ compatibility: Requires openspec CLI.
 metadata:
   author: openspec
   version: "1.0"
-  generatedBy: "1.1.1"
+  generatedBy: "1.2.0"
 ---
 
 Archive multiple completed changes in a single operation.
 
 This skill allows you to batch-archive changes, handling spec conflicts intelligently by checking the codebase to determine what's actually implemented.
 
-**Working Directory Requirement (Critical)**
-- `npx openspec` を必ずプロジェクトのワークスペースフォルダ（ローカル依存がある場所）で実行する。
-- グローバル `openspec` は使わない。サンドボックス環境では解決できず失敗しやすいため、常に `npx openspec ...` を使う。
-- 現在位置がワークスペースルート（`openspec/` ディレクトリがあるフォルダ）でない場合は、先に移動してから実行する。
 **Input**: None required (prompts for selection)
 
 **Steps**
 
 1. **Get active changes**
 
-   Run `npx openspec list --json` to get all active changes.
+   Run `openspec list --json` to get all active changes.
 
    If no active changes exist, inform user and stop.
 
@@ -40,7 +36,7 @@ This skill allows you to batch-archive changes, handling spec conflicts intellig
 
    For each selected change, collect:
 
-   a. **Artifact status** - Run `npx openspec status --change "<name>" --json`
+   a. **Artifact status** - Run `openspec status --change "<name>" --json`
       - Parse `schemaName` and `artifacts` list
       - Note which artifacts are `done` vs other states
 
@@ -130,9 +126,9 @@ This skill allows you to batch-archive changes, handling spec conflicts intellig
       - Track if sync was done
 
    b. **Perform the archive**:
-      ```powershell
-      New-Item -ItemType Directory -Path "openspec/changes/archive" -Force
-      Move-Item -Path "openspec/changes/<name>" -Destination "openspec/changes/archive/YYYY-MM-DD-<name>"
+      ```bash
+      mkdir -p openspec/changes/archive
+      mv openspec/changes/<name> openspec/changes/archive/YYYY-MM-DD-<name>
       ```
 
    c. **Track outcome** for each change:
@@ -233,7 +229,7 @@ Failed K changes:
 ```
 ## No Changes to Archive
 
-No active changes found. Use `/opsx:new` to create a new change.
+No active changes found. Create a new change to get started.
 ```
 
 **Guardrails**
@@ -248,4 +244,3 @@ No active changes found. Use `/opsx:new` to create a new change.
 - Preserve .openspec.yaml when moving to archive
 - Archive directory target uses current date: YYYY-MM-DD-<name>
 - If archive target exists, fail that change but continue with others
-
