@@ -12,6 +12,7 @@
 ## 進め方
 - openspecが指定された場合は必ず従う。勝手に実装を始めない。
 - [architecture.md](openspec/specs/architecture.md) を常に参照して実装・提案を行う。
+- OpenSpec 文書の責務境界や spec の置き場を整理・提案する場合は [spec-structure/spec.md](openspec/specs/spec-structure/spec.md) を常に参照する。
 - バックエンドを触る場合は、[backend_coding_standards.md](openspec/specs/backend_coding_standards.md) を常に参照して実装・提案を行う。
 - バックエンドの品質ゲート方針は [backend-quality-gates/spec.md](openspec/specs/backend-quality-gates/spec.md) を参照する。
 - テスト設計やテスト仕様の検討では [standard_test_spec.md](openspec/specs/standard_test_spec.md) を参照する。

@@ -2,7 +2,7 @@
 
 ## 1. 概要
 本ドキュメントは `pkg/infrastructure/llm` のうち、**LM Studio プロバイダ実行に必要な契約とライフサイクル**を定義する。  
-汎用インターフェース設計情報（図・補足）は本書に統合し、実装判断の一次情報を `spec.md` に一本化する。
+汎用インターフェース設計情報は本書に統合し、実装判断の一次情報を `spec.md` に一本化する。
 
 ## 2. 設計方針
 - **Interface-First**: 呼び出し側は `LLMClient` 契約のみに依存し、HTTP実装詳細へ依存しない。
@@ -144,8 +144,6 @@ API仕様 (OpenAI互換):
 - **THEN** `llm` は再開不可エラーを返し、実行を開始してはならない
 
 ## 5. 参照資料
-- [llm_class_diagram.md](llm_class_diagram.md)
-- [llm_sequence_diagram.md](llm_sequence_diagram.md)
 - [llm_test_spec.md](llm_test_spec.md)
 
 ## 6. ログ出力・テスト共通規約

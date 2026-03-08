@@ -264,25 +264,7 @@ composition root の責務外:
 
 ---
 
-## 7. 品質ゲート上の建築ルール
-
-アーキテクチャ違反はレビュー観点ではなく、可能な限り機械的に検出する。
-
-- `go-cleanarch` を DI / 依存方向 lint に用いる
-- ルール違反は `backend-quality-gates` の運用に統合する
-- `golangci-lint` だけで依存方向を表現しきれない部分を `go-cleanarch` で補う
-
-最低限検出したい違反:
-
-- controller から runtime / gateway 具象への直接依存
-- workflow を通さない slice 呼び出し
-- slice から runtime 制御への侵入
-- runtime から slice 固有ロジックへの侵入
-- composition root 以外での具象依存
-
----
-
-## 8. 判断基準
+## 7. 判断基準
 
 新しいコードや package を追加する際は、まず以下で判断する。
 
@@ -310,18 +292,20 @@ composition root の責務外:
 
 ---
 
-## 9. 関連文書の責務分担
+## 8. 関連文書の責務分担
 
 - `architecture.md`
   - 構造、責務、依存方向、DI 原則
 - `backend_coding_standards.md`
   - Go 実装時のコーディング規約
 - `backend-quality-gates/spec.md`
-  - lint / test / check の必須導線
+  - lint / check / test の実行導線
 - `standard_test_spec.md`
   - テスト設計書の書式と原則
 - `log-guide.md`
   - ログ設計と AI デバッグ向け運用
+- `spec-structure/spec.md`
+  - OpenSpec 文書の責務境界と配置ルール
 - `frontend_architecture.md`
   - フロントエンド専用構造
 

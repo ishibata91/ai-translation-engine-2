@@ -98,9 +98,9 @@ graph TD
 - 構築済みの「システム辞書」からの一致検索と一括適用機能。
 
 ### 翻訳プレビュー・実行 (Translation Console)
-- **重要**: `architecture.md` セクション 5. LLM統合の原則に基づき、ここからLLMプロバイダ（Gemini, Local等）を選択可能にする。
+- **重要**: `requirements.md` の LLM モード選択要件に基づき、ここからLLMプロバイダ（Gemini, Local等）を選択可能にする。
 - プロンプトの最終調整。
 
 ### ログビューア (Log Viewer)
 - **全画面共通表示**: アプリケーションの下部パネルやドロワーとして、どの画面にいてもリアルタイムでログを確認できる。
-- `architecture.md` セクション 7.5 に基づき、TraceIDによるフィルタリングが可能なパネルを実装。
+- `log-guide.md` に基づき、TraceIDによるフィルタリングが可能なパネルを実装。

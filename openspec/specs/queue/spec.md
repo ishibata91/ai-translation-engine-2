@@ -99,7 +99,7 @@ Queue は、MasterPersona タスクが `Completed` に確定した後、同一 `
 
 ## ログ出力・テスト共通規約
 
-> 本インフラ層は `architecture.md` セクション 6（テスト戦略）・セクション 7（構造化ログ基盤）に準拠する。
+> 本インフラ層は `standard_test_spec.md` と `log-guide.md` に準拠する。
 
 ### 実装時の義務
 1.  **TraceID 伝播**: ジョブの投入から実行、完了報告まで一貫した TraceID をログに保持する。
