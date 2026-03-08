@@ -38,7 +38,7 @@ FrontendTaskManager は、フロントエンド向けタスク（辞書構築、
 TaskManager は従来の `GetActiveTasks`, `CancelTask` に加え、中断されたタスクを再開するための `ResumeTask` 等のバインディングを提供しなければならない。
 
 ### Requirement: Task は進捗値を決定して Progress へ報告しなければならない
-`task` は段階進捗の `phase/current/total/message` を決定し、`progress` へ報告しなければならない。`total` は全 request 件数を分母として扱わなければならない。
+`task` / workflow は段階進捗の `phase/current/total/message` を決定し、`progress` へ報告しなければならない。`total` は全 request 件数を分母として扱わなければならない。usecase slice は UI 配信用の進捗値を直接決定せず、進行事実や中間結果を `task` / workflow へ返さなければならない。
 
 #### Scenario: フェーズ遷移時に task が進捗を報告する
 - **WHEN** Task が enqueue/dispatch/save/complete の各段階へ遷移する
@@ -47,6 +47,11 @@ TaskManager は従来の `GetActiveTasks`, `CancelTask` に加え、中断され
 #### Scenario: Progress は task が渡した値をそのまま配信する
 - **WHEN** `task` が `phase/current/total/message` を `progress` へ報告する
 - **THEN** UI へ配信される進捗値は task が指定した値と一致しなければならない
+
+#### Scenario: usecase slice は task 向けに進行事実を返す
+- **WHEN** usecase slice が途中経過を task / workflow へ伝える必要がある
+- **THEN** usecase slice は進行事実または中間結果を返さなければならない
+- **AND** `progress` へ直接報告してはならない
 
 ### Requirement: Task 状態遷移は task イベントで UI へ通知しなければならない
 `task` の状態遷移（`pending/running/completed/failed/canceled`）は `task` イベント（例: `task:updated`）として UI に通知しなければならない。状態遷移通知は `progress` 経路を介してはならない。

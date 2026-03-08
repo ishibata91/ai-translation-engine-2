@@ -59,6 +59,7 @@
 - controller は orchestration しない
 - runtime はユースケース進行を決定しない
 - gateway はユースケース進行を決定しない
+- usecase slice は UI イベントを送信せず、進行事実や結果を workflow へ返す
 
 ---
 
@@ -232,6 +233,7 @@ graph TD
 - slice A 出力 -> slice B 入力 DTO の変換も workflow が行う
 - runtime や gateway の返却値を slice 保存 DTO へ変換するのも workflow の責務とする
 - runtime が gateway を使う場合でも、gateway の返却値を slice 保存 DTO や UI 状態へ解釈する責務は workflow が持つ
+- usecase slice が返す進行事実やドメインイベントを `phase/current/total/message` や UI 通知へ翻訳する責務も workflow が持つ
 
 ### 5.3 Contract は振る舞い単位で設計する
 
