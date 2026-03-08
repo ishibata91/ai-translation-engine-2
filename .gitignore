@@ -25,3 +25,4 @@ context_*.toon
 logicstamp.manifest.json
 .logicstamp/
 stamp_security_report.json
+.llm-lens
