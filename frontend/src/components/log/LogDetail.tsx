@@ -9,7 +9,7 @@ export interface LogEntry {
     timestamp: string;
     // バックエンドの全てのテレメトリ属性を動的に受け取るフィールド
     // trace_id, action, resource_type, resource_id, env, app_version, service_name, host_name などが含まれる
-    attributes: Record<string, any>;
+    attributes: Record<string, unknown>;
 }
 
 interface LogDetailProps {
@@ -54,17 +54,17 @@ const LogDetail: React.FC<LogDetailProps> = ({ log }) => {
                     <div>
                         <h4 className="font-bold text-sm mb-2 text-primary">Trace Context</h4>
                         <div className="bg-base-200 p-3 rounded-md font-mono text-xs flex flex-col gap-1">
-                            {traceId && <div><span className="opacity-50">trace_id:</span> {traceId}</div>}
-                            {action && <div><span className="opacity-50">action:</span> {action}</div>}
-                            {resourceType && <div><span className="opacity-50">resource_type:</span> {resourceType}</div>}
-                            {resourceId && <div><span className="opacity-50">resource_id:</span> {resourceId}</div>}
+                            {Boolean(traceId) && <div><span className="opacity-50">trace_id:</span> {String(traceId)}</div>}
+                            {Boolean(action) && <div><span className="opacity-50">action:</span> {String(action)}</div>}
+                            {Boolean(resourceType) && <div><span className="opacity-50">resource_type:</span> {String(resourceType)}</div>}
+                            {Boolean(resourceId) && <div><span className="opacity-50">resource_id:</span> {String(resourceId)}</div>}
                             {!traceId && !action && !resourceType && (
                                 <div className="opacity-40 italic">コンテキスト情報なし</div>
                             )}
                         </div>
                     </div>
 
-                    {stackTrace && (
+                    {Boolean(stackTrace) && (
                         <div>
                             <h4 className="font-bold text-sm mb-2 text-error">Stack Trace</h4>
                             <pre className="bg-base-200 p-3 rounded-md font-mono text-xs overflow-x-auto text-error whitespace-pre-wrap">
@@ -109,3 +109,4 @@ const LogDetail: React.FC<LogDetailProps> = ({ log }) => {
 };
 
 export default LogDetail;
+

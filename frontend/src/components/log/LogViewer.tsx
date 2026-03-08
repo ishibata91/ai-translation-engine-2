@@ -1,17 +1,12 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import type { LogEntry } from './LogDetail';
 import { useUIStore } from '../../store/uiStore';
-import { EventsOn, EventsOff } from '../../wailsjs/runtime/runtime';
+import { useWailsEvent } from '../../hooks/useWailsEvent';
 import { UIStateGetJSON, UIStateSetJSON } from '../../wailsjs/go/config/ConfigService';
 
-// Wails バックエンドから届くイベント名（Go側: wailsLogEventName と一致させる）
 const WAILS_LOG_EVENT = 'telemetry.log';
-
-// ConfigService で使用する永続化キー
 const UI_NAMESPACE = 'log-viewer';
 const FILTER_KEY = 'filters';
-
-// 一度に保持するログの最大数（パフォーマンス保護）
 const MAX_LOG_ENTRIES = 500;
 
 type LogLevel = 'ALL' | 'DEBUG' | 'INFO' | 'WARN' | 'ERROR';
@@ -22,34 +17,35 @@ interface LogFilters {
 }
 
 const DEFAULT_FILTERS: LogFilters = {
-    level: 'ERROR', // 仕様: デフォルトは ERROR
+    level: 'ERROR',
     traceId: '',
 };
 
 const LEVEL_ORDER: Record<string, number> = {
-    DEBUG: 0, INFO: 1, WARN: 2, ERROR: 3,
+    DEBUG: 0,
+    INFO: 1,
+    WARN: 2,
+    ERROR: 3,
 };
 
-// React の key 重複によるコンポーネント再利用バグを防ぐための一意カウンタ
 let eventCounter = 0;
 
 function matchesFilter(log: LogEntry, filters: LogFilters): boolean {
-    // レベルフィルター
     if (filters.level !== 'ALL') {
         const logLevelNum = LEVEL_ORDER[log.level] ?? -1;
         const filterLevelNum = LEVEL_ORDER[filters.level] ?? -1;
         if (logLevelNum < filterLevelNum) return false;
     }
-    // TraceID フィルター
+
     if (filters.traceId.trim()) {
         const tid = log.attributes?.['trace_id'] ?? '';
         if (!String(tid).toLowerCase().includes(filters.traceId.trim().toLowerCase())) return false;
     }
+
     return true;
 }
 
 const LogItem: React.FC<{ log: LogEntry; onClick: (log: LogEntry) => void }> = ({ log, onClick }) => {
-    // マウント時（新しくリストに追加されたとき）に0.5秒間 true になるフラグ
     const [isNew, setIsNew] = useState(true);
     const traceId = log.attributes?.['trace_id'];
 
@@ -58,18 +54,24 @@ const LogItem: React.FC<{ log: LogEntry; onClick: (log: LogEntry) => void }> = (
         return () => clearTimeout(timer);
     }, []);
 
-    const baseBg = log.level === 'ERROR' ? 'alert-error' :
-        log.level === 'WARN' ? 'alert-warning' :
-            log.level === 'INFO' ? 'bg-base-100' : 'bg-base-200 text-base-content/70';
+    const baseBg =
+        log.level === 'ERROR'
+            ? 'alert-error'
+            : log.level === 'WARN'
+                ? 'alert-warning'
+                : log.level === 'INFO'
+                    ? 'bg-base-100'
+                    : 'bg-base-200 text-base-content/70';
 
     return (
         <div
-            className={`alert p-2 rounded flex-col items-start gap-1 cursor-pointer transition-all duration-500 ease-out hover:opacity-80 ${isNew ? 'bg-secondary text-secondary-content scale-[1.02] shadow-lg shadow-secondary/20 z-10' : baseBg
-                }`}
+            className={`alert p-2 rounded flex-col items-start gap-1 cursor-pointer transition-all duration-500 ease-out hover:opacity-80 ${
+                isNew ? 'bg-secondary text-secondary-content scale-[1.02] shadow-lg shadow-secondary/20 z-10' : baseBg
+            }`}
             onClick={() => onClick(log)}
         >
             <span className="font-semibold mix-blend-hard-light">[{log.level}] {log.message}</span>
-            {traceId && (
+            {Boolean(traceId) && (
                 <span className={`badge badge-sm font-mono opacity-70 text-[0.6rem] ${isNew ? 'border border-secondary-content/20 bg-transparent text-secondary-content' : 'badge-ghost'}`}>
                     TraceID: {String(traceId).slice(0, 8)}
                 </span>
@@ -82,15 +84,10 @@ const LogViewer: React.FC = () => {
     const { logViewerWidth: width, setLogViewerWidth: setWidth, setDetailPane } = useUIStore();
     const [isResizing, setIsResizing] = useState(false);
     const [isCollapsed, setIsCollapsed] = useState(true);
-
-    // ログ一覧（全件）
     const [allLogs, setAllLogs] = useState<LogEntry[]>([]);
-    // フィルター設定
     const [filters, setFilters] = useState<LogFilters>(DEFAULT_FILTERS);
-    // 設定読込済みフラグ
     const filtersLoaded = useRef(false);
 
-    // --- リサイズ処理 ---
     const handleMouseDown = useCallback((e: React.MouseEvent) => {
         e.preventDefault();
         setIsResizing(true);
@@ -114,64 +111,60 @@ const LogViewer: React.FC = () => {
         };
     }, [isResizing, setWidth]);
 
-    // --- タスク 7.1, 7.2: マウント時に保存済みフィルター設定を読み込む ---
     useEffect(() => {
         UIStateGetJSON(UI_NAMESPACE, FILTER_KEY)
             .then((jsonStr) => {
-                if (jsonStr) {
-                    try {
-                        const parsed = JSON.parse(jsonStr) as Partial<LogFilters>;
-                        setFilters((prev) => ({
-                            ...prev,
-                            level: (parsed.level as LogLevel) ?? 'ERROR',
-                            traceId: parsed.traceId ?? '',
-                        }));
-                    } catch {
-                        // パース失敗の場合はデフォルトのまま
-                    }
+                if (!jsonStr) return;
+                try {
+                    const parsed = JSON.parse(jsonStr) as Partial<LogFilters>;
+                    setFilters((prev) => ({
+                        ...prev,
+                        level: (parsed.level as LogLevel) ?? 'ERROR',
+                        traceId: parsed.traceId ?? '',
+                    }));
+                } catch {
+                    // noop
                 }
             })
-            .catch(() => { })
+            .catch(() => {
+                // noop
+            })
             .finally(() => {
                 filtersLoaded.current = true;
             });
     }, []);
 
-    // --- タスク 7.3: フィルター変更時に即座に永続化 ---
     useEffect(() => {
         if (!filtersLoaded.current) return;
         const payload = { level: filters.level, traceId: filters.traceId };
-        UIStateSetJSON(UI_NAMESPACE, FILTER_KEY, payload).catch(() => { });
+        UIStateSetJSON(UI_NAMESPACE, FILTER_KEY, payload).catch(() => {
+            // noop
+        });
     }, [filters]);
 
-    // --- タスク 5.1, 5.2: Wails イベントでログを受信 ---
-    useEffect(() => {
-        const handleLog = (event: unknown) => {
-            if (!event || typeof event !== 'object') return;
-            const raw = event as Record<string, any>;
-            const entry: LogEntry = {
-                id: `${raw['id'] ?? Date.now()}-${eventCounter++}`,
-                level: (['DEBUG', 'INFO', 'WARN', 'ERROR'].includes(raw['level'])
-                    ? raw['level']
-                    : 'INFO') as LogEntry['level'],
-                message: String(raw['message'] ?? ''),
-                timestamp: String(raw['timestamp'] ?? new Date().toISOString()),
-                attributes: (raw['attributes'] as Record<string, any>) ?? {},
-            };
+    useWailsEvent<unknown>(WAILS_LOG_EVENT, (event) => {
+        if (!event || typeof event !== 'object') return;
+        const raw = event as Record<string, unknown>;
+        const levelRaw = raw['level'];
+        const normalizedLevel: LogEntry['level'] =
+            levelRaw === 'DEBUG' || levelRaw === 'INFO' || levelRaw === 'WARN' || levelRaw === 'ERROR'
+                ? levelRaw
+                : 'INFO';
 
-            setAllLogs((prev) => {
-                const next = [entry, ...prev];
-                return next.length > MAX_LOG_ENTRIES ? next.slice(0, MAX_LOG_ENTRIES) : next;
-            });
+        const entry: LogEntry = {
+            id: `${raw['id'] ?? Date.now()}-${eventCounter++}`,
+            level: normalizedLevel,
+            message: String(raw['message'] ?? ''),
+            timestamp: String(raw['timestamp'] ?? new Date().toISOString()),
+            attributes: (raw['attributes'] as Record<string, unknown>) ?? {},
         };
 
-        EventsOn(WAILS_LOG_EVENT, handleLog);
-        return () => {
-            EventsOff(WAILS_LOG_EVENT);
-        };
-    }, []);
+        setAllLogs((prev) => {
+            const next = [entry, ...prev];
+            return next.length > MAX_LOG_ENTRIES ? next.slice(0, MAX_LOG_ENTRIES) : next;
+        });
+    });
 
-    // --- タスク 5.3: フィルター適用 ---
     const filteredLogs = allLogs.filter((log) => matchesFilter(log, filters));
 
     const handleLogClick = (log: LogEntry) => {
@@ -208,13 +201,11 @@ const LogViewer: React.FC = () => {
             style={{ width: `${width}px` }}
             className="group relative flex flex-col p-4 gap-4 h-full bg-base-300 border-l border-base-200 shadow-md transition-shadow"
         >
-            {/* リサイズハンドル */}
             <div
                 className="absolute left-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-primary z-20 transition-colors"
                 onMouseDown={handleMouseDown}
             />
 
-            {/* タイトル＆ログ件数 */}
             <div className="flex items-center justify-between gap-2 text-sm z-10 relative">
                 <div className="flex items-center gap-2">
                     <div className="badge badge-outline">Telemetry Logs</div>
@@ -233,7 +224,6 @@ const LogViewer: React.FC = () => {
                 </button>
             </div>
 
-            {/* フィルターコントロール */}
             <div className="flex flex-col gap-2 w-full z-10 relative">
                 <select
                     className="select select-bordered select-sm w-full font-sans"
@@ -257,7 +247,6 @@ const LogViewer: React.FC = () => {
                 />
             </div>
 
-            {/* ログ一覧 */}
             <div className="flex flex-col gap-2 overflow-y-auto w-full h-full text-xs z-0 relative pr-1">
                 {filteredLogs.length === 0 && (
                     <div className="text-center opacity-30 mt-8 text-xs">

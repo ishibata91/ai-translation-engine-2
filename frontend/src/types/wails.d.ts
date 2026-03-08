@@ -1,5 +1,5 @@
 declare module '*wailsjs/runtime/runtime' {
-  export function EventsOn(eventName: string, callback: (payload: any) => void): () => void;
+  export function EventsOn<TPayload = unknown>(eventName: string, callback: (payload: TPayload) => void): () => void;
   export function EventsOff(eventName: string): void;
 }
 
@@ -22,11 +22,11 @@ declare module '*wailsjs/go/modelcatalog/ModelCatalogService' {
 declare module '*wailsjs/go/main/App' {
   export function SelectJSONFile(): Promise<string>;
   export function SelectFiles(): Promise<string[]>;
-  export function DictGetSources(): Promise<any[]>;
+  export function DictGetSources(): Promise<unknown[]>;
   export function DictStartImport(filePath: string): Promise<number>;
-  export function DictGetEntriesPaginated(sourceID: number, query: string, filters: Record<string, string>, page: number, pageSize: number): Promise<any>;
-  export function DictSearchAllEntriesPaginated(query: string, filters: Record<string, string>, page: number, pageSize: number): Promise<any>;
-  export function DictUpdateEntry(entry: any): Promise<void>;
+  export function DictGetEntriesPaginated(sourceID: number, query: string, filters: Record<string, string>, page: number, pageSize: number): Promise<unknown>;
+  export function DictSearchAllEntriesPaginated(query: string, filters: Record<string, string>, page: number, pageSize: number): Promise<unknown>;
+  export function DictUpdateEntry(entry: unknown): Promise<void>;
   export function DictDeleteEntry(id: number): Promise<void>;
   export function DictDeleteSource(id: number): Promise<void>;
 }
@@ -36,6 +36,6 @@ declare module '*wailsjs/go/task/Bridge' {
   export function ResumeTask(taskID: string): Promise<void>;
   export function CancelTask(taskID: string): Promise<void>;
   export function GetTaskRequestState(taskID: string): Promise<{ total?: number; completed?: number; failed?: number; canceled?: number }>;
-  export function GetAllTasks(): Promise<any[]>;
-  export function GetActiveTasks(): Promise<any[]>;
+  export function GetAllTasks(): Promise<unknown[]>;
+  export function GetActiveTasks(): Promise<unknown[]>;
 }
