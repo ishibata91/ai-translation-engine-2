@@ -1,314 +1,328 @@
-# リファクタリング戦略 (Architecture)
+# アーキテクチャ概要
 
-> **Interface-First AIDD (AI-Driven Development) Architecture v2 準拠**
-> 現行 Python ツールから Go/React 新アーキテクチャへの移行方針
+本ドキュメントは、このリポジトリのバックエンドをどの責務区分に分け、どの方向に依存させるかを定義する純粋なアーキテクチャ文書である。
 
----
+この文書が扱うのは以下だけとする。
 
-## 1. 移行の目的 (Objectives)
+- パッケージの責務境界
+- 依存方向
+- DTO / Contract / DI の原則
+- Composition Root の責務
 
-### 1.1 パフォーマンス向上
-*   **現状**: Pythonのシングルスレッド処理により、大量レコード処理に時間を要する。
-*   **目標**: Go言語の並行処理（Goroutines）を活用し、データロード・用語抽出・コンテキスト構築を高速化する。
+この文書が扱わないものは、専用 spec に委譲する。
 
-### 1.2 保守性と型安全性
-*   **現状**: 動的型付け言語（Python）のため、複雑なデータ構造変更時にバグが混入しやすい。
-*   **目標**: Goの静的型付けと構造体により、コンパイル時に整合性を保証する。
-
-### 1.3 ユーザー体験 (UX) の改善
-*   **現状**: CLIベースで、進捗やエラー確認が困難。また、LLMの切り替えが煩雑。
-*   **目標**: ReactベースのSPAを提供し、リアルタイム進捗可視化とGUI設定を実現する。
-*   **LLM選択の統合**: 全てのLLM利用ユースケースにおいて、同じモーダルUIからローカル、Gemini、xAI、バッチAPIモードなどをシームレスに選択できるようにする。
+- バックエンドの実装規約: `openspec/specs/backend_coding_standards.md`
+- 品質ゲートと lint 導線: `openspec/specs/backend-quality-gates/spec.md`
+- テスト設計標準: `openspec/specs/standard_test_spec.md`
+- ログ設計詳細: `openspec/specs/log-guide.md`
+- フロントエンド構造: `openspec/specs/frontend_architecture.md`
 
 ---
 
-## 2. Interface-First AIDD 原則 (Core Principles)
+## 1. 目的
 
-本リファクタリングは、**「実装（Implementation）を入力せず、インターフェース（Contract）のみをコンテキストとして扱う」** Interface-First AIDD 手法に厳密に従う。
+このプロジェクトは Interface-First AIDD を前提に、変更時の影響範囲を局所化し、AI と人間の両方が責務境界を読み取りやすい構造を維持することを目的とする。
 
-### ① Interface as the Contract (契約としてのインターフェース)
-*   全てのモジュール間連携は抽象的な **Contract (Interface)** を介して定義する。
-*   具象実装（Struct/Method Body）への直接依存を禁止する（DIP: Dependency Inversion Principle）。
-*   **依存性の注入 (DI) を原則** とし、`google/wire` を使用して依存解決コードを自動生成する。コンストラクタはインターフェースを返すか、具象型を返す場合はWire Providerとして機能させる。
+そのために、以下を守る。
 
-### ② Code is an Artifact (コードは生成物)
-*   実装コードは人間が書くものではなく、仕様とContractから生成される **ビルド中間生成物** とみなす。
-*   **実装コードへの手修正は禁止**。変更は必ず「Interface Definition」または「Implementation Plan」に対して行う。
-
-### ③ Separation of Contract & Logic (契約とロジックの分離)
-*   **Contract 層**: 型定義、インターフェース、ドキュメントコメント。人間の管理対象。
-*   **Implementation 層**: ロジックの実体。AIによるブラックボックス生成対象。
+- 接続は契約から考える
+- 具象実装の知識は composition root に閉じ込める
+- usecase slice は自分の業務ロジックと DTO に集中する
+- UI 入出力とユースケース進行を分離する
+- 実行制御基盤と外部依頼口を分離する
 
 ---
 
-## 3. アーキテクチャ変更 (Architecture Shift)
+## 2. 基本原則
 
-| 特徴           | 旧システム (v1.x)     | 新システム (v2.0)                              |
-| :------------- | :-------------------- | :--------------------------------------------- |
-| **開発手法**   | コードベース実装      | **Interface-First AIDD** (Contract駆動)        |
-| **言語**       | Python 3.x            | Go (Backend) + TypeScript/React (Frontend)     |
-| **依存関係**   | 実装詳細への密結合    | **Interfaceのみへの疎結合**                    |
-| **起動形態**   | スクリプト実行        | シングルバイナリ（サーバー内蔵）               |
-| **データ保持** | メモリ上の辞書/リスト | メモリ上の構造体 (Translatable Contract非依存) |
-| **翻訳フロー** | 直列処理              | パイプライン並列処理                           |
+### 2.1 Contract First
 
----
+- モジュール間連携は interface を契約として定義する
+- 具象型への直接依存を標準形にしない
+- コンストラクタは可能な限り interface を受け取る
 
-## 4. 段階的移行計画 (Phased Migration)
+### 2.2 Composition Root Only Concrete
 
-各フェーズは **「まずインターフェース（Contract）を定義し、次にAIに実装させる」** 手順で進行する。
+- 具象型を知ってよいのは composition root のみとする
+- `main.go`、Wire injector、初期化専用 provider 以外が他区分の具象型を `new` してはならない
+- 通常の package は他区分の contract だけを知る
 
-### Phase 1: データ基盤 (Data Foundation)
-*   **Goal**: `extractData.pas` 出力のJSONをロードし、構造化データとしてメモリに保持する。
-*   **Contract**: `ExtractedData` 構造体および各ドメインモデルの定義。
-*   **Artifacts**: `Data parser` / `Extracted Models`
+### 2.3 Slice Autonomy
 
-### Phase 2: 用語処理 (Term Translation)
-*   **Goal**: xTranslator XML等からの辞書DB構築 (Dictionary)、固有名詞の抽出と、辞書ベースの翻訳適用。
-*   **Contract**: `TermExtractor` / `TermDictionary` インターフェース。
-*   **Artifacts**: `Dictionary` / `Term Extractor` / `SQLite Adapter`
+- usecase slice は自分の DTO、業務ロジック、永続化ルールに集中する
+- slice は他 slice の DTO や具象実装を参照しない
+- slice 間のデータ変換は呼び出し側が担う
 
-### Phase 3: 文脈エンジン (Lore)
-*   **Goal**: 会話ツリー解析とLLMプロンプト生成。
-*   **Contract**: `ContextBuilder` / `PromptGenerator` インターフェース。
-*   **Artifacts**: `Lore` / `LLM`
+### 2.4 Explicit Orchestration
 
-### Phase 4: UI統合 (Web Interface)
-*   **Goal**: ブラウザからのジョブ制御と可視化。
-*   **Contract**: Web API Definition (OpenAPI/Swagger).
-*   **Artifacts**: UI Server / React Client
+- 複数 contract を束ねる責務は `workflow` に集約する
+- controller は orchestration しない
+- runtime はユースケース進行を決定しない
+- gateway はユースケース進行を決定しない
 
 ---
 
-## 5. データフローの刷新 (Vertical Slice Architecture & Pipeline)
+## 3. システムの責務区分
 
-単一の複雑なパイプラインではなく、**「完全な自律性を持つ Vertical Slice（縦のコンテキスト）」**を構築し、**「Pipeline（UI/オーケストレーター）」**がそれらを順次呼び出すアーキテクチャを採用する。
+このプロジェクトは、厳密な直列レイヤーではなく、責務を 5 区分に分ける。
 
-**Vertical Slice の絶対原則**:
-*   **DRY原則の放棄による自律性の担保**: AIDDにおける決定的なコード再生成の確実性を担保するため、あえてDRY原則（データ構造やDB操作の複数Slice間での共通化）を捨てる。
-*   **責務の自己完結**: 各Slice自身が「DBテーブルのスキーマ定義」「DTO」「SQL発行・永続化ロジック」の全ての責務を負う。外部機能のデータモデルへは依存せず、単一の明確なコンテキストとして自己完結する。
-*   **カプセル化された永続化**: 各インフラストラクチャへの接続（例: `*sql.DB` などのプーリング・接続管理モジュール）のみを外部からDIで受け取り、データ操作そのものはSlice内にカプセル化する。
-
-**WET (Write Everything Twice) vs Shared Kernel (共通化) の判断基準**:
-*   重複しているコードを発見した場合、以下のフローに従って共通化の可否を判断する。
-    1.  それが**技術的関心事（Infrastructure/Utilityレベル: DB接続, 日付操作, 認証等）**の場合:
-        *   -> `Shared/Coreレイヤーへ「DRYに集約」する`
-    2.  それが**ドメインロジック（業務ルールや計算式）**の場合:
-        *   将来的に、スライスごとに**変化する可能性が「ある（または不明）」**場合:
-            *   -> **`「WETを貫く（コピペを許容する）」`** (Slice間の自律性を優先)
-        *   将来的に**「不変の真理である（確実に変化しない）」**場合:
-            *   -> `「Domain Service等として共通化する」`
-
-各Slice内では「Contract（インターフェース）」と「Implementation（実装）」が厳格に分離されており、AIは他Sliceの実装詳細を知ることなく、Contractのみをコンテキストとして実装を生成する。
-
-**1ファイル内でのプライベートメソッド分割によるSRP化 (Method-Level SRP)**:
-*   **人間の認知負荷の軽減**: AIが生成した複雑なロジックを人間がレビュー・デバッグしやすくするため、巨大な処理（Fat Method）は単一責任の原則（SRP）に基づき、意味のある単位に分割する。
-*   **再利用性と個別のユニットテストは不要**: VSAアーキテクチャではスライス間のロジック再利用をあえて放棄しており、テストも「スライス単位のパラメタライズドテスト」（セクション6参照）で担保される。そのため、他モジュールからの再利用を目的としたパッケージの切り出しや、細粒度なユニットテストを行うためのファイル分離は不要である。
-*   **「同一ファイル内のプライベートメソッド」への抽出**: ロジックを分割する際は、外部ファイルに抽出するのではなく、**対象の処理と同じファイル内にプライベートメソッドとして定義**する。これにより、処理の実行フローがファイル内で目次のように自己文書化され、複数ファイルを行き来する人間の認知負荷を劇的に下げることができる。
-
-**DTOの完全分離 (Consumer-Driven Contracts DTO Style)**:
-*   **共有モデル (`pkg/domain`) の禁止**: 複数のスライスが共通して参照するグローバルなエンティティやDTO（例: `models.ExtractedData`）は定義・使用しない。これはスライス間の暗黙的な密結合を生み、単一スライスの変更が他スライスを破壊する原因となるためである。
-*   **独自DTOの定義**: 全てのスライスは、自身の `contract.go` (または `dto.go`) 内に、**自身が要求する入力および出力の独自のDTO**（例: `TermTranslatorInput`, `LoaderOutput`）を定義する。
-*   **コンシューマ主導の契約 (Consumer-Driven Contracts)**: 各ドメインスライスは「自分はどのようなデータ構造を与えられれば処理を実行できるか」という要求（インターフェースと入力DTO）のみを宣言し、データの供給元が誰であるか（`Parser` かどうか等）には一切関知しない。
-*   **オーケストレーターでのマッピング**: スライス間のデータの受け渡し（例: `LoaderOutput` から `TermTranslatorInput` への変換）は、各スライス内部ではなく、呼び出し元である統合層（`Pipeline` やオーケストレーター層）の責務として行う。これにより、真の腐敗防止層（Anti-Corruption Layer）を確立する。
-
-**LLM統合の原則 (LLM Integration Principle)**:
-*   **動的プロバイダ解決**: LLMを利用する全てのスライス（`lore`, `terminology` 等）は、特定プロバイダ（Gemini, Local等）の具体的な実装に直接依存してはならない。
-*   **ConfigStore経由の設定受信**: 各スライスは、`config` によって管理される設定情報（`namespace: llm` 等の値）を引数またはDIなどで受け取らなければならない。
-*   **LLMファクトリの利用**: スライスは受信した設定情報を用いて `llm` パッケージ（旧 LLMManager）から、その時点のユーザー設定に合致した `LLMClient` インターフェースのインスタンスを動的に取得し、使用するものとする。
-*   **翻訳出力フォーマットの統一**: 全てのLLMベースの翻訳リクエストにおけるプロンプト要件として、出力フォーマットを `TL: |にほんご|` のパイプ区切り形式に強制する。LLMからのレスポンスはこの形式からパイプ間のテキストのみをプログラム的に抽出・抽出失敗時のフォールバック処理を実装すること。これにより、LLMが余計な説明文等を付加した場合でも安定して翻訳結果だけを取り出せるようにする。
-
----
-
-## 6. テスト戦略 (Testing Strategy)
-
-### 6.1 スライス単位の網羅的パラメタライズドテスト
-
-*   **原則**: テストは各 Vertical Slice に対する **網羅的なパラメタライズドテスト（Table-Driven Test）** で行う。
-*   **テスト用DBの利用**: データベースにアクセスするスライスのテストにおいては、本番環境や開発環境のデータを汚染しないよう、**必ずテスト専用のDB（インメモリSQLite `:memory:` または テスト実行ごとに初期化・破棄される独立したファイルDB）** を作成して使用すること。
-*   **ユニットテストの排除**: 個別関数に対する細粒度のユニットテストは作成しない。ユニットテストはAIの機動力（コード再生成の自由度）を低下させるため、仕様書やユースケースが実現できていればそれで十分とする。
-*   **根拠**: コードは再生成可能な使い捨ての生成物（Artifact）であり、ユニットテストは人間の意図表明に過ぎない。Contract と仕様に対するスライスレベルの検証が品質保証の主軸となる。
-
-### 6.2 構造化デバッグログによるユニットテスト代替
-
-ユニットテストを排除する代わりに、**セクション 7 の構造化ログ基盤（OpenTelemetry + slog）** を活用した以下のデバッグログ戦略を全スライスに義務付け、デバッグ容易性を確保する。
-
-#### ① Entry/Exit ログの強制（slog + TraceID 自動付与）
-*   すべての重要関数（Contract メソッド、主要な内部関数）の入り口と出口で、**引数と戻り値を `slog.DebugContext(ctx, ...)` で記録** する。
-*   `context.Context` を伝播させることで、OpenTelemetry の **TraceID / SpanID が自動付与** される（セクション 7.3 参照）。
-*   ログレベルは `debug` とし、本番環境ではハンドラ設定で `info` 以上に制限する。
-*   例（JSON 出力）:
-    ```json
-    {"time":"2026-02-21T21:30:00Z","level":"DEBUG","msg":"ENTER BuildTranslationRequests","trace_id":"4bf92f3577b34da6a3ce929d0e0e4736","span_id":"00f067aa0ba902b7","slice":"Lore","args":{"dataRecords":1523,"config":{"mod":"Skyrim.esm"}}}
-    {"time":"2026-02-21T21:30:00.045Z","level":"DEBUG","msg":"EXIT BuildTranslationRequests","trace_id":"4bf92f3577b34da6a3ce929d0e0e4736","span_id":"00f067aa0ba902b7","slice":"Lore","result":{"requestCount":1523,"elapsed":"45ms"}}
-    ```
-
-#### ② トレースIDによる横断追跡（相関IDの代替）
-*   旧来の独自相関ID（Correlation ID）は廃止し、**OpenTelemetry の TraceID に統一** する。
-*   Pipeline が HTTP リクエスト / イベントを発行する際に `otelhttp` が TraceID を自動生成し、`context.Context` 経由でスライス内の全ログに伝播する。
-*   同一 TraceID でフィルタリングすることで、スライスを横断した処理の全ログを時系列で追跡できる。
-
-#### ③ 実行単位のログファイル出力
-*   デバッグ容易性のため、**実行開始単位（ジョブ / セッション）ごとに独立したログファイル** を出力する。
-*   ファイル名規約: `logs/{timestamp}_{slice_or_job_name}.jsonl`（例: `logs/20260221_213000_ContextEngine.jsonl`）
-*   `slog.Handler` をマルチ出力（stdout + ファイル）に構成し、ファイル側は常に `debug` レベルで全量記録する。
-*   これにより、障害発生時に該当ジョブのログファイルをそのままAIに渡してデバッグ指示が可能となる。
-
-#### ④ AI用デバッグプロンプトの定型化
-*   障害発生時、該当ジョブのログファイル（③）を以下の定型プロンプトでAIに渡し、仕様との乖離を自動修正させる:
-
-    ```
-    以下はスライス「{SliceName}」の実行ログファイル（{LogFilePath}）の内容である。
-    仕様書（{SpecFilePath}）の期待動作と比較し、乖離がある箇所を特定して修正コードを生成せよ。
-
-    --- 実行ログ ---
-    {ログファイル内容}
-
-    --- 期待される仕様 ---
-    {仕様書の該当セクション}
-    ```
-
-*   このプロンプトテンプレートを各スライスの仕様書（`spec.md`）に付記し、再現可能なデバッグフローを確立する。
-
----
-
-## 7. 構造化ログ基盤 (Structured Logging with OpenTelemetry + slog)
-
-> **重要**: ログ出力の具体的な設計思想、AI解析に最適化されたログ設計の詳細については必ず **[AI解析に最適化されたログ設計ガイド](log-guide.md)** を参照すること。
-
-### 7.1 アーキテクチャ概要
-
-OpenTelemetry と Go 標準の `log/slog` を組み合わせ、全スライスで統一的な構造化ログを出力する。
+1. `pkg/controller`
+2. `pkg/workflow`
+3. `pkg/<usecase-slice>`
+4. `pkg/runtime`
+5. `pkg/gateway`
 
 ```mermaid
 graph TD
-    A["HTTP Request / Event"] --> B["otelhttp.NewHandler<br/>(TraceIDの自動抽出・生成)"]
-    B --> C["Request Context<br/>(TraceIDを内包)"]
-    C --> D["Your Slice Logic<br/>(AI Generated)"]
-    D --> E["slog.InfoContext(ctx, ...)"]
-    E --> F["slog Handler Wrapper<br/>(例: slog-otel)"]
-    F --> G["JSON Output<br/>(trace_idが自動付与される)"]
-    
-    style B fill:#e1f5fe,stroke:#03a9f4
-    style F fill:#e1f5fe,stroke:#03a9f4
+    classDef controller fill:#d8ecff,stroke:#1565c0,stroke-width:2px,color:#0d223a;
+    classDef workflow fill:#fff0d6,stroke:#ef6c00,stroke-width:2px,color:#402100;
+    classDef slice fill:#f3e5f5,stroke:#8e24aa,stroke-width:2px,color:#2d1633;
+    classDef runtime fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#18361a;
+    classDef gateway fill:#fbe9e7,stroke:#d84315,stroke-width:2px,color:#3b1d14;
+
+    C["pkg/controller"]:::controller
+    W["pkg/workflow"]:::workflow
+    S1["pkg/persona"]:::slice
+    S2["pkg/translator"]:::slice
+    R1["pkg/runtime/queue"]:::runtime
+    R2["pkg/runtime/progress"]:::runtime
+    G1["pkg/gateway/datastore"]:::gateway
+    G2["pkg/gateway/llm"]:::gateway
+
+    C --> W
+    W --> S1
+    W --> S2
+    W --> R1
+    W --> R2
+    S1 --> G1
+    S1 --> G2
+    S2 --> G1
+    S2 --> G2
+    R1 --> G2
 ```
 
-### 7.2 技術スタック
+### 3.1 `pkg/controller`
 
-| レイヤー         | 技術                                    | 役割                                                              |
-| :--------------- | :-------------------------------------- | :---------------------------------------------------------------- |
-| **トレース生成** | `go.opentelemetry.io/otel` + `otelhttp` | HTTP リクエストから TraceID / SpanID を自動抽出・生成             |
-| **ログ出力**     | `log/slog` (Go 標準)                    | 構造化ログの統一 API                                              |
-| **TraceID 連携** | `github.com/samber/slog-otel`           | `context.Context` から TraceID を抽出し、ログフィールドに自動付与 |
-| **出力形式**     | `slog.JSONHandler`                      | JSON 形式でのログ出力（`trace_id`, `span_id` フィールド含む）     |
+役割:
 
-### 7.3 実装規約
+- Wails binding、HTTP、CLI など外部入力の受け口
+- request/response の境界整形
+- `workflow` 契約の呼び出し
 
-*   **`context.Context` の伝播**: 全スライスの公開メソッドは第一引数に `ctx context.Context` を受け取り、内部関数にも伝播させる。
-*   **`slog.InfoContext(ctx, ...)` の使用**: ログ出力時は必ず `ctx` を渡す `*Context` 系メソッドを使用し、TraceID の自動付与を保証する。
-*   **セクション 6.2 との統合**: Entry/Exit ログおよび相関ID（セクション 6.2 ①②）は、OpenTelemetry の TraceID/SpanID で代替する。Pipeline が生成していた相関IDは TraceID に統一される。
-*   **ログレベル制御**: 開発時は `debug` レベルで Entry/Exit ログを出力し、本番環境では `info` 以上に制限する。`slog.SetLogLoggerLevel()` またはハンドラ設定で制御する。
+持ってはいけない責務:
 
-### 7.4 JSON ログ出力例
+- ユースケース進行
+- phase / progress / resume / cancel の決定
+- slice 間 DTO 変換
+- runtime / gateway の直接制御
 
-```json
-{
-  "time": "2026-02-21T21:30:00.000Z",
-  "level": "INFO",
-  "msg": "ENTER BuildTranslationRequests",
-  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
-  "span_id": "00f067aa0ba902b7",
-  "slice": "Lore",
-  "args": {
-    "dataRecords": 1523,
-    "config": {"mod": "Skyrim.esm"}
-  }
-}
-```
+### 3.2 `pkg/workflow`
 
-### 7.5 UI ログ表示 (Human-Readable Log Viewer)
+役割:
 
-*   **React UI にログ表示パネルを設置**: Pipeline の Web UI 上に、リアルタイムでログを閲覧できる専用パネルを提供する。
-*   **表示要件**:
-    *   JSON ログを人間が読みやすい形式にフォーマットして表示（タイムスタンプ、レベル、メッセージ、TraceID のカラーコード表示）
-    *   TraceID によるフィルタリング: 特定のリクエスト/スライス実行に関連するログのみを抽出表示
-    *   ログレベルによるフィルタリング（DEBUG / INFO / WARN / ERROR）
-    *   自動スクロール（テール表示）と一時停止機能
-*   **データ取得方式**: バックエンドから WebSocket または SSE (Server-Sent Events) でリアルタイムにログをストリーミングする。
+- application service / orchestrator
+- ユースケース進行の制御
+- phase / progress / resume / cancel / state の管理
+- controller から slice への DTO マッピング
+- runtime の利用
+- slice の呼び分け
 
-### 7.6 追加要件 (Added Requirements)
+持ってはいけない責務:
 
-#### Requirement: Automatic Trace Correlation
-`pkg/` 以下の各コンポーネントで出力される全ての `slog` ログは、OpenTelemetry のトレース情報（TraceID, SpanID）を保持していなければならない。
+- slice 固有の業務ロジック本体
+- UI の描画都合
+- runtime 内部の状態機械
+- gateway 実装の詳細
 
-#### Requirement: Context Propagation
-全ての `Contract` メソッドおよびその内部処理において、`context.Context` を正しく伝搬させ、`slog.InfoContext` 等の `Context` 付きメソッドを使用しなければならない。
+### 3.3 `pkg/<usecase-slice>`
 
-#### Requirement: slog-otel Integration
-`github.com/samber/slog-otel` を利用し、`slog.Handler` レイヤーで `context.Context` からトレース情報を抽出し、JSON ログの `trace_id` および `span_id` フィールドに自動的に記録されるように設定すること。
+役割:
 
-### 7.7 検証シナリオ (Scenarios)
+- 個別ユースケースの業務ロジック
+- 自前 DTO / contract の定義
+- 自分の永続化ルール
+- 自分に必要な gateway 契約の利用
 
-#### Scenario: Log with TraceID
-- **WHEN** OTel トレースが開始された context を用いてログを出力する
-- **THEN** 出力された JSON ログに、正しい `trace_id` と `span_id` が含まれている
+持ってはいけない責務:
 
-#### Scenario: Log without TraceID
-- **WHEN** OTel トレース情報がない context を用いてログを出力する
-- **THEN** ログは正常に出力され、`trace_id` 等のフィールドは空（または省略）となるが、エラーにはならない
+- 他 slice の都合に合わせた DTO 参照
+- controller 依存
+- workflow 依存
+- runtime の主導
+
+### 3.4 `pkg/runtime`
+
+役割:
+
+- queue、progress、workflow state、event、telemetry など実行制御の基盤
+- workflow がユースケース進行を実現するための実行時サービス
+- queue worker など、実行器が外部依頼を委譲するための gateway 呼び出し
+
+持ってはいけない責務:
+
+- 特定ユースケースの進行決定
+- UI 状態の意味解釈
+- slice 固有ロジックの内包
+- slice 保存判定や slice 固有 DTO の解釈
+
+### 3.5 `pkg/gateway`
+
+役割:
+
+- DB、LLM、config、secret、file、外部 API など外部資源への依頼口
+- usecase slice が必要とする技術接続の具象実装
+- runtime の executor が外部依頼を委譲する先
+
+持ってはいけない責務:
+
+- ユースケース進行の決定
+- phase / progress / resume / cancel の管理
+- 特定 workflow の状態解釈
 
 ---
 
-```mermaid
-graph TD
-    classDef ui fill:#e3f2fd,stroke:#1565c0,stroke-width:2px;
-    classDef slice fill:#f3e5f5,stroke:#8e24aa,stroke-width:2px;
-    classDef state fill:#ffe0b2,stroke:#e65100,stroke-width:1px;
+## 4. 依存方向ルール
 
-    PM["Pipeline (UI / Orchestrator)"]:::ui
-    State["Translation State (Resume Data)"]:::state
+許可する依存:
 
-    subgraph "Phase 1: Term & Structuring"
-        Load_S["parser Slice"]:::slice
-        P1_S["Pass 1 Slice"]:::slice
-    end
+- `controller -> workflow`
+- `workflow -> usecase slice`
+- `workflow -> runtime`
+- `workflow -> gateway` の最小限依存
+- `runtime -> gateway` の限定依存
+- `usecase slice -> gateway`
 
-    subgraph "Human-in-the-Loop"
-        Preview["UI Preview & Settings"]:::ui
-    end
+禁止する依存:
 
-    subgraph "Phase 2: Main Execution"
-        P2_S["Pass 2 Slice"]:::slice
-        Out_S["Export"]:::slice
-    end
+- `controller -> usecase slice`
+- `controller -> runtime`
+- `controller -> gateway`
+- `usecase slice -> controller`
+- `usecase slice -> workflow`
+- `usecase slice -> runtime`
+- `runtime -> controller`
+- `runtime -> workflow`
+- `runtime -> usecase slice`
+- `gateway -> controller`
+- `gateway -> workflow`
+- `gateway -> usecase slice`
+- `usecase slice -> usecase slice` の具象依存
 
-    PM -->|"1. Request Load"| Load_S
-    PM -->|"2. Extract & Struct"| P1_S
-    P1_S -->|"Save Progress"| State
-    
-    PM -.->|"3. Pause Flow"| Preview
-    Preview -.->|"4. Approve"| PM
+補足:
 
-    PM -->|"5. Translate"| P2_S
-    P2_S -->|"Update Progress"| State
-    
-    PM -->|"6. Generate JSON"| Out_S
-```
+- usecase slice 同士の連携が必要な場合は workflow で両者を束ねる
+- `workflow -> gateway` は workflow 自身の永続状態管理や初期化のように、slice に属さない外部依頼に限定する
+- `runtime -> gateway` は queue worker や executor が外部資源へ request を委譲する場合に限定する
+- `runtime -> gateway` を許可しても、runtime が slice 固有の保存処理や業務判断を持ってはならない
+- 共通化は技術的関心事に限定し、業務ロジックの安易な shared kernel 化を避ける
 
 ---
 
-## 8. フロントエンド アーキテクチャ (UI Architecture)
+## 5. DTO と Contract の原則
 
-本アプリケーションのUIは、Wailsを利用してReact（Vite + TypeScript + TailwindCSS + DaisyUI）経由で提供されます。
+### 5.1 DTO は消費側基準で定義する
 
-### 8.1 状態管理 (State Management)
-*   **Zustandの採用**: UIのレイアウト状態（サイドバーの開閉、ログビューアの幅など）や、現在選択されているログ情報など、クロスコンポーネントで共有すべき状態を管理するためにZustandを採用しています。これにより不要な再描画を防ぎます。
-*   **ローカルステートの分離**: 各コンポーネント内で完結する局所的な状態（開閉アニメーション中のフラグ等）は、引き続きローカルステート（`useState`）として管理し、グローバルストアの肥大化を防ぎます。
+- 各 slice は自身が必要とする入力 DTO / 出力 DTO を自前で持つ
+- `pkg/domain` のような横断共有 DTO を基本形にしない
+- parser の出力を persona が直接読む、といった構造を避ける
 
-### 8.2 コンポーネント設計 (Component Design)
-*   全体のレイアウトは `Layout.tsx` 内でコンテナとして定義し、個別の機能（`Header.tsx`, `Sidebar.tsx`, `LogViewer.tsx`, `DetailPane.tsx`）を独立したコンポーネントに分割しています。
-*   **シングルトン・ポータルパターン**: グローバルに1つだけ存在する `DetailPane`（詳細ペイン）は、Zustand上の状態（`isOpen`, `type`, `payload`）を監視して描画内容を切り替え、アプリ内のどのコンポーネントからでも詳細ペインを開ける設計としています。
+### 5.2 マッピングは workflow が担う
 
-### 8.3 ルーティング (Routing)
-*   Wails環境における安全なページ遷移を実現するため、`react-router-dom` の `HashRouter` を採用しています。
+- controller 入力 -> slice 入力 DTO の変換は workflow が行う
+- slice A 出力 -> slice B 入力 DTO の変換も workflow が行う
+- runtime や gateway の返却値を slice 保存 DTO へ変換するのも workflow の責務とする
+- runtime が gateway を使う場合でも、gateway の返却値を slice 保存 DTO や UI 状態へ解釈する責務は workflow が持つ
 
+### 5.3 Contract は振る舞い単位で設計する
+
+- interface は役割ごとに分ける
+- ただし 1 メソッドごとに過剰分割しない
+- workflow や slice が必要とする操作単位で contract を切る
+
+---
+
+## 6. DI と Composition Root
+
+依存注入の原則:
+
+- 依存解決は `google/wire` を第一候補とする
+- 手組み DI を行う場合も、ルールは同じとする
+- contract を受ける側が、他区分の具象型 import に引きずられないことを優先する
+
+composition root の責務:
+
+- 具象実装の生成
+- interface への束縛
+- 初期化順序の制御
+- 環境依存値の注入
+
+composition root の責務外:
+
+- 業務ロジック
+- DTO 変換
+- phase / progress の決定
+
+---
+
+## 7. 品質ゲート上の建築ルール
+
+アーキテクチャ違反はレビュー観点ではなく、可能な限り機械的に検出する。
+
+- `go-cleanarch` を DI / 依存方向 lint に用いる
+- ルール違反は `backend-quality-gates` の運用に統合する
+- `golangci-lint` だけで依存方向を表現しきれない部分を `go-cleanarch` で補う
+
+最低限検出したい違反:
+
+- controller から runtime / gateway 具象への直接依存
+- workflow を通さない slice 呼び出し
+- slice から runtime 制御への侵入
+- runtime から slice 固有ロジックへの侵入
+- composition root 以外での具象依存
+
+---
+
+## 8. 判断基準
+
+新しいコードや package を追加する際は、まず以下で判断する。
+
+1. これは外部入出力の adapter か
+2. これはユースケース進行の制御か
+3. これは slice 固有の業務ロジックか
+4. これは実行制御基盤か
+5. これは外部資源への依頼口か
+
+対応先:
+
+- 1 は `controller`
+- 2 は `workflow`
+- 3 は usecase slice
+- 4 は `runtime`
+- 5 は `gateway`
+
+曖昧な場合の原則:
+
+- UI 都合があるなら controller
+- 複数 contract を束ねるなら workflow
+- ドメイン知識が強いなら slice
+- 実行制御なら runtime
+- 外部資源への依頼なら gateway
+
+---
+
+## 9. 関連文書の責務分担
+
+- `architecture.md`
+  - 構造、責務、依存方向、DI 原則
+- `backend_coding_standards.md`
+  - Go 実装時のコーディング規約
+- `backend-quality-gates/spec.md`
+  - lint / test / check の必須導線
+- `standard_test_spec.md`
+  - テスト設計書の書式と原則
+- `log-guide.md`
+  - ログ設計と AI デバッグ向け運用
+- `frontend_architecture.md`
+  - フロントエンド専用構造
+
+この分担を崩して重複を書かないこと。
