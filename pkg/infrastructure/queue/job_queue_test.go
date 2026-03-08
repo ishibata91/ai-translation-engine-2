@@ -213,11 +213,16 @@ func TestJobQueue_BatchPolling(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	dbPath := ":memory:"
 
-	q, _ := NewQueue(ctx, dbPath, logger)
+	q, err := NewQueue(ctx, dbPath, logger)
+	if err != nil {
+		t.Fatalf("failed to create queue: %v", err)
+	}
 	defer q.Close()
 
 	processID := "batch-test"
-	q.SubmitJobs(ctx, processID, []any{llm.Request{UserPrompt: "q"}})
+	if err := q.SubmitJobs(ctx, processID, []any{llm.Request{UserPrompt: "q"}}); err != nil {
+		t.Fatalf("SubmitJobs failed: %v", err)
+	}
 
 	batchMock := &mockBatchClient{status: "PENDING"}
 	manager := &mockLLMManager{batchClient: batchMock}
@@ -234,7 +239,7 @@ func TestJobQueue_BatchPolling(t *testing.T) {
 	worker := NewWorker(q, manager, cfg, &mockSecretStore{}, progress.NewNoopNotifier(), logger)
 	worker.SetPollingInterval(50 * time.Millisecond)
 
-	err := worker.processBatch(ctx, processID, llm.LLMConfig{})
+	err = worker.processBatch(ctx, processID, llm.LLMConfig{})
 	if err != nil {
 		t.Errorf("processBatch failed: %v", err)
 	}
@@ -248,15 +253,20 @@ func TestJobQueue_BatchPolling(t *testing.T) {
 func TestJobQueue_LoadFailNoRetryAndUnloadOnce(t *testing.T) {
 	ctx := context.Background()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	q, _ := NewQueue(ctx, ":memory:", logger)
+	q, err := NewQueue(ctx, ":memory:", logger)
+	if err != nil {
+		t.Fatalf("failed to create queue: %v", err)
+	}
 	defer q.Close()
 
 	processID := "load-fail"
-	_ = q.SubmitJobs(ctx, processID, []any{llm.Request{UserPrompt: "q"}})
+	if err := q.SubmitJobs(ctx, processID, []any{llm.Request{UserPrompt: "q"}}); err != nil {
+		t.Fatalf("SubmitJobs failed: %v", err)
+	}
 
 	client := &mockLLMClient{loadErr: context.DeadlineExceeded}
 	worker := NewWorker(q, &mockLLMManager{client: client}, &mockConfigStore{}, &mockSecretStore{}, progress.NewNoopNotifier(), logger)
-	err := worker.ProcessProcessID(ctx, processID)
+	err = worker.ProcessProcessID(ctx, processID)
 	if err == nil {
 		t.Fatalf("expected error on load failure")
 	}
@@ -271,12 +281,19 @@ func TestJobQueue_LoadFailNoRetryAndUnloadOnce(t *testing.T) {
 func TestJobQueue_ResumeUsesStoredProviderModel(t *testing.T) {
 	ctx := context.Background()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	q, _ := NewQueue(ctx, ":memory:", logger)
+	q, err := NewQueue(ctx, ":memory:", logger)
+	if err != nil {
+		t.Fatalf("failed to create queue: %v", err)
+	}
 	defer q.Close()
 
 	processID := "resume-ok"
-	_ = q.SubmitJobs(ctx, processID, []any{llm.Request{UserPrompt: "q"}})
-	_ = q.UpdateProcessMetadata(ctx, processID, "lmstudio", "stored-model")
+	if err := q.SubmitJobs(ctx, processID, []any{llm.Request{UserPrompt: "q"}}); err != nil {
+		t.Fatalf("SubmitJobs failed: %v", err)
+	}
+	if err := q.UpdateProcessMetadata(ctx, processID, "lmstudio", "stored-model"); err != nil {
+		t.Fatalf("UpdateProcessMetadata failed: %v", err)
+	}
 
 	client := &mockLLMClient{}
 	manager := &mockLLMManager{client: client}
@@ -293,18 +310,25 @@ func TestJobQueue_ResumeUsesStoredProviderModel(t *testing.T) {
 func TestJobQueue_ResumeFailsWhenMetadataMissing(t *testing.T) {
 	ctx := context.Background()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	q, _ := NewQueue(ctx, ":memory:", logger)
+	q, err := NewQueue(ctx, ":memory:", logger)
+	if err != nil {
+		t.Fatalf("failed to create queue: %v", err)
+	}
 	defer q.Close()
 
 	processID := "resume-missing"
-	_ = q.SubmitJobs(ctx, processID, []any{llm.Request{UserPrompt: "q"}})
-	_, _ = q.db.ExecContext(ctx, "UPDATE llm_jobs SET provider = 'lmstudio', model = '' WHERE process_id = ?", processID)
+	if err := q.SubmitJobs(ctx, processID, []any{llm.Request{UserPrompt: "q"}}); err != nil {
+		t.Fatalf("SubmitJobs failed: %v", err)
+	}
+	if _, err := q.db.ExecContext(ctx, "UPDATE llm_jobs SET provider = 'lmstudio', model = '' WHERE process_id = ?", processID); err != nil {
+		t.Fatalf("failed to mutate metadata: %v", err)
+	}
 
 	client := &mockLLMClient{}
 	manager := &mockLLMManager{client: client}
 	worker := NewWorker(q, manager, &mockConfigStore{}, &mockSecretStore{}, progress.NewNoopNotifier(), logger)
 
-	err := worker.ProcessProcessID(ctx, processID)
+	err = worker.ProcessProcessID(ctx, processID)
 	if err == nil {
 		t.Fatalf("expected metadata missing error")
 	}

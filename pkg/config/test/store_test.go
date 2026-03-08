@@ -68,9 +68,15 @@ func TestTypedAccessor(t *testing.T) {
 	accessor := config.NewTypedAccessor(store)
 
 	// Set some values
-	store.Set(ctx, "test", "int", "123")
-	store.Set(ctx, "test", "float", "3.14")
-	store.Set(ctx, "test", "bool", "true")
+	if err := store.Set(ctx, "test", "int", "123"); err != nil {
+		t.Fatalf("Set(int) failed: %v", err)
+	}
+	if err := store.Set(ctx, "test", "float", "3.14"); err != nil {
+		t.Fatalf("Set(float) failed: %v", err)
+	}
+	if err := store.Set(ctx, "test", "bool", "true"); err != nil {
+		t.Fatalf("Set(bool) failed: %v", err)
+	}
 
 	t.Run("GetInt", func(t *testing.T) {
 		if val := accessor.GetInt(ctx, "test", "int", 0); val != 123 {
@@ -107,7 +113,9 @@ func TestWatch(t *testing.T) {
 		}
 	})
 
-	store.Set(ctx, "test", "key", "new")
+	if err := store.Set(ctx, "test", "key", "new"); err != nil {
+		t.Fatalf("Set() failed: %v", err)
+	}
 
 	select {
 	case <-changed:

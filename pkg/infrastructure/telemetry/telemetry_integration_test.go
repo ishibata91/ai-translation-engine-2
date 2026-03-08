@@ -184,9 +184,7 @@ func TestErrorAttrs_InLog(t *testing.T) {
 
 	// slog.Attr スライスを ...any に変換してログ出力
 	args := make([]any, len(errAttrs))
-	for i, a := range errAttrs {
-		args[i] = a
-	}
+	copy(args, errAttrs)
 	logger.ErrorContext(ctx, "operation failed", args...)
 
 	log := parseLastLog(t, &buf)

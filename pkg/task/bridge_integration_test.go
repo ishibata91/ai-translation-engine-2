@@ -284,7 +284,7 @@ func TestBridge_StartMasterPersonTask_SuccessStatusAndInfoLog(t *testing.T) {
 	requestQueue := setupRequestQueue(t, logger)
 	defer requestQueue.Close()
 
-	manager := NewManager(nil, logger, NewStore(db))
+	manager := NewManager(nil, logger, NewStore(db)) //nolint:staticcheck // Wails context is intentionally absent in unit tests.
 	bridge := NewMasterPersonaBridge(
 		manager,
 		logger,
@@ -351,7 +351,7 @@ func TestBridge_StartMasterPersonTask_FailureStatusAndErrorLog(t *testing.T) {
 	requestQueue := setupRequestQueue(t, logger)
 	defer requestQueue.Close()
 
-	manager := NewManager(nil, logger, NewStore(db))
+	manager := NewManager(nil, logger, NewStore(db)) //nolint:staticcheck // Wails context is intentionally absent in unit tests.
 	bridge := NewMasterPersonaBridge(
 		manager,
 		logger,
@@ -399,7 +399,7 @@ func TestBridge_ResumeMasterPersonaTask_CleansQueueAfterCompletion(t *testing.T)
 	requestQueue := setupRequestQueue(t, logger)
 	defer requestQueue.Close()
 
-	manager := NewManager(nil, logger, NewStore(db))
+	manager := NewManager(nil, logger, NewStore(db)) //nolint:staticcheck // Wails context is intentionally absent in unit tests.
 	personaGen := &mockPersonaGenerator{
 		reqs: []llm.Request{
 			{Metadata: map[string]interface{}{"speaker_id": "npc-1", "npc_name": "Aela"}},
@@ -484,7 +484,7 @@ func TestBridge_CancelledMasterPersonaTask_KeepsQueuedRequests(t *testing.T) {
 	requestQueue := setupRequestQueue(t, logger)
 	defer requestQueue.Close()
 
-	manager := NewManager(nil, logger, NewStore(db))
+	manager := NewManager(nil, logger, NewStore(db)) //nolint:staticcheck // Wails context is intentionally absent in unit tests.
 	personaGen := &mockPersonaGenerator{
 		reqs: []llm.Request{
 			{Metadata: map[string]interface{}{"speaker_id": "npc-1", "npc_name": "Aela"}},

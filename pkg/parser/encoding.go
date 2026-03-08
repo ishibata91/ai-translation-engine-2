@@ -44,7 +44,9 @@ func checkBOM(bufReader *bufio.Reader, peekBytes []byte) (io.Reader, bool) {
 	slog.Debug("ENTER checkBOM")
 
 	if len(peekBytes) >= 3 && peekBytes[0] == 0xEF && peekBytes[1] == 0xBB && peekBytes[2] == 0xBF {
-		bufReader.Discard(3)
+		if _, err := bufReader.Discard(3); err != nil {
+			return nil, false
+		}
 		return bufReader, true
 	}
 	return nil, false

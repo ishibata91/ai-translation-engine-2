@@ -102,7 +102,7 @@ func (e *exporter) ExportToXML(ctx context.Context, jsonPath string, xmlOutputPa
 		return fmt.Errorf("failed to create output directory: %w", err)
 	}
 
-	if err := os.WriteFile(xmlOutputPath, finalOutput, 0644); err != nil {
+	if err := os.WriteFile(xmlOutputPath, finalOutput, 0600); err != nil {
 		e.logger.ErrorContext(ctx, "failed to write XML file", telemetry.ErrorAttrs(err)...)
 		return fmt.Errorf("failed to write XML file: %w", err)
 	}

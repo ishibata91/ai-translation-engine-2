@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -53,10 +54,7 @@ func (p *tagProcessor) Postprocess(text string, tagMap map[string]string) string
 
 	sort.Slice(keys, func(i, j int) bool {
 		// keys are [TAG_N], sort by N descending
-		var ni, nj int
-		fmt.Sscanf(keys[i], "[TAG_%d]", &ni)
-		fmt.Sscanf(keys[j], "[TAG_%d]", &nj)
-		return ni > nj
+		return placeholderIndex(keys[i]) > placeholderIndex(keys[j])
 	})
 
 	for _, k := range keys {
@@ -88,4 +86,16 @@ func (p *tagProcessor) Validate(translatedText string, tagMap map[string]string)
 	}
 
 	return nil
+}
+
+func placeholderIndex(key string) int {
+	match := placeholderRegex.FindStringSubmatch(key)
+	if len(match) != 2 {
+		return -1
+	}
+	index, err := strconv.Atoi(match[1])
+	if err != nil {
+		return -1
+	}
+	return index
 }

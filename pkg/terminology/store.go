@@ -92,7 +92,9 @@ func (s *SQLiteModTermStore) executeSchemaInTransaction(ctx context.Context) err
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() {
+		_ = tx.Rollback()
+	}()
 
 	for _, query := range queries {
 		if _, err := tx.ExecContext(ctx, query); err != nil {
@@ -145,7 +147,9 @@ func (s *SQLiteModTermStore) prepareAndExecuteUpserts(ctx context.Context, resul
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction for SaveTerms: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() {
+		_ = tx.Rollback()
+	}()
 
 	stmt, err := tx.PrepareContext(ctx, `
 		INSERT INTO mod_terms (original_en, record_type, translated_ja, status)

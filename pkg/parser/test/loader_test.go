@@ -34,7 +34,7 @@ func TestLoader_LoadExtractedJSON_UTF8(t *testing.T) {
 		}
 	}`
 
-	err := os.WriteFile(filePath, []byte(content), 0644)
+	err := os.WriteFile(filePath, []byte(content), 0600)
 	if err != nil {
 		t.Fatalf("failed to create temp file: %v", err)
 	}

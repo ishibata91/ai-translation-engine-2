@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -162,7 +163,9 @@ func (w *Worker) processSync(ctx context.Context, processID string, llmConfig ll
 		reqs = append(reqs, req)
 
 		// Mark as IN_PROGRESS immediately
-		w.queue.UpdateJob(ctx, job.ID, StatusInProgress, nil, nil, nil)
+		if err := w.queue.UpdateJob(ctx, job.ID, StatusInProgress, nil, nil, nil); err != nil {
+			return fmt.Errorf("failed to mark job %s in progress: %w", job.ID, err)
+		}
 	}
 	if opts.Hooks != nil && opts.Hooks.OnDispatch != nil {
 		// Dispatch phase starts here; progress increments are reported in saving phase.
@@ -272,10 +275,14 @@ func (w *Worker) processSync(ctx context.Context, processID string, llmConfig ll
 		if res.Success {
 			respJSON, _ := json.Marshal(res)
 			respStr := string(respJSON)
-			w.queue.UpdateJob(ctx, jobID, StatusCompleted, &respStr, nil, nil)
+			if err := w.queue.UpdateJob(ctx, jobID, StatusCompleted, &respStr, nil, nil); err != nil {
+				return fmt.Errorf("failed to store completed job %s: %w", jobID, err)
+			}
 		} else {
 			errMsg := res.Error
-			w.queue.UpdateJob(ctx, jobID, StatusFailed, nil, &errMsg, nil)
+			if err := w.queue.UpdateJob(ctx, jobID, StatusFailed, nil, &errMsg, nil); err != nil {
+				return fmt.Errorf("failed to store failed job %s: %w", jobID, err)
+			}
 			failedCount++
 		}
 	}
@@ -337,7 +344,9 @@ func (w *Worker) processBatch(ctx context.Context, processID string, llmConfig l
 	batchIDString := string(batchIDJSON)
 
 	for _, job := range jobs {
-		w.queue.UpdateJob(ctx, job.ID, StatusInProgress, nil, nil, &batchIDString)
+		if err := w.queue.UpdateJob(ctx, job.ID, StatusInProgress, nil, nil, &batchIDString); err != nil {
+			return fmt.Errorf("failed to mark batch job %s in progress: %w", job.ID, err)
+		}
 	}
 
 	if w.notifier != nil {
@@ -391,10 +400,14 @@ func (w *Worker) processBatch(ctx context.Context, processID string, llmConfig l
 					if res.Success {
 						respJSON, _ := json.Marshal(res)
 						respStr := string(respJSON)
-						w.queue.UpdateJob(ctx, jobID, StatusCompleted, &respStr, nil, nil)
+						if err := w.queue.UpdateJob(ctx, jobID, StatusCompleted, &respStr, nil, nil); err != nil {
+							return fmt.Errorf("failed to store batch result for %s: %w", jobID, err)
+						}
 					} else {
 						errMsg := res.Error
-						w.queue.UpdateJob(ctx, jobID, StatusFailed, nil, &errMsg, nil)
+						if err := w.queue.UpdateJob(ctx, jobID, StatusFailed, nil, &errMsg, nil); err != nil {
+							return fmt.Errorf("failed to store batch error for %s: %w", jobID, err)
+						}
 					}
 				}
 
@@ -514,7 +527,16 @@ func (w *Worker) fetchLLMConfig(ctx context.Context, opts ProcessOptions) (llm.L
 	strConcurrency := w.getConfigString(ctx, ns, llm.LLMSyncConcurrencyKeySuffix+"."+provider, "")
 	var concurrency int
 	if strConcurrency != "" {
-		fmt.Sscanf(strConcurrency, "%d", &concurrency)
+		parsedConcurrency, err := strconv.Atoi(strConcurrency)
+		if err != nil {
+			w.logger.WarnContext(ctx, "invalid sync concurrency; using default",
+				slog.String("value", strConcurrency),
+				slog.String("provider", provider),
+				slog.String("error", err.Error()),
+			)
+		} else {
+			concurrency = parsedConcurrency
+		}
 	}
 	if concurrency <= 0 {
 		concurrency = llm.DefaultConcurrency(provider)
@@ -525,7 +547,16 @@ func (w *Worker) fetchLLMConfig(ctx context.Context, opts ProcessOptions) (llm.L
 	}
 	var contextLength int
 	if strContextLength != "" {
-		fmt.Sscanf(strContextLength, "%d", &contextLength)
+		parsedContextLength, err := strconv.Atoi(strContextLength)
+		if err != nil {
+			w.logger.WarnContext(ctx, "invalid context_length; ignoring value",
+				slog.String("value", strContextLength),
+				slog.String("provider", provider),
+				slog.String("error", err.Error()),
+			)
+		} else {
+			contextLength = parsedContextLength
+		}
 	}
 	if strings.TrimSpace(model) == "" {
 		return llm.LLMConfig{}, llm.ErrModelRequired

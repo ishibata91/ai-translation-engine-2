@@ -32,3 +32,24 @@ linters-settings:
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0
+  exclude-rules:
+    - path: pkg/dictionary/store.go
+      linters:
+        - gosec
+      text: "G202:"
+    - path: pkg/infrastructure/llm/retry.go
+      linters:
+        - gosec
+      text: "G404:"
+    - path: pkg/infrastructure/telemetry/provider.go
+      linters:
+        - revive
+      text: "unexported-return"
+    - path: pkg/translator/provider.go
+      linters:
+        - revive
+      text: "unexported-return"
+    - path: pkg/translator/persistence.go
+      linters:
+        - revive
+      text: "unexported-return"

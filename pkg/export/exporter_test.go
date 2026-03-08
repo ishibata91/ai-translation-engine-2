@@ -3,7 +3,6 @@ package export
 import (
 	"context"
 	"encoding/xml"
-	"io/ioutil"
 	"os"
 	"testing"
 )
@@ -60,13 +59,17 @@ func TestExporter_ExportToXML(t *testing.T) {
 			"editor_id": "DialogueGreeting"
 		}
 	]`
-	tmpJSON, err := ioutil.TempFile("", "test_export_*.json")
+	tmpJSON, err := os.CreateTemp("", "test_export_*.json")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer os.Remove(tmpJSON.Name())
-	tmpJSON.WriteString(jsonContent)
-	tmpJSON.Close()
+	if _, err := tmpJSON.WriteString(jsonContent); err != nil {
+		t.Fatalf("failed to write temp json: %v", err)
+	}
+	if err := tmpJSON.Close(); err != nil {
+		t.Fatalf("failed to close temp json: %v", err)
+	}
 
 	xmlOutput := tmpJSON.Name() + ".xml"
 	defer os.Remove(xmlOutput)
@@ -78,7 +81,7 @@ func TestExporter_ExportToXML(t *testing.T) {
 	}
 
 	// Read and verify XML
-	xmlData, err := ioutil.ReadFile(xmlOutput)
+	xmlData, err := os.ReadFile(xmlOutput)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -282,7 +282,9 @@ func (s *sqlitePersonaStore) ReplaceDialogues(ctx context.Context, personaID int
 	if err != nil {
 		return fmt.Errorf("failed to begin dialogue transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() {
+		_ = tx.Rollback()
+	}()
 
 	if _, err := tx.ExecContext(ctx, `DELETE FROM npc_dialogues WHERE persona_id = ?`, personaID); err != nil {
 		return fmt.Errorf("failed to delete existing dialogues: %w", err)
@@ -523,13 +525,17 @@ func (s *sqlitePersonaStore) migratePersonaSchema(ctx context.Context) error {
 	if _, err := s.db.ExecContext(ctx, `PRAGMA foreign_keys = OFF;`); err != nil {
 		return err
 	}
-	defer s.db.ExecContext(context.Background(), `PRAGMA foreign_keys = ON;`)
+	defer func() {
+		_, _ = s.db.ExecContext(context.Background(), `PRAGMA foreign_keys = ON;`)
+	}()
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() {
+		_ = tx.Rollback()
+	}()
 
 	statements := []string{
 		`CREATE TABLE npc_personas_new (

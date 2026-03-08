@@ -468,10 +468,10 @@ func (m *Manager) GetActiveTasks() []Task {
 	return tasks
 }
 
-func (m *Manager) EmitPhaseCompleted(taskId string, phaseName string, dataSummary interface{}) {
+func (m *Manager) EmitPhaseCompleted(taskID string, phaseName string, dataSummary interface{}) {
 	if m.ctx != nil {
 		runtime.EventsEmit(m.ctx, "task:phase_completed", map[string]interface{}{
-			"taskId":  taskId,
+			"taskId":  taskID,
 			"phase":   phaseName,
 			"summary": dataSummary,
 		})

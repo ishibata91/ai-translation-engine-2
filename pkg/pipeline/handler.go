@@ -96,7 +96,11 @@ func (h *Handler) HandleStartProcess(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(StartProcessResponse{ProcessID: processID})
+	if err := json.NewEncoder(w).Encode(StartProcessResponse{ProcessID: processID}); err != nil {
+		h.manager.logger.ErrorContext(r.Context(), "Failed to encode start process response",
+			slog.String("process_id", processID),
+			slog.String("error", err.Error()))
+	}
 }
 
 // RegisterRoutes registers the handlers to the provided mux.

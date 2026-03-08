@@ -165,7 +165,9 @@ func runMigrations(ctx context.Context, db *sql.DB) error {
 		if err != nil {
 			return err
 		}
-		defer tx.Rollback()
+		defer func() {
+			_ = tx.Rollback()
+		}()
 
 		ddl := `
 			CREATE TABLE IF NOT EXISTS llm_jobs (
@@ -198,7 +200,9 @@ func runMigrations(ctx context.Context, db *sql.DB) error {
 		if err != nil {
 			return err
 		}
-		defer tx.Rollback()
+		defer func() {
+			_ = tx.Rollback()
+		}()
 
 		ddl := []string{
 			`ALTER TABLE llm_jobs ADD COLUMN provider TEXT;`,
@@ -223,7 +227,9 @@ func runMigrations(ctx context.Context, db *sql.DB) error {
 		if err != nil {
 			return err
 		}
-		defer tx.Rollback()
+		defer func() {
+			_ = tx.Rollback()
+		}()
 
 		ddl := []string{
 			`ALTER TABLE llm_jobs ADD COLUMN task_id TEXT;`,
@@ -294,7 +300,9 @@ func (q *Queue) submitJobsInternal(ctx context.Context, processID string, taskID
 		q.logger.ErrorContext(ctx, "failed to begin transaction for submitting jobs", telemetry.ErrorAttrs(err)...)
 		return fmt.Errorf("SubmitJobs begin tx failed: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() {
+		_ = tx.Rollback()
+	}()
 
 	stmt, err := tx.PrepareContext(ctx, `
 		INSERT INTO llm_jobs (

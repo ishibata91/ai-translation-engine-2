@@ -83,13 +83,17 @@ func TestProcessManager_Integration(t *testing.T) {
 	// 4. Test Recovery
 	// Manually inject a state and a job
 	recoverPID := "recover-123"
-	store.SaveState(ctx, ProcessState{
+	if err := store.SaveState(ctx, ProcessState{
 		ProcessID:    recoverPID,
 		TargetSlice:  "TestSlice",
 		InputFile:    "recover.json",
 		CurrentPhase: PhaseDispatched,
-	})
-	q.SubmitJobs(ctx, recoverPID, []any{llm.Request{UserPrompt: "recover me"}})
+	}); err != nil {
+		t.Fatalf("SaveState failed: %v", err)
+	}
+	if err := q.SubmitJobs(ctx, recoverPID, []any{llm.Request{UserPrompt: "recover me"}}); err != nil {
+		t.Fatalf("SubmitJobs failed: %v", err)
+	}
 
 	// Trigger Recover
 	err = manager.Recover(ctx)

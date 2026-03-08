@@ -12,14 +12,6 @@ import (
 
 // ---- StartSpan: パフォーマンス計測 -----------------------------------------
 
-// Span は実行中のスパン情報を保持する。
-type Span struct {
-	ctx       context.Context
-	action    ActionType
-	startedAt time.Time
-	logger    *slog.Logger
-}
-
 // StartSpan はスパンを開始し、defer で呼び出す終了関数を返す。
 // 終了関数が呼ばれると duration_ms 付きの Exit ログが出力される。
 //
