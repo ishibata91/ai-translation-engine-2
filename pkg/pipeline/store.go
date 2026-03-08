@@ -14,7 +14,7 @@ type ProcessState struct {
 	ProcessID    string
 	TargetSlice  string
 	InputFile    string
-	BatchJobID   *string // Serialized JSON or just ID if simple
+	BatchJobID   *string
 	CurrentPhase string
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
@@ -39,15 +39,14 @@ func NewStore(ctx context.Context, dsn string) (*Store, error) {
 		return nil, fmt.Errorf("failed to open process_state db: %w", err)
 	}
 
-	// PRAGMA settings
 	pragmas := []string{
 		"PRAGMA journal_mode=WAL;",
 		"PRAGMA synchronous=NORMAL;",
 		"PRAGMA busy_timeout=5000;",
 	}
-	for _, p := range pragmas {
-		if _, err := db.ExecContext(ctx, p); err != nil {
-			return nil, fmt.Errorf("failed to set pragma %s: %w", p, err)
+	for _, pragma := range pragmas {
+		if _, err := db.ExecContext(ctx, pragma); err != nil {
+			return nil, fmt.Errorf("failed to set pragma %s: %w", pragma, err)
 		}
 	}
 
@@ -70,8 +69,10 @@ func runMigrations(ctx context.Context, db *sql.DB) error {
 		updated_at DATETIME NOT NULL
 	);
 	`
-	_, err := db.ExecContext(ctx, ddl)
-	return err
+	if _, err := db.ExecContext(ctx, ddl); err != nil {
+		return fmt.Errorf("run process state migrations: %w", err)
+	}
+	return nil
 }
 
 func (s *Store) Close() error {
@@ -83,7 +84,7 @@ func (s *Store) Close() error {
 
 func (s *Store) SaveState(ctx context.Context, state ProcessState) error {
 	now := time.Now().UTC()
-	_, err := s.db.ExecContext(ctx, `
+	if _, err := s.db.ExecContext(ctx, `
 		INSERT INTO process_states (process_id, target_slice, input_file, batch_job_id, current_phase, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(process_id) DO UPDATE SET
@@ -92,8 +93,10 @@ func (s *Store) SaveState(ctx context.Context, state ProcessState) error {
 			batch_job_id = excluded.batch_job_id,
 			current_phase = excluded.current_phase,
 			updated_at = excluded.updated_at
-	`, state.ProcessID, state.TargetSlice, state.InputFile, state.BatchJobID, state.CurrentPhase, now, now)
-	return err
+	`, state.ProcessID, state.TargetSlice, state.InputFile, state.BatchJobID, state.CurrentPhase, now, now); err != nil {
+		return fmt.Errorf("save process state process_id=%s phase=%s: %w", state.ProcessID, state.CurrentPhase, err)
+	}
+	return nil
 }
 
 func (s *Store) GetState(ctx context.Context, processID string) (*ProcessState, error) {
@@ -108,7 +111,7 @@ func (s *Store) GetState(ctx context.Context, processID string) (*ProcessState, 
 		return nil, nil
 	}
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get process state process_id=%s: %w", processID, err)
 	}
 	if batchJobID.Valid {
 		state.BatchJobID = &batchJobID.String
@@ -123,7 +126,7 @@ func (s *Store) ListActiveStates(ctx context.Context) ([]ProcessState, error) {
 		WHERE current_phase NOT IN (?, ?)
 	`, PhaseCompleted, PhaseFailed)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("list active process states: %w", err)
 	}
 	defer rows.Close()
 
@@ -132,17 +135,22 @@ func (s *Store) ListActiveStates(ctx context.Context) ([]ProcessState, error) {
 		var state ProcessState
 		var batchJobID sql.NullString
 		if err := rows.Scan(&state.ProcessID, &state.TargetSlice, &state.InputFile, &batchJobID, &state.CurrentPhase, &state.CreatedAt, &state.UpdatedAt); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("scan active process state: %w", err)
 		}
 		if batchJobID.Valid {
 			state.BatchJobID = &batchJobID.String
 		}
 		states = append(states, state)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate active process states: %w", err)
+	}
 	return states, nil
 }
 
 func (s *Store) DeleteState(ctx context.Context, processID string) error {
-	_, err := s.db.ExecContext(ctx, "DELETE FROM process_states WHERE process_id = ?", processID)
-	return err
+	if _, err := s.db.ExecContext(ctx, "DELETE FROM process_states WHERE process_id = ?", processID); err != nil {
+		return fmt.Errorf("delete process state process_id=%s: %w", processID, err)
+	}
+	return nil
 }

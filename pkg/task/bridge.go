@@ -17,6 +17,7 @@ type masterPersonaWorkflow interface {
 }
 
 type Bridge struct {
+	ctx                   context.Context
 	manager               *Manager
 	logger                *slog.Logger
 	masterPersonaWorkflow masterPersonaWorkflow
@@ -27,6 +28,7 @@ func NewBridge(
 	logger *slog.Logger,
 ) *Bridge {
 	return &Bridge{
+		ctx:     context.Background(),
 		manager: manager,
 		logger:  logger.With("module", "task_bridge"),
 	}
@@ -46,8 +48,16 @@ func (b *Bridge) GetActiveTasks() []Task {
 	return b.manager.GetActiveTasks()
 }
 
+func (b *Bridge) SetContext(ctx context.Context) {
+	if ctx == nil {
+		b.ctx = context.Background()
+		return
+	}
+	b.ctx = ctx
+}
+
 func (b *Bridge) GetAllTasks() ([]Task, error) {
-	return b.manager.store.GetAllTasks(context.Background())
+	return b.manager.store.GetAllTasks(b.context())
 }
 
 func (b *Bridge) ResumeTask(taskID string) error {
@@ -73,12 +83,22 @@ func (b *Bridge) GetTaskRequestState(taskID string) (runtimequeue.TaskRequestSta
 	if b.masterPersonaWorkflow == nil {
 		return runtimequeue.TaskRequestState{}, errors.New("master persona workflow is not configured")
 	}
-	return b.masterPersonaWorkflow.GetTaskRequestState(context.Background(), taskID)
+	return b.masterPersonaWorkflow.GetTaskRequestState(b.context(), taskID)
 }
 
 func (b *Bridge) GetTaskRequests(taskID string) ([]runtimequeue.JobRequest, error) {
 	if b.masterPersonaWorkflow == nil {
 		return nil, errors.New("master persona workflow is not configured")
 	}
-	return b.masterPersonaWorkflow.GetTaskRequests(context.Background(), taskID)
+	return b.masterPersonaWorkflow.GetTaskRequests(b.context(), taskID)
+}
+
+func (b *Bridge) context() context.Context {
+	if b.ctx != nil {
+		return b.ctx
+	}
+	if b.manager != nil && b.manager.ctx != nil {
+		return b.manager.ctx
+	}
+	return context.Background()
 }

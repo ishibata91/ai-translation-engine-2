@@ -112,3 +112,10 @@
 
 - 今回の change ではまず上記の高優先度項目を Must 違反中心に是正し、中・低優先度はスコープに応じて段階対応する想定
 - `backend:lint` で未検知だったため、proposal / design / tasks では lint 追加で防げるものとコード修正でしか防げないものを分けて整理するとよい
+
+## 2026-03-08 実装確認メモ
+
+- `pkg/task/bridge.go`, `pkg/task/manager.go`, `pkg/workflow/master_persona_service.go` では `context.Background()` 固定呼び出しを除去し、保持済み ctx または引数 ctx を store / queue / hook / runner へ伝播する形へ更新した。
+- `pkg/config/config_service.go` は `ConfigController` 方針へ整理し、Wails 起点の ctx を保持して `UIStateStore` / `Config` 呼び出しへ流すようにした。互換維持のため `ConfigService` alias と `NewConfigService` ラッパーは残している。
+- `pkg/pipeline/store.go`, `pkg/pipeline/manager.go`, `pkg/pipeline/handler.go` では DB / queue / save / cleanup 失敗を文脈付き error と warning/error log へ整理し、メッセージを識別子ベースへ統一した。
+- `tools/backendquality/main.go` は確認したが、今回の違反群に対して低コストで安定運用できる静的検査追加は見送った。`context.Background()` 検出や error wrap 強制は誤検知コストが高く、現状の `golangci-lint + go-cleanarch + lint:file` 運用へ素直に乗らないため、今回はコード是正とテスト追加を優先した。

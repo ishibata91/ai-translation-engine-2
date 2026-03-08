@@ -12,7 +12,7 @@ import (
 
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
-		return true // For development. Should be restricted later.
+		return true
 	},
 }
 
@@ -31,7 +31,8 @@ func NewHandler(manager *Manager, hub *progress.Hub) *Handler {
 func (h *Handler) ServeWebSocket(w http.ResponseWriter, r *http.Request) {
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		h.manager.logger.ErrorContext(r.Context(), "Failed to upgrade websocket", slog.String("error", err.Error()))
+		h.manager.logger.ErrorContext(r.Context(), "pipeline.websocket_upgrade_failed",
+			slog.String("reason", err.Error()))
 		return
 	}
 	defer conn.Close()
@@ -40,7 +41,6 @@ func (h *Handler) ServeWebSocket(w http.ResponseWriter, r *http.Request) {
 	h.hub.Subscribe(clientChan)
 	defer h.hub.Unsubscribe(clientChan)
 
-	// Read loop (to handle client close or ping/pong)
 	go func() {
 		for {
 			if _, _, err := conn.ReadMessage(); err != nil {
@@ -49,12 +49,11 @@ func (h *Handler) ServeWebSocket(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	// Write loop
 	for event := range clientChan {
 		if err := conn.WriteJSON(event); err != nil {
-			h.manager.logger.ErrorContext(r.Context(), "Failed to write websocket message",
+			h.manager.logger.ErrorContext(r.Context(), "pipeline.websocket_write_failed",
 				slog.String("correlation_id", event.CorrelationID),
-				slog.String("error", err.Error()))
+				slog.String("reason", err.Error()))
 			break
 		}
 	}
@@ -84,22 +83,21 @@ func (h *Handler) HandleStartProcess(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// ExecuteSlice handles state saving, job submission and worker initiation.
 	processID, err := h.manager.ExecuteSlice(r.Context(), req.Slice, nil, req.InputFile)
 	if err != nil {
-		h.manager.logger.ErrorContext(r.Context(), "Failed to execute slice",
+		h.manager.logger.ErrorContext(r.Context(), "pipeline.execute_http_failed",
 			slog.String("slice", req.Slice),
 			slog.String("input_file", req.InputFile),
-			slog.String("error", err.Error()))
+			slog.String("reason", err.Error()))
 		http.Error(w, fmt.Sprintf("failed to start process: %v", err), http.StatusInternalServerError)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(StartProcessResponse{ProcessID: processID}); err != nil {
-		h.manager.logger.ErrorContext(r.Context(), "Failed to encode start process response",
+		h.manager.logger.ErrorContext(r.Context(), "pipeline.response_encode_failed",
 			slog.String("process_id", processID),
-			slog.String("error", err.Error()))
+			slog.String("reason", err.Error()))
 	}
 }
 
