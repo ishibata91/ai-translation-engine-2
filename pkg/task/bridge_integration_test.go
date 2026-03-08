@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/ishibata91/ai-translation-engine-2/pkg/config"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/controller"
 	gatewayllm "github.com/ishibata91/ai-translation-engine-2/pkg/gateway/llm"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/llm"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/progress"
@@ -259,11 +260,15 @@ func setupRequestQueue(t *testing.T, logger *slog.Logger) *queue.Queue {
 	return q
 }
 
-func waitTaskStatus(t *testing.T, bridge *Bridge, id string, status TaskStatus, timeout time.Duration) Task {
+type allTaskReader interface {
+	GetAllTasks() ([]Task, error)
+}
+
+func waitTaskStatus(t *testing.T, reader allTaskReader, id string, status TaskStatus, timeout time.Duration) Task {
 	t.Helper()
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		tasks, err := bridge.GetAllTasks()
+		tasks, err := reader.GetAllTasks()
 		if err != nil {
 			t.Fatalf("GetAllTasks failed: %v", err)
 		}
@@ -312,14 +317,14 @@ func TestBridge_StartMasterPersonTask_SuccessStatusAndInfoLog(t *testing.T) {
 		requestQueue,
 		nil,
 	)
-	bridge := NewMasterPersonaBridge(manager, logger, masterPersonaWorkflow)
+	taskController := controller.NewPersonaTaskController(manager, masterPersonaWorkflow)
 
-	taskID, err := bridge.StartMasterPersonTask(StartMasterPersonTaskInput{SourceJSONPath: "dummy.json", OverwriteExisting: true})
+	taskID, err := taskController.StartMasterPersonTask(StartMasterPersonTaskInput{SourceJSONPath: "dummy.json", OverwriteExisting: true})
 	if err != nil {
 		t.Fatalf("StartMasterPersonTask failed: %v", err)
 	}
 
-	task := waitTaskStatus(t, bridge, taskID, StatusRequestGenerated, 3*time.Second)
+	task := waitTaskStatus(t, taskController, taskID, StatusRequestGenerated, 3*time.Second)
 	if task.Phase != "REQUEST_GENERATED" {
 		t.Fatalf("unexpected task phase: got=%s", task.Phase)
 	}
@@ -367,14 +372,14 @@ func TestBridge_StartMasterPersonTask_FailureStatusAndErrorLog(t *testing.T) {
 		requestQueue,
 		nil,
 	)
-	bridge := NewMasterPersonaBridge(manager, logger, masterPersonaWorkflow)
+	taskController := controller.NewPersonaTaskController(manager, masterPersonaWorkflow)
 
-	taskID, err := bridge.StartMasterPersonTask(StartMasterPersonTaskInput{SourceJSONPath: "dummy.json"})
+	taskID, err := taskController.StartMasterPersonTask(StartMasterPersonTaskInput{SourceJSONPath: "dummy.json"})
 	if err != nil {
 		t.Fatalf("StartMasterPersonTask failed: %v", err)
 	}
 
-	task := waitTaskStatus(t, bridge, taskID, StatusFailed, 3*time.Second)
+	task := waitTaskStatus(t, taskController, taskID, StatusFailed, 3*time.Second)
 	if task.ErrorMsg == "" {
 		t.Fatalf("expected error message in failed task")
 	}
@@ -436,22 +441,20 @@ func TestBridge_ResumeMasterPersonaTask_CleansQueueAfterCompletion(t *testing.T)
 		worker,
 	)
 	manager.RegisterRunner(TypePersonaExtraction, masterPersonaWorkflow)
-	manager.RegisterCompletionHook(TypePersonaExtraction, func(ctx context.Context, currentTask *Task) error {
-		return requestQueue.DeleteTaskRequests(ctx, currentTask.ID)
-	})
-	bridge := NewMasterPersonaBridge(manager, logger, masterPersonaWorkflow)
+	manager.RegisterCompletionHook(TypePersonaExtraction, masterPersonaWorkflow.CleanupCompletedTask)
+	taskController := controller.NewPersonaTaskController(manager, masterPersonaWorkflow)
 
-	taskID, err := bridge.StartMasterPersonTask(StartMasterPersonTaskInput{SourceJSONPath: "dummy.json", OverwriteExisting: false})
+	taskID, err := taskController.StartMasterPersonTask(StartMasterPersonTaskInput{SourceJSONPath: "dummy.json", OverwriteExisting: false})
 	if err != nil {
 		t.Fatalf("StartMasterPersonTask failed: %v", err)
 	}
-	_ = waitTaskStatus(t, bridge, taskID, StatusRequestGenerated, 3*time.Second)
+	_ = waitTaskStatus(t, taskController, taskID, StatusRequestGenerated, 3*time.Second)
 
-	if err := bridge.ResumeMasterPersonaTask(taskID); err != nil {
+	if err := taskController.ResumeMasterPersonaTask(taskID); err != nil {
 		t.Fatalf("ResumeMasterPersonaTask (first) failed: %v", err)
 	}
-	_ = waitTaskStatus(t, bridge, taskID, StatusCompleted, 3*time.Second)
-	jobsAfterCompletion, err := bridge.GetTaskRequests(taskID)
+	_ = waitTaskStatus(t, taskController, taskID, StatusCompleted, 3*time.Second)
+	jobsAfterCompletion, err := taskController.GetTaskRequests(taskID)
 	if err != nil {
 		t.Fatalf("GetTaskRequests after completion failed: %v", err)
 	}
@@ -463,11 +466,11 @@ func TestBridge_ResumeMasterPersonaTask_CleansQueueAfterCompletion(t *testing.T)
 		t.Fatalf("expected 2 saved requests on first resume, got %d", firstCalls)
 	}
 
-	if err := bridge.ResumeMasterPersonaTask(taskID); err == nil {
+	if err := taskController.ResumeMasterPersonaTask(taskID); err == nil {
 		t.Fatalf("expected completed task resume to fail after queue cleanup")
 	}
 
-	tasks, err := bridge.GetAllTasks()
+	tasks, err := taskController.GetAllTasks()
 	if err != nil {
 		t.Fatalf("GetAllTasks failed: %v", err)
 	}
@@ -526,24 +529,24 @@ func TestBridge_CancelledMasterPersonaTask_KeepsQueuedRequests(t *testing.T) {
 		worker,
 	)
 	manager.RegisterRunner(TypePersonaExtraction, masterPersonaWorkflow)
-	bridge := NewMasterPersonaBridge(manager, logger, masterPersonaWorkflow)
+	taskController := controller.NewPersonaTaskController(manager, masterPersonaWorkflow)
 
-	taskID, err := bridge.StartMasterPersonTask(StartMasterPersonTaskInput{SourceJSONPath: "dummy.json", OverwriteExisting: false})
+	taskID, err := taskController.StartMasterPersonTask(StartMasterPersonTaskInput{SourceJSONPath: "dummy.json", OverwriteExisting: false})
 	if err != nil {
 		t.Fatalf("StartMasterPersonTask failed: %v", err)
 	}
-	_ = waitTaskStatus(t, bridge, taskID, StatusRequestGenerated, 3*time.Second)
+	_ = waitTaskStatus(t, taskController, taskID, StatusRequestGenerated, 3*time.Second)
 
 	go func() {
 		time.Sleep(40 * time.Millisecond)
-		bridge.CancelTask(taskID)
+		taskController.CancelTask(taskID)
 	}()
-	if err := bridge.ResumeMasterPersonaTask(taskID); err != nil {
+	if err := taskController.ResumeMasterPersonaTask(taskID); err != nil {
 		t.Fatalf("ResumeMasterPersonaTask failed: %v", err)
 	}
-	_ = waitTaskStatus(t, bridge, taskID, StatusCancelled, 3*time.Second)
+	_ = waitTaskStatus(t, taskController, taskID, StatusCancelled, 3*time.Second)
 
-	jobsAfterCancel, err := bridge.GetTaskRequests(taskID)
+	jobsAfterCancel, err := taskController.GetTaskRequests(taskID)
 	if err != nil {
 		t.Fatalf("GetTaskRequests after cancel failed: %v", err)
 	}

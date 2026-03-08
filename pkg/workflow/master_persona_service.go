@@ -205,6 +205,17 @@ func (s *MasterPersonaService) CancelTask(taskID string) {
 	_ = s.CancelMasterPersona(context.Background(), taskID)
 }
 
+// CleanupCompletedTask removes queued requests after a MasterPersona task is confirmed completed.
+func (s *MasterPersonaService) CleanupCompletedTask(ctx context.Context, currentTask *task.Task) error {
+	if currentTask.Type != task.TypePersonaExtraction {
+		return nil
+	}
+	if s.queue == nil {
+		return fmt.Errorf("request queue is not configured")
+	}
+	return s.queue.DeleteTaskRequests(ctx, currentTask.ID)
+}
+
 // Run satisfies task.Runner and keeps task execution in workflow.
 func (s *MasterPersonaService) Run(ctx context.Context, currentTask *task.Task, update func(phase string, progress float64)) error {
 	if currentTask.Type != task.TypePersonaExtraction {

@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { FrontendTask } from '../types/task'
 import * as Events from '../wailsjs/runtime/runtime'
-import { GetActiveTasks, GetAllTasks, ResumeTask, CancelTask } from '../wailsjs/go/task/Bridge'
+import { GetActiveTasks, GetAllTasks, ResumeTask, CancelTask } from '../wailsjs/go/controller/TaskController'
 
 interface TaskState {
     tasks: Record<string, FrontendTask>;

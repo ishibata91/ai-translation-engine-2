@@ -6,6 +6,7 @@ import (
 	"log"
 
 	"github.com/ishibata91/ai-translation-engine-2/pkg/config"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/controller"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/dictionary"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/datastore"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/llm"
@@ -121,10 +122,9 @@ func main() {
 	// 7. Setup Bridge
 	masterPersonaWorkflow := workflow.NewMasterPersonaService(taskManager, logger, parserLoader, personaGenerator, personaProgressNotifier, llmQueue, queueWorker)
 	taskManager.RegisterRunner(task.TypePersonaExtraction, masterPersonaWorkflow)
-	taskManager.RegisterCompletionHook(task.TypePersonaExtraction, func(ctx context.Context, currentTask *task.Task) error {
-		return llmQueue.DeleteTaskRequests(ctx, currentTask.ID)
-	})
-	taskBridge := task.NewMasterPersonaBridge(taskManager, logger, masterPersonaWorkflow)
+	taskManager.RegisterCompletionHook(task.TypePersonaExtraction, masterPersonaWorkflow.CleanupCompletedTask)
+	taskController := controller.NewTaskController(taskManager)
+	personaTaskController := controller.NewPersonaTaskController(taskManager, masterPersonaWorkflow)
 
 	// Create an instance of the app structure
 	app := NewApp()
@@ -156,7 +156,8 @@ func main() {
 		OnShutdown: app.shutdown,
 		Bind: []interface{}{
 			app,
-			taskBridge,
+			taskController,
+			personaTaskController,
 			configService,
 			modelCatalogService,
 			personaService,

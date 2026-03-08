@@ -31,11 +31,19 @@ declare module '*wailsjs/go/main/App' {
   export function DictDeleteSource(id: number): Promise<void>;
 }
 
-declare module '*wailsjs/go/task/Bridge' {
+declare module '*wailsjs/go/controller/TaskController' {
+  export function ResumeTask(taskID: string): Promise<void>;
+  export function CancelTask(taskID: string): Promise<void>;
+  export function GetAllTasks(): Promise<unknown[]>;
+  export function GetActiveTasks(): Promise<unknown[]>;
+}
+
+declare module '*wailsjs/go/controller/PersonaTaskController' {
   export function StartMasterPersonTask(input: { source_json_path: string; overwrite_existing?: boolean }): Promise<string>;
   export function ResumeTask(taskID: string): Promise<void>;
   export function CancelTask(taskID: string): Promise<void>;
+  export function ResumeMasterPersonaTask(taskID: string): Promise<void>;
   export function GetTaskRequestState(taskID: string): Promise<{ total?: number; completed?: number; failed?: number; canceled?: number }>;
+  export function GetTaskRequests(taskID: string): Promise<unknown[]>;
   export function GetAllTasks(): Promise<unknown[]>;
-  export function GetActiveTasks(): Promise<unknown[]>;
 }
