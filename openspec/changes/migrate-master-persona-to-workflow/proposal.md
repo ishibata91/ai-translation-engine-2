@@ -8,6 +8,7 @@
 - request enqueue、resume、progress、phase 更新、cleanup を workflow 主導へ移す
 - persona との DTO マッピングを workflow に集約する
 - 既存 `task` API の互換性を保ちながら内部接続先を workflow へ差し替える
+- `pkg/task` に残っている controller 相当責務を整理し、必要なら `pkg/controller` への再配置または lint 区分見直しまで含めて整合させる
 
 ## Capabilities
 
@@ -18,6 +19,7 @@
 - `persona`: MasterPersona の `PreparePrompts` / `SaveResults` が workflow 経由で呼ばれる前提へ更新する
 - `queue`: Completed cleanup と resume の起点を workflow へ寄せる
 - `persona-request-preview`: 開始操作が controller -> workflow 経由で処理される前提へ更新する
+- `backend-quality-gates`: 実コード配置に合わせて controller / workflow の lint 境界を見直す
 
 ## Impact
 
