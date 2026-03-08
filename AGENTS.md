@@ -11,7 +11,7 @@
 
 ## 進め方
 - go用に `go-llm-lens` MCPが入っている｡コードの初動探索時は基本的にこれを使うこと｡
-- `server-filesystem` MCPが入っている｡コード編集､読み取りはこれを利用すること｡
+- `server-filesystem` MCPが入っている｡検索､書き込み､読み取りは"""必ず"""これを利用すること｡
 - openspecが指定された場合は必ず従う。勝手に実装を始めない。
 - [architecture.md](openspec/specs/architecture.md) を常に参照して実装・提案を行う。
 - OpenSpec 文書の責務境界や spec の置き場を整理・提案する場合は [spec-structure/spec.md](openspec/specs/spec-structure/spec.md) を常に参照する。

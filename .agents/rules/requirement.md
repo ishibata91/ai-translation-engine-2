@@ -14,8 +14,8 @@ trigger: always_on
 - 削除・破壊的操作は必ず事前確認する。
 
 ## 進め方
-- go用に `go-llm-lens` MCPが入っている｡コードの初動探索時は基本的にこれを使うこと｡
-- `server-filesystem` MCPが入っている｡コード編集､読み取りはこれを利用すること｡
+- go用に `go-llm-lens` MCPが入っている｡コードの初動探索時はこれを使うこと｡
+- `server-filesystem` MCPが入っている｡検索､書き込み､読み取りは"""必ず"""これを利用すること｡
 - openspecが指定された場合は必ず従う。勝手に実装を始めない。
 - [architecture.md](openspec/specs/architecture.md) を常に参照して実装・提案を行う。
 - OpenSpec 文書の責務境界や spec の置き場を整理・提案する場合は [spec-structure/spec.md](openspec/specs/spec-structure/spec.md) を常に参照する。
@@ -30,7 +30,6 @@ trigger: always_on
 - フロントを触る場合は、変更中ファイルに対して `npm run lint:file -- <file...>` を逐次実行し、その結果を確認してから修正を進める。
 - フロントの変更では、AI は `lint:file -> 修正 -> 再実行 -> 最後に lint:frontend` の順で進める。
 - フロントの変更を行ったら、作業完了前に `npm run lint:frontend` を必ず実行する。
-- 仕様書など資料の図はmermaidで出力する。
 
 ## バックエンド品質ルール
 - バックエンド修正を行ったら、作業中または完了前に必ず `npm run lint:backend` を実行する。
