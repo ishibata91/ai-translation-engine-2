@@ -40,7 +40,7 @@ export function useDashboard() {
             return;
         }
 
-        void resumeTask(task.id);
+        void resumeTask(task);
     };
 
     return {

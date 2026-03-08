@@ -35,7 +35,15 @@ FrontendTaskManager は、フロントエンド向けタスク（辞書構築、
 - **THEN** アプリケーションは翻訳プロジェクト詳細画面へ遷移し、自動的に「ペルソナパネル」のタブを開いて状態を復元する。
 
 ### Requirement: Wailsバインディングの拡張
-TaskManager は従来の `GetActiveTasks`, `CancelTask` に加え、中断されたタスクを再開するための `ResumeTask` 等のバインディングを提供しなければならない。
+Task 管理機能は、controller 層が従来の `GetActiveTasks`, `CancelTask`, `ResumeTask` などの Wails バインディングを提供しつつ、MasterPersona の実際のユースケース進行は workflow 契約へ委譲しなければならない。
+
+#### Scenario: Wails バインディングは workflow を経由して再開する
+- **WHEN** UI から `ResumeTask` が呼び出される
+- **THEN** controller は workflow の再開契約を呼び出さなければならない
+
+#### Scenario: 既存の公開 API は維持される
+- **WHEN** フロントエンドが既存の `GetActiveTasks`, `CancelTask`, `ResumeTask` を利用する
+- **THEN** システムは同等の公開 API を継続提供しなければならない
 
 ### Requirement: Task は進捗値を決定して Progress へ報告しなければならない
 `task` / workflow は段階進捗の `phase/current/total/message` を決定し、`progress` へ報告しなければならない。`total` は全 request 件数を分母として扱わなければならない。usecase slice は UI 配信用の進捗値を直接決定せず、進行事実や中間結果を `task` / workflow へ返さなければならない。
@@ -61,23 +69,23 @@ TaskManager は従来の `GetActiveTasks`, `CancelTask` に加え、中断され
 - **THEN** UI は `task` イベントで状態変更を受け取り、ステータス表示を更新しなければならない
 
 ### Requirement: MasterPersona タスクは中断点を保持して再開可能でなければならない
-`task` は MasterPersona のキュー投入後に再開コンテキスト（`task_id`, `phase`, `resume_cursor`）を保存し、再起動後およびキャンセル後の再開要求を受理しなければならない。さらに開始時に受け取った `overwrite_existing` を task metadata に保持し、再開時も同一方針を必ず適用しなければならない。再開時のモデル・パラメータは常に `config` から再読込しなければならない。
+MasterPersona タスクは workflow 主導で、`task_id`, `phase`, `resume_cursor`, `overwrite_existing` を保持し、再起動後およびキャンセル後の再開要求を受理しなければならない。再開時のモデル・パラメータは常に `config` から再読込しなければならない。
 
 #### Scenario: 再起動後に再開できる
-- **WHEN** MasterPersona 実行中にアプリが終了し、再起動後に ResumeTask が呼ばれる
-- **THEN** `task` は保存済み再開コンテキストを読み出し、未完了フェーズから処理を再開しなければならない
+- **WHEN** MasterPersona 実行中にアプリが終了し、再起動後に `ResumeTask` が呼ばれる
+- **THEN** workflow は保存済み再開コンテキストを読み出し、未完了フェーズから処理を再開しなければならない
 
 #### Scenario: キャンセル後に再開できる
 - **WHEN** MasterPersona タスクが cancel 済みで、ユーザーが再開を要求する
-- **THEN** `task` は完了済み request を再実行せず、未完了 request のみを再開しなければならない
+- **THEN** workflow は完了済み request を再実行せず、未完了 request のみを再開しなければならない
 
 #### Scenario: 再開時に上書き方針が保持される
 - **WHEN** `overwrite_existing=false` で開始した MasterPersona タスクを再開する
-- **THEN** `task` は開始時 metadata の `overwrite_existing` を再利用し、再開時に `true` として扱ってはならない
+- **THEN** workflow は開始時 metadata の `overwrite_existing` を再利用し、再開時に `true` として扱ってはならない
 
 #### Scenario: REQUEST_GENERATED 後の自動再開要求を受理できる
 - **WHEN** UI が `REQUEST_GENERATED` 直後に同一 task ID で `ResumeTask` を呼び出す
-- **THEN** `task` はその再開要求を受理し、未完了 request の dispatch/save フェーズへ遷移しなければならない
+- **THEN** workflow はその再開要求を受理し、未完了 request の dispatch/save フェーズへ遷移しなければならない
 
 ### Requirement: MasterPersona 画面は再表示時に保存済み全ペルソナを再取得できなければならない
 Task は、MasterPersona のフェーズ完了および状態更新が UI の一覧再取得トリガーとして利用できるよう、画面再表示後も同一 task に依存せず保存済みデータを再取得できる通知契約を提供しなければならない。UI はローカル state の残存有無に関わらず、永続化済みペルソナ一覧を再ロードできなければならない。

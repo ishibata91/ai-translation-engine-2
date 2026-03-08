@@ -5,13 +5,13 @@
 
 ## ADDED Requirements
 
-### Requirement: MasterPersona開始操作はペルソナリクエスト生成タスクを起動しなければならない
-`MasterPersona` 画面の開始ボタンは、`task.Bridge` 経由で「マスターペルソナ生成タスク」を起動しなければならない。開始時入力には `source_json_path` と `overwrite_existing` を含めなければならない。システムはタスクIDを発行し、同一IDで進捗・完了・失敗を追跡可能でなければならない。
+### Requirement: MasterPersona 画面の開始ボタンは task 境界を起動しなければならない
+`MasterPersona` 画面の開始ボタンは、controller を通じて workflow 管理下の MasterPersona タスク開始要求を送らなければならない。開始時入力には `source_json_path` と `overwrite_existing` を含めなければならない。システムは task ID を発行し、同一 ID で進捗・完了・失敗を追跡可能でなければならない。
 
-#### Scenario: 開始ボタン押下で上書き指定付きタスクが起動される
-- **WHEN** ユーザーが `MasterPersona` 画面で開始ボタンを押下し、重複時上書きチェックを指定する
-- **THEN** システムは `task.Bridge` に `source_json_path` と `overwrite_existing` を含む開始要求を送らなければならない
-- **AND** タスクIDを発行して実行状態を `Running` に更新しなければならない
+#### Scenario: UI が workflow 管理下の開始要求を送る
+- **WHEN** ユーザーが MasterPersona 画面で開始ボタンを押す
+- **THEN** システムは controller を通じて workflow 管理下の開始要求を送らなければならない
+- **AND** 同一 task ID で進捗・完了・失敗を追跡できなければならない
 
 #### Scenario: タスクが完了しUI状態が更新される
 - **WHEN** `PreparePrompts` が正常終了する

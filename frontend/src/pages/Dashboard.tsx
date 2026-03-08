@@ -77,7 +77,7 @@ export default function Dashboard() {
                                                     {task.status === 'running' && (
                                                         <button
                                                             className="btn btn-xs btn-outline btn-error"
-                                                            onClick={() => cancelTask(task.id)}
+                                                            onClick={() => cancelTask(task)}
                                                         >停止</button>
                                                     )}
                                                 </div>

@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { FrontendTask } from '../types/task'
 import * as Events from '../wailsjs/runtime/runtime'
 import { GetActiveTasks, GetAllTasks, ResumeTask, CancelTask } from '../wailsjs/go/controller/TaskController'
+import { ResumeTask as ResumePersonaTask, CancelTask as CancelPersonaTask } from '../wailsjs/go/controller/PersonaTaskController'
 
 interface TaskState {
     tasks: Record<string, FrontendTask>;
@@ -12,8 +13,8 @@ interface TaskState {
     removeTask: (taskId: string) => void;
 
     fetchActiveTasks: () => Promise<void>;
-    resumeTask: (taskId: string) => Promise<void>;
-    cancelTask: (taskId: string) => Promise<void>;
+    resumeTask: (task: FrontendTask) => Promise<void>;
+    cancelTask: (task: FrontendTask) => Promise<void>;
 }
 
 export const useTaskStore = create<TaskState>((set, get) => ({
@@ -68,18 +69,26 @@ export const useTaskStore = create<TaskState>((set, get) => ({
         }
     },
 
-    resumeTask: async (taskId) => {
+    resumeTask: async (task) => {
         try {
-            await ResumeTask(taskId);
+            if (task.type === 'persona_extraction') {
+                await ResumePersonaTask(task.id);
+                return;
+            }
+            await ResumeTask(task.id);
         } catch (error) {
             console.error('Failed to resume task:', error);
             throw error;
         }
     },
 
-    cancelTask: async (taskId) => {
+    cancelTask: async (task) => {
         try {
-            await CancelTask(taskId);
+            if (task.type === 'persona_extraction') {
+                await CancelPersonaTask(task.id);
+                return;
+            }
+            await CancelTask(task.id);
         } catch (error) {
             console.error('Failed to cancel task:', error);
             throw error;
