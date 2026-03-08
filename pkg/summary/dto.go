@@ -61,8 +61,8 @@ type QuestStage struct {
 
 // ProposeOutput contains the results of ProposeJobs.
 type ProposeOutput struct {
-	Jobs                 []llm.Request `json:"jobs"`
-	PreCalculatedResults []SummaryResult      `json:"pre_calculated_results"`
+	Jobs                 []llm.Request   `json:"jobs"`
+	PreCalculatedResults []SummaryResult `json:"pre_calculated_results"`
 }
 
 // SummaryResult represents the result of a single summary generation.

@@ -44,4 +44,3 @@ func TestHub_OnProgress_PassthroughsGenericFields(t *testing.T) {
 		t.Fatal("timed out waiting for progress event")
 	}
 }
-

@@ -12,8 +12,13 @@
 ## 進め方
 - openspecが指定された場合は必ず従う。勝手に実装を始めない。
 - [architecture.md](openspec/specs/architecture.md) を常に参照して実装・提案を行う。
+- バックエンドを触る場合は、[backend_coding_standards.md](openspec/specs/backend_coding_standards.md) を常に参照して実装・提案を行う。
 - フロントを触る場合は、[frontend_architecture.md](openspec/specs/frontend_architecture.md) を常に参照して実装・提案を行う。
 - 仕様書など資料の図はmermaidで出力する。
+
+## バックエンド品質ルール
+- バックエンド修正を行ったら、作業中または完了前に必ず `npm run lint:backend` を実行する。
+- 必要に応じて `npm run backend:check` や `npm run backend:watch` を使い、ローカルで品質確認を回す。
 
 ## 設計・提案
 - 設計時に必要なライブラリの提案を行う。

@@ -60,9 +60,9 @@ func (c *geminiClient) ListModels(ctx context.Context) ([]ModelInfo, error) {
 	}
 	var raw struct {
 		Models []struct {
-			Name         string `json:"name"`
-			DisplayName  string `json:"displayName"`
-			InputToken   int    `json:"inputTokenLimit"`
+			Name        string `json:"name"`
+			DisplayName string `json:"displayName"`
+			InputToken  int    `json:"inputTokenLimit"`
 		} `json:"models"`
 	}
 	if err := json.Unmarshal(body, &raw); err != nil {

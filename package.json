@@ -1,4 +1,14 @@
 {
+  "scripts": {
+    "backend:fmt": "go run ./tools/backendquality fmt",
+    "backend:lint": "go run ./tools/backendquality lint",
+    "lint:backend": "go run ./tools/backendquality lint",
+    "backend:test": "go run ./tools/backendquality test",
+    "backend:check": "go run ./tools/backendquality check",
+    "backend:watch": "go run ./tools/backendquality watch",
+    "backend:watch:lint": "go run ./tools/backendquality watch --lint",
+    "backend:vuln": "go run ./tools/backendquality vuln"
+  },
   "devDependencies": {
     "@fission-ai/openspec": "^1.2.0",
     "dependency-cruiser": "^17.3.8"

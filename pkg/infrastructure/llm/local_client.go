@@ -243,10 +243,10 @@ func (c *lmStudioClient) doChatCompletion(ctx context.Context, req Request, stru
 		JSONSchema map[string]interface{} `json:"json_schema,omitempty"`
 	}
 	type requestBody struct {
-		Model          string         `json:"model"`
-		Messages       []message      `json:"messages"`
-		Temperature    float32        `json:"temperature,omitempty"`
-		Stream         bool           `json:"stream"`
+		Model          string          `json:"model"`
+		Messages       []message       `json:"messages"`
+		Temperature    float32         `json:"temperature,omitempty"`
+		Stream         bool            `json:"stream"`
 		ResponseFormat *responseFormat `json:"response_format,omitempty"`
 	}
 

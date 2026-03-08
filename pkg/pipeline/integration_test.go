@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"github.com/ishibata91/ai-translation-engine-2/pkg/config"
-	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/queue"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/llm"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/progress"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/queue"
 )
 
 // mockSlice implements Slice interface for testing.
@@ -157,8 +157,8 @@ func (m *mockCfgForPM) Get(ctx context.Context, ns, key string) (string, error) 
 		return "", nil
 	}
 }
-func (m *mockCfgForPM) Set(ctx context.Context, ns, key, val string) error      { return nil }
-func (m *mockCfgForPM) Delete(ctx context.Context, ns, key string) error        { return nil }
+func (m *mockCfgForPM) Set(ctx context.Context, ns, key, val string) error { return nil }
+func (m *mockCfgForPM) Delete(ctx context.Context, ns, key string) error   { return nil }
 func (m *mockCfgForPM) GetAll(ctx context.Context, ns string) (map[string]string, error) {
 	return nil, nil
 }
