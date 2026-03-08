@@ -18,7 +18,7 @@
 - `context.Context` は公開 Contract メソッドの第一引数で受け取り、内部処理へ必ず伝播すること。
 - ログ出力は `slog.*Context` を使用し、構造化フィールドで slice 名・入力件数・識別子などの分析可能な情報を記録すること。
 - 公開メソッドは 1 つの責務に保ち、複雑な分岐や処理列は同一ファイル内のプライベートメソッドへ分割すること。
-- 公開型、公開関数、公開メソッドには doc コメントを付与すること。
+- doc コメント必須の対象は公開型、公開関数、公開メソッドに限定し、非公開シンボルには必須化しないこと。
 - テストは `openspec/specs/standard_test_spec.md` に整合し、Table-Driven Test を主軸にすること。
 - テストおよび本番コードのデバッグは構造化ログ前提で行い、問題解析のために `context.Context` を途切れさせないこと。
 
@@ -28,6 +28,24 @@
 - `context.Context` を受け取らない内部ヘルパーは、副作用がない純粋関数に限定する。
 - ログメッセージは機械可読な識別子を優先し、日本語説明文は必要最小限に留める。
 - テストは in-memory SQLite または局所モックを優先し、外部環境依存を持ち込まない。
+
+### 2.3 チェックスタイル規約
+
+#### MUST
+
+- import 整列は `goimports` の結果を唯一の正とし、手動整形に依存しないこと。
+- 変更中の `.go` ファイルは、作業中に `npm run backend:lint:file -- <file...>` で逐次確認し、最終的に `npm run lint:backend` を通すこと。
+- 公開 API の doc コメントはシンボル名で開始し、責務または返却値の意味が読める最小限の説明を持つこと。非公開シンボルへの doc コメントは任意とする。
+- `error` メッセージは呼び出し側で連結される前提で、先頭小文字・末尾句点なしを原則とする。
+- deep nesting を放置せず、ガード節またはプライベートメソッド抽出で分岐深度を抑えること。
+- `util`, `helper`, `manager2` のような責務が曖昧な命名を新規導入しないこと。
+
+#### SHOULD
+
+- コンストラクタは `NewXxx`、ファクトリは `ProvideXxx` / `BuildXxx` など役割が分かる命名に寄せる。
+- `nil` と空スライス・空マップの扱いは呼び出し契約に合わせて明示し、暗黙挙動に依存しない。
+- 単一ファイル内では公開入口、主要フロー、末尾ヘルパーの順で配置し、レビュー時に上から読める構成を保つ。
+- ログキー名は `slice`, `record_count`, `task_id` のように意味が固定された lower_snake_case を優先する。
 
 ## 3. リポジトリ固有規約
 
@@ -47,15 +65,18 @@
 ## 4. 品質ゲート
 
 - 標準の必須ツールは `golangci-lint`、`goimports`、`goleak`、`go test ./pkg/...` とする。
-- `golangci-lint` では少なくとも `staticcheck`、`govet`、`errcheck`、`revive`、`gosec` を有効化する。
+- `golangci-lint` では少なくとも `staticcheck`、`govet`、`errcheck`、`revive`、`gosec`、`stylecheck` を有効化する。
 - `govulncheck` は依存更新時またはリリース前の任意実行とし、日常開発の必須ブロック条件には含めない。
 - 個人開発向けの標準運用として、AI 開発中はローカルで `backend:fmt` / `backend:lint` / `backend:test` / `backend:check` を高頻度に回す。
+- 日常修正では `backend:lint:file` を最小確認単位とし、対象ファイルだけを逐次 lint してから全体 `backend:lint` に進む。
 - section 4 完了前の暫定運用として、自動ブロック条件はローカルの整形差分なしと `go test ./pkg/...` 成功を基準とし、`backend:lint` は毎回実行して結果を可視化する。
 
 ### 4.1 標準コマンド
 
 - `npm run backend:fmt`
+- `npm run backend:lint:file -- <file...>`
 - `npm run backend:lint`
+- `npm run lint:backend:file -- <file...>`
 - `npm run backend:test`
 - `npm run backend:check`
 - `npm run backend:watch`
@@ -63,6 +84,8 @@
 - `npm run backend:vuln`
 
 上記コマンドはすべて `go run ./tools/backendquality ...` を通して同一設定で実行する。
+`backend:lint:file` は指定ファイルを含むパッケージに対して `golangci-lint` を実行し、指定ファイルに紐づく違反のみを報告する。
+公開シンボルの doc コメント欠落は `stylecheck` の `ST1020` / `ST1021` / `ST1022` で検知する。
 `backend:check` はローカルの必須確認用であり、整形差分検出と `go test ./pkg/...` を実行する。
 `backend:watch` は `pkg/**`、`cmd/**`、品質設定ファイルの変更をポーリング監視し、変更検知のたびに `backend:check` を再実行する。
 `backend:watch:lint` は上記に加えて `backend:lint` も再実行する。
@@ -88,7 +111,7 @@
 ## 6. レビュー観点
 
 - Contract / DTO / Mapper の責務境界が `architecture.md` に一致しているか。
-- 公開 API に doc コメントがあり、責務が 1 つに保たれているか。
+- 公開 API にのみ doc コメントがあり、責務が 1 つに保たれているか。
 - `error` に十分な文脈が付与され、`context.Context` が公開入口から末端まで流れているか。
 - ログが `slog.*Context` で出力され、解析に必要なキーを持っているか。
 - テストが Table-Driven を基調とし、必要な並行処理テストには `goleak` が適用されているか。

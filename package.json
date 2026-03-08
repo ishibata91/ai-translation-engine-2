@@ -2,7 +2,9 @@
   "scripts": {
     "backend:fmt": "go run ./tools/backendquality fmt",
     "backend:lint": "go run ./tools/backendquality lint",
+    "backend:lint:file": "go run ./tools/backendquality lint-file",
     "lint:backend": "go run ./tools/backendquality lint",
+    "lint:backend:file": "go run ./tools/backendquality lint-file",
     "backend:test": "go run ./tools/backendquality test",
     "backend:check": "go run ./tools/backendquality check",
     "backend:watch": "go run ./tools/backendquality watch",

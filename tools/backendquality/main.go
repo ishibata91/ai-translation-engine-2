@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -22,7 +24,7 @@ const (
 
 func main() {
 	if len(os.Args) < 2 {
-		exitf("usage: go run ./tools/backendquality <fmt|lint|test|check|vuln|watch>")
+		exitf("usage: go run ./tools/backendquality <fmt|lint|lint-file|test|check|vuln|watch>")
 	}
 
 	var err error
@@ -31,6 +33,8 @@ func main() {
 		err = runFmt()
 	case "lint":
 		err = runLint()
+	case "lint-file":
+		err = runLintFile(os.Args[2:])
 	case "test":
 		err = runTest()
 	case "check":
@@ -113,6 +117,40 @@ func runLint() error {
 	return runCmd(args...)
 }
 
+func runLintFile(args []string) error {
+	files, err := resolveLintFiles(args)
+	if err != nil {
+		return err
+	}
+
+	if err := runFmtCheckFiles(files); err != nil {
+		return err
+	}
+
+	patterns := lintPatternsForFiles(files)
+	targets := make(map[string]struct{}, len(files))
+	for _, file := range files {
+		targets[filepath.ToSlash(filepath.Clean(file))] = struct{}{}
+	}
+
+	issues, lintErr, err := collectLintIssues(patterns)
+	if err != nil {
+		return err
+	}
+
+	filtered := filterIssuesByFiles(issues, targets)
+	if len(filtered) > 0 {
+		printLintIssues(filtered)
+		return errors.New("backend lint:file failed")
+	}
+
+	if lintErr != nil {
+		return nil
+	}
+
+	return nil
+}
+
 func runTest() error {
 	return runCmd("test", "./pkg/...")
 }
@@ -159,7 +197,7 @@ func runWatch(args []string) error {
 }
 
 func goFiles() ([]string, error) {
-	targets := []string{"pkg", "cmd"}
+	targets := []string{"pkg", "cmd", "tools"}
 	files := make([]string, 0, 128)
 
 	for _, name := range []string{"app.go", "main.go"} {
@@ -208,7 +246,7 @@ func goFiles() ([]string, error) {
 func lintPatterns() ([]string, error) {
 	patterns := make([]string, 0, 2)
 
-	for _, root := range []string{"pkg", "cmd"} {
+	for _, root := range []string{"pkg", "cmd", "tools"} {
 		info, err := os.Stat(root)
 		if errors.Is(err, os.ErrNotExist) {
 			continue
@@ -225,6 +263,195 @@ func lintPatterns() ([]string, error) {
 		return nil, errors.New("no backend package directories found")
 	}
 	return patterns, nil
+}
+
+func lintPatternsForFiles(files []string) []string {
+	patterns := make([]string, 0, len(files))
+	seen := make(map[string]struct{}, len(files))
+
+	for _, file := range files {
+		dir := filepath.Dir(file)
+		pattern := "."
+		if dir != "." {
+			pattern = "./" + filepath.ToSlash(dir)
+		}
+		if _, ok := seen[pattern]; ok {
+			continue
+		}
+		seen[pattern] = struct{}{}
+		patterns = append(patterns, pattern)
+	}
+
+	sort.Strings(patterns)
+	return patterns
+}
+
+func resolveLintFiles(args []string) ([]string, error) {
+	if len(args) == 0 {
+		return nil, errors.New("lint-file requires at least one file or directory")
+	}
+
+	files := make([]string, 0, len(args))
+	seen := make(map[string]struct{}, len(args))
+
+	for _, target := range args {
+		info, err := os.Stat(target)
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, fmt.Errorf("target not found: %s", target)
+		}
+		if err != nil {
+			return nil, err
+		}
+
+		if !info.IsDir() {
+			file := filepath.Clean(target)
+			if !isBackendLintFile(file) {
+				return nil, fmt.Errorf("unsupported backend lint target: %s", target)
+			}
+			if _, ok := seen[file]; !ok {
+				seen[file] = struct{}{}
+				files = append(files, file)
+			}
+			continue
+		}
+
+		err = filepath.WalkDir(target, func(path string, entry fs.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
+			}
+			if entry.IsDir() {
+				if shouldSkipDir(entry.Name()) {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			file := filepath.Clean(path)
+			if !isBackendLintFile(file) {
+				return nil
+			}
+			if _, ok := seen[file]; ok {
+				return nil
+			}
+			seen[file] = struct{}{}
+			files = append(files, file)
+			return nil
+		})
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	sort.Strings(files)
+	if len(files) == 0 {
+		return nil, errors.New("no backend Go files matched the provided targets")
+	}
+	return files, nil
+}
+
+func isBackendLintFile(path string) bool {
+	if filepath.Ext(path) != ".go" {
+		return false
+	}
+
+	cleaned := filepath.ToSlash(filepath.Clean(path))
+	if cleaned == "app.go" || cleaned == "main.go" {
+		return true
+	}
+
+	return strings.HasPrefix(cleaned, "pkg/") || strings.HasPrefix(cleaned, "cmd/") || strings.HasPrefix(cleaned, "tools/")
+}
+
+func runFmtCheckFiles(files []string) error {
+	const chunkSize = 64
+	var changed []string
+
+	for start := 0; start < len(files); start += chunkSize {
+		end := min(start+chunkSize, len(files))
+		args := append([]string{"run", goimportsVersion, "-l"}, files[start:end]...)
+		output, err := runCmdOutput(args...)
+		if err != nil {
+			return err
+		}
+		for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
+			line = strings.TrimSpace(line)
+			if line != "" {
+				changed = append(changed, line)
+			}
+		}
+	}
+
+	if len(changed) > 0 {
+		return fmt.Errorf("goimports required for: %s", strings.Join(changed, ", "))
+	}
+
+	return nil
+}
+
+type golangciReport struct {
+	Issues []golangciIssue `json:"Issues"`
+}
+
+type golangciIssue struct {
+	FromLinter string `json:"FromLinter"`
+	Text       string `json:"Text"`
+	Pos        struct {
+		Filename string `json:"Filename"`
+		Line     int    `json:"Line"`
+		Column   int    `json:"Column"`
+	} `json:"Pos"`
+}
+
+func collectLintIssues(patterns []string) ([]golangciIssue, error, error) {
+	args := []string{"run", golangciLintVersion, "run", "--config", ".golangci.yml", "--out-format", "json"}
+	args = append(args, patterns...)
+
+	output, runErr := runCmdJSONOutput(args...)
+	if output == "" {
+		if runErr != nil {
+			return nil, runErr, runErr
+		}
+		return nil, nil, nil
+	}
+
+	var report golangciReport
+	if err := json.Unmarshal([]byte(output), &report); err != nil {
+		return nil, runErr, fmt.Errorf("failed to parse golangci-lint output: %w", err)
+	}
+
+	return report.Issues, runErr, nil
+}
+
+func filterIssuesByFiles(issues []golangciIssue, targets map[string]struct{}) []golangciIssue {
+	filtered := make([]golangciIssue, 0, len(issues))
+	for _, issue := range issues {
+		filename := filepath.ToSlash(filepath.Clean(issue.Pos.Filename))
+		if _, ok := targets[filename]; ok {
+			filtered = append(filtered, issue)
+		}
+	}
+
+	sort.Slice(filtered, func(i, j int) bool {
+		left := filtered[i]
+		right := filtered[j]
+		if left.Pos.Filename != right.Pos.Filename {
+			return left.Pos.Filename < right.Pos.Filename
+		}
+		if left.Pos.Line != right.Pos.Line {
+			return left.Pos.Line < right.Pos.Line
+		}
+		if left.Pos.Column != right.Pos.Column {
+			return left.Pos.Column < right.Pos.Column
+		}
+		return left.FromLinter < right.FromLinter
+	})
+
+	return filtered
+}
+
+func printLintIssues(issues []golangciIssue) {
+	for _, issue := range issues {
+		fmt.Printf("%s:%d:%d: [%s] %s\n", filepath.ToSlash(issue.Pos.Filename), issue.Pos.Line, issue.Pos.Column, issue.FromLinter, issue.Text)
+	}
 }
 
 func watchTargets() []string {
@@ -373,6 +600,19 @@ func runCmdOutput(args ...string) (string, error) {
 	cmd.Env = os.Environ()
 	output, err := cmd.Output()
 	return string(output), err
+}
+
+func runCmdJSONOutput(args ...string) (string, error) {
+	cmd := exec.Command("go", args...)
+	var stdout bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = os.Stderr
+	cmd.Env = os.Environ()
+	if runtime.GOOS == "windows" {
+		cmd.Env = append(cmd.Env, "GOFLAGS=")
+	}
+	err := cmd.Run()
+	return stdout.String(), err
 }
 
 func exitf(format string, args ...any) {

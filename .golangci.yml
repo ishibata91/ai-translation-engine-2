@@ -10,6 +10,7 @@ linters:
     - govet
     - revive
     - staticcheck
+    - stylecheck
 
 formatters:
   enable:
@@ -28,6 +29,11 @@ linters-settings:
       - name: superfluous-else
       - name: unexported-return
       - name: var-naming
+  stylecheck:
+    checks:
+      - ST1020
+      - ST1021
+      - ST1022
 
 issues:
   max-issues-per-linter: 0

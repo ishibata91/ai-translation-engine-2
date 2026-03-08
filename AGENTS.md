@@ -13,6 +13,8 @@
 - openspecが指定された場合は必ず従う。勝手に実装を始めない。
 - [architecture.md](openspec/specs/architecture.md) を常に参照して実装・提案を行う。
 - バックエンドを触る場合は、[backend_coding_standards.md](openspec/specs/backend_coding_standards.md) を常に参照して実装・提案を行う。
+- バックエンドを触る場合は、変更中ファイルに対して `npm run backend:lint:file -- <file...>` を逐次実行し、その結果を確認してから修正を進める。
+- バックエンドの変更では、AI は `backend:lint:file -> 修正 -> 再実行 -> 最後に lint:backend` の順で進める。
 - フロントを触る場合は、[frontend_architecture.md](openspec/specs/frontend_architecture.md) を常に参照して実装・提案を行う。
 - フロントを触る場合は、[frontend_coding_standards.md](openspec/specs/frontend_coding_standards.md) を常に参照して実装・提案を行う。
 - フロントを触る場合は、変更中ファイルに対して `npm run lint:file -- <file...>` を逐次実行し、その結果を確認してから修正を進める。
@@ -22,6 +24,7 @@
 
 ## バックエンド品質ルール
 - バックエンド修正を行ったら、作業中または完了前に必ず `npm run lint:backend` を実行する。
+- バックエンド修正では、必要に応じて `npm run backend:lint:file -- <file...>` を先行実行し、ファイル単位で lint を潰しながら進める。
 - 必要に応じて `npm run backend:check` や `npm run backend:watch` を使い、ローカルで品質確認を回す。
 
 ## 設計・提案
