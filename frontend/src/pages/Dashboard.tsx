@@ -1,43 +1,10 @@
-import React, { useMemo } from 'react';
-import { useTaskStore } from '../store/taskStore';
-import { useNavigate } from 'react-router-dom';
-import { FrontendTask } from '../types/task';
+import { useDashboard } from '../hooks/features/dashboard/useDashboard';
 
-import { useShallow } from 'zustand/react/shallow';
-
-const Dashboard: React.FC = () => {
-    const tasks = useTaskStore(useShallow(state => Object.values(state.tasks)));
-    const resumeTask = useTaskStore(state => state.resumeTask);
-    const cancelTask = useTaskStore(state => state.cancelTask);
-    const navigate = useNavigate();
-    const sortedTasks = useMemo(
-        () => [...tasks].sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()),
-        [tasks],
-    );
-
-    const handleTaskClick = (task: FrontendTask) => {
-        // Phase based routing
-        const navigationState = { state: { taskId: task.id, phase: task.phase } };
-        switch (task.type) {
-            case 'dictionary_build':
-                navigate('/dictionary', navigationState);
-                break;
-            case 'persona_extraction':
-                navigate('/master_persona', navigationState);
-                break;
-            case 'translation_project':
-                navigate('/translation_flow', navigationState);
-                break;
-        }
-    };
-
-    const handleResumeClick = (task: FrontendTask) => {
-        if (task.type === 'persona_extraction') {
-            navigate('/master_persona', { state: { taskId: task.id, phase: task.phase, resumeFromDashboard: true } });
-            return;
-        }
-        void resumeTask(task.id);
-    };
+/**
+ * 実行中および再開可能なジョブ一覧を表示する。
+ */
+export default function Dashboard() {
+    const { sortedTasks, cancelTask, handleTaskClick, handleResumeClick } = useDashboard();
 
     return (
         <div className="flex flex-col w-full p-4 gap-4">
@@ -125,6 +92,4 @@ const Dashboard: React.FC = () => {
             </div>
         </div>
     );
-};
-
-export default Dashboard;
+}

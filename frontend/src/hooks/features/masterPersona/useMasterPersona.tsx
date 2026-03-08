@@ -35,6 +35,9 @@ import {
 
 const PERSONA_PAGE_SIZE = 100;
 
+/**
+ * マスターペルソナ画面の state と action を集約し、ページ描画を headless 化する。
+ */
 export function useMasterPersona() {
     const location = useLocation();
     const [allNpcData, setAllNpcData] = useState<NpcRow[]>([]);

@@ -1,4 +1,3 @@
-import React from 'react';
 import { HelpCircle } from 'lucide-react';
 import DataTable from '../components/DataTable';
 import CrossSearchModal from '../components/dictionary/CrossSearchModal';
@@ -26,7 +25,10 @@ const CROSS_ENTRY_COLUMNS: GridColumnDef<DictEntry>[] = [
     { key: 'destText', header: '訳文 (日本語)', editable: true, widthClass: 'w-80' },
 ];
 
-const DictionaryBuilder: React.FC = () => {
+/**
+ * 辞書構築の一覧、インポート、編集画面を描画する。
+ */
+export default function DictionaryBuilder() {
     const { state, actions, ui, constants } = useDictionaryBuilder();
 
     if (state.view === 'entries' && state.selectedRow) {
@@ -270,6 +272,4 @@ const DictionaryBuilder: React.FC = () => {
             )}
         </div>
     );
-};
-
-export default DictionaryBuilder;
+}

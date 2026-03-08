@@ -1,4 +1,3 @@
-import React from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
 import ModelSettings from '../components/ModelSettings';
 import DataTable from '../components/DataTable';
@@ -45,7 +44,10 @@ const NPC_COLUMNS: ColumnDef<NpcRow, unknown>[] = [
 ];
 
 // ── ページコンポーネント ──────────────────────────────────
-const MasterPersona: React.FC = () => {
+/**
+ * マスターペルソナの生成設定と結果確認画面を描画する。
+ */
+export default function MasterPersona() {
     const {
         selectedRow,
         selectedRowId,
@@ -338,6 +340,4 @@ const MasterPersona: React.FC = () => {
             </dialog>
         </div>
     );
-};
-
-export default MasterPersona;
+}

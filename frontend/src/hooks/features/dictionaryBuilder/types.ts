@@ -1,5 +1,11 @@
+/**
+ * 辞書ソースの取り込み状態を表す。
+ */
 export type SourceStatus = '完了' | 'インポート中' | 'エラー';
 
+/**
+ * 辞書ソース一覧に表示する 1 行分のデータ。
+ */
 export interface DictSourceRow {
     id: string;
     fileName: string;
@@ -13,6 +19,9 @@ export interface DictSourceRow {
     errorMessage: string | null;
 }
 
+/**
+ * 辞書エントリ編集に用いる行データ。
+ */
 export interface DictEntry {
     id: number;
     sourceId: string;
@@ -23,11 +32,17 @@ export interface DictEntry {
     destText: string;
 }
 
+/**
+ * ページネーション済み辞書エントリの結果。
+ */
 export interface DictEntryPage {
     entries: DictEntry[];
     totalCount: number;
 }
 
+/**
+ * 辞書エントリ更新 API に渡す payload。
+ */
 export interface DictUpdateEntryPayload {
     id: number;
     source_id: number;
@@ -43,8 +58,14 @@ export const STATUS_BADGE: Record<SourceStatus, string> = {
     'エラー': 'badge-error',
 };
 
+/**
+ * Dictionary Builder の画面モード。
+ */
 export type View = 'list' | 'entries' | 'cross-search';
 
+/**
+ * 辞書インポート進捗イベントの payload。
+ */
 export interface DictionaryProgressEvent {
     CorrelationID: string;
     Status: 'STARTED' | 'COMPLETED' | 'FAILED' | 'IN_PROGRESS';
@@ -53,6 +74,9 @@ export interface DictionaryProgressEvent {
     Completed: number;
 }
 
+/**
+ * Dictionary Builder が保持する state 群。
+ */
 export interface DictionaryBuilderState {
     view: View;
     selectedRow: DictSourceRow | null;
@@ -72,6 +96,9 @@ export interface DictionaryBuilderState {
     crossQuery: string;
 }
 
+/**
+ * Dictionary Builder から UI に公開する操作群。
+ */
 export interface DictionaryBuilderActions {
     setView: (view: View) => void;
     openCrossSearch: () => void;
@@ -91,10 +118,16 @@ export interface DictionaryBuilderActions {
     handleCrossSave: (modified: DictEntry[], deleted: DictEntry[]) => Promise<void>;
 }
 
-export interface DictionaryBuilderUi {
+/**
+ * Dictionary Builder の描画用 UI 契約。
+ */
+interface DictionaryBuilderUi {
     sourceColumns: import('@tanstack/react-table').ColumnDef<DictSourceRow, unknown>[];
 }
 
+/**
+ * Dictionary Builder hook の戻り値全体。
+ */
 export interface UseDictionaryBuilderResult {
     state: DictionaryBuilderState;
     actions: DictionaryBuilderActions;

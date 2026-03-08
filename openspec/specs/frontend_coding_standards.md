@@ -72,20 +72,47 @@
 
 ## 5. 推奨ツール（デファクト）
 
-- Lint: `eslint`, `typescript-eslint`, `eslint-plugin-import`, `eslint-plugin-react-hooks`, `eslint-plugin-react-refresh`
+- Lint: `eslint`, `typescript-eslint`, `eslint-plugin-import`, `eslint-plugin-react-hooks`, `eslint-plugin-react-refresh`, `eslint-plugin-tsdoc`, `eslint-plugin-jsdoc`
 - Format: `prettier`, `eslint-config-prettier`
 - Test: `vitest`, `@testing-library/react`, `@testing-library/user-event`, `msw`
 - Runtime Validation: `zod`（Wails境界の入力/出力検証）
 
-## 6. 品質ゲート
+## 6. lint 化ポリシー
+
+### 6.1 lint で強制する項目
+
+- `pages` から `wailsjs` / `store` への直接 import 禁止
+- `any` の使用禁止
+- 公開 Hook、feature 型、ページコンポーネントへの TSDoc 必須化
+- TSDoc 構文の妥当性
+- 変更対象ファイル内での不要な `export` 検出
+- 既存の feature 単位 override で有効化されている `react-hooks/exhaustive-deps`、`max-depth`、`no-else-return` などの厳格ルール
+
+### 6.2 AI が逐次補完する項目
+
+- 1 関数 1 責務（SRP）になっているか
+- Hook の戻り値が `state / action / selector` の論理分割になっているか
+- Wails adapter の責務が UI 層へ漏れていないか
+- 読解負荷が高すぎる巨大関数や巨大 JSX を放置していないか
+- lint だけでは判定し切れない公開範囲の妥当性
+
+### 6.3 実行フロー
+
+- 変更中ファイルの確認は `npm run lint:file -- <file...>` を使う
+- `lint:file` は JSON 形式で結果を返し、AI がその場で修正に利用する
+- フロント変更時の標準フローは `lint:file -> 修正 -> 再実行 -> 最後に lint:frontend`
+- `npm run lint:frontend` は作業完了前に必ず実行する
+
+## 7. 品質ゲート
 
 - ローカル実行で以下を必須化する。
 - `npm run typecheck`
 - `npm run lint`
+- `npm run lint:file -- <file...>`（変更中ファイルの逐次確認）
 - `npm run test`
 - `npm run build`
 
-## 7. リファクタ開始時の優先順位
+## 8. リファクタ開始時の優先順位
 
 1. インポート境界の lint 導入（`pages` -> `wailsjs/store` 禁止）
 2. `DictionaryBuilder` のページ責務をさらに薄くし、Hook 戻り値を整理
@@ -93,6 +120,6 @@
 4. Wails adapter 関数の共通化
 5. テスト基盤導入と主要 Hook の振る舞いテスト作成
 
-## 8. 例外許容箇所
+## 9. 例外許容箇所
 
 - 現時点の暫定許容箇所は **なし**（2026-03-08 時点）。

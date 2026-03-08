@@ -1,5 +1,11 @@
-export type PersonaProgressStatus = 'IN_PROGRESS' | 'COMPLETED' | 'FAILED';
+/**
+ * ペルソナ生成進捗イベントの状態値。
+ */
+type PersonaProgressStatus = 'IN_PROGRESS' | 'COMPLETED' | 'FAILED';
 
+/**
+ * ペルソナ生成進捗イベントの payload。
+ */
 export interface PersonaProgressEvent {
     CorrelationID: string;
     Total: number;
@@ -9,6 +15,9 @@ export interface PersonaProgressEvent {
     Message: string;
 }
 
+/**
+ * ペルソナ一覧へ整形する前の NPC レコード。
+ */
 export interface PersonaNPCRecord {
     persona_id?: number;
     PersonaID?: number;
@@ -36,6 +45,9 @@ export interface PersonaNPCRecord {
     UpdatedAt?: string;
 }
 
+/**
+ * ペルソナ詳細へ整形する前の会話レコード。
+ */
 export interface PersonaDialogueRecord {
     persona_id?: number;
     PersonaID?: number;

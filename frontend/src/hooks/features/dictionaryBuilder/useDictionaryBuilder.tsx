@@ -35,6 +35,9 @@ const showModal = (id: string) => {
     modal?.showModal();
 };
 
+/**
+ * 辞書構築画面の state、action、UI 契約をまとめて返す。
+ */
 export function useDictionaryBuilder(): UseDictionaryBuilderResult {
     const [view, setView] = useState<View>('list');
     const [selectedRow, setSelectedRow] = useState<DictSourceRow | null>(null);

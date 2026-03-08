@@ -15,6 +15,8 @@
 - バックエンドを触る場合は、[backend_coding_standards.md](openspec/specs/backend_coding_standards.md) を常に参照して実装・提案を行う。
 - フロントを触る場合は、[frontend_architecture.md](openspec/specs/frontend_architecture.md) を常に参照して実装・提案を行う。
 - フロントを触る場合は、[frontend_coding_standards.md](openspec/specs/frontend_coding_standards.md) を常に参照して実装・提案を行う。
+- フロントを触る場合は、変更中ファイルに対して `npm run lint:file -- <file...>` を逐次実行し、その結果を確認してから修正を進める。
+- フロントの変更では、AI は `lint:file -> 修正 -> 再実行 -> 最後に lint:frontend` の順で進める。
 - フロントの変更を行ったら、作業完了前に `npm run lint:frontend` を必ず実行する。
 - 仕様書など資料の図はmermaidで出力する。
 

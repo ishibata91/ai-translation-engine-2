@@ -3,6 +3,9 @@ import { useUIStore } from '../store/uiStore';
 
 const THEME_STORAGE_KEY = 'ai_translation_engine_theme';
 
+/**
+ * UI ストアと localStorage を同期し、利用可能なテーマ一覧を返す。
+ */
 export function useTheme() {
     const { theme, setTheme } = useUIStore();
 
