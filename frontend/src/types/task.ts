@@ -10,7 +10,7 @@ export interface FrontendTask {
     phase: string;
     progress: number;
     error_msg?: string;
-    metadata: Record<string, any>;
+    metadata: Record<string, unknown>;
     created_at: string;
     updated_at: string;
 }
@@ -18,5 +18,6 @@ export interface FrontendTask {
 export interface PhaseCompletedEvent {
     taskId: string;
     phase: string;
-    summary: any;
+    summary: unknown;
 }
+

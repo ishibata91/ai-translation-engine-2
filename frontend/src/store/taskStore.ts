@@ -57,8 +57,8 @@ export const useTaskStore = create<TaskState>((set, get) => ({
         set({ isLoading: true });
         try {
             const tasks = typeof GetActiveTasks === 'function'
-                ? (await GetActiveTasks() as any) as FrontendTask[]
-                : (await GetAllTasks() as any) as FrontendTask[];
+                ? (await GetActiveTasks() as unknown) as FrontendTask[]
+                : (await GetAllTasks() as unknown) as FrontendTask[];
             const activeOnly = (tasks || []).filter((t) => t.status !== 'completed');
             get().setTasks(activeOnly);
         } catch (error) {
@@ -102,10 +102,11 @@ export const initTaskListeners = () => {
         useTaskStore.getState().updateTask(task);
     });
 
-    Events.EventsOn('task:phase_completed', (payload: { taskId: string, phase: string, summary: any }) => {
+    Events.EventsOn('task:phase_completed', (payload: { taskId: string, phase: string, summary: unknown }) => {
         console.log('Phase completed:', payload);
         // Additional handling can be added here (e.g., refetching data related to the task)
     });
 
     listenersInitialized = true;
 };
+

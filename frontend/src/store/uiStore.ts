@@ -5,7 +5,7 @@ export type DetailPaneType = 'log' | 'job' | null;
 interface DetailPaneState {
     isOpen: boolean;
     type: DetailPaneType;
-    payload: any;
+    payload: unknown;
 }
 
 interface UIState {
@@ -17,7 +17,7 @@ interface UIState {
     setTheme: (theme: string) => void;
     toggleSidebar: () => void;
     setLogViewerWidth: (width: number) => void;
-    setDetailPane: (isOpen: boolean, type?: DetailPaneType, payload?: any) => void;
+    setDetailPane: (isOpen: boolean, type?: DetailPaneType, payload?: unknown) => void;
     closeDetailPane: () => void;
 }
 
@@ -45,3 +45,4 @@ export const useUIStore = create<UIState>((set) => ({
         detailPane: { ...state.detailPane, isOpen: false }
     }))
 }));
+

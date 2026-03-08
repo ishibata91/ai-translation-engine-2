@@ -1,6 +1,7 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useUIStore } from '../../store/uiStore';
 import LogDetail from '../log/LogDetail';
+import type { LogEntry } from '../log/LogDetail';
 
 const DetailPane: React.FC = () => {
     const { detailPane, closeDetailPane } = useUIStore();
@@ -48,8 +49,9 @@ const DetailPane: React.FC = () => {
     };
 
     let title = '詳細';
-    if (type === 'log' && payload) {
-        title = `ログ詳細: ${payload.level}`;
+    const logPayload = type === 'log' ? (payload as LogEntry | null) : null;
+    if (logPayload) {
+        title = `ログ詳細: ${logPayload.level}`;
     }
 
     return (
@@ -94,7 +96,7 @@ const DetailPane: React.FC = () => {
             </div>
 
             <div className="flex-1 overflow-y-auto p-4 min-h-0">
-                {type === 'log' && payload && <LogDetail log={payload} />}
+                {type === 'log' && logPayload && <LogDetail log={logPayload} />}
             </div>
         </div>
     );

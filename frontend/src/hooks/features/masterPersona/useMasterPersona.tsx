@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import type { NpcRow, NpcStatus } from '../../../types/npc';
+import type { NpcRow } from '../../../types/npc';
 import { SelectJSONFile } from '../../../wailsjs/go/main/App';
 import { CancelTask, GetAllTasks, GetTaskRequestState, ResumeTask, StartMasterPersonTask } from '../../../wailsjs/go/task/Bridge';
 import { ListDialoguesByPersonaID, ListNPCs } from '../../../wailsjs/go/persona/Service';
@@ -14,93 +14,24 @@ import {
 } from '../../../types/masterPersona';
 import * as Events from '../../../wailsjs/runtime/runtime';
 import type { PersonaProgressEvent, PersonaNPCRecord, PersonaDialogueRecord } from './types';
-
-const pickString = (value: unknown): string => {
-    if (typeof value === 'string') {
-        return value;
-    }
-    return '';
-};
-
-const formatUpdatedAt = (raw: string): string => {
-    const ts = Date.parse(raw);
-    if (!Number.isFinite(ts)) {
-        return '';
-    }
-    return new Date(ts).toLocaleString('ja-JP');
-};
-
-const normalizeNpcStatus = (value: unknown): NpcStatus => value === 'generated' ? 'generated' : 'draft';
-
-const MASTER_PERSONA_LLM_NAMESPACE = 'master_persona.llm';
-const MASTER_PERSONA_PROMPT_NAMESPACE = 'master_persona.prompt';
-const SELECTED_PROVIDER_KEY = 'selected_provider';
-const USER_PROMPT_KEY = 'user_prompt';
-const SYSTEM_PROMPT_KEY = 'system_prompt';
-
-const normalizeProvider = (value: string | undefined): MasterPersonaLLMConfig['provider'] => {
-    if (value === 'lmstudio' || value === 'gemini' || value === 'openai' || value === 'xai') {
-        return value;
-    }
-    return DEFAULT_MASTER_PERSONA_LLM_CONFIG.provider;
-};
-
-const providerNamespace = (provider: MasterPersonaLLMConfig['provider']): string =>
-    `${MASTER_PERSONA_LLM_NAMESPACE}.${provider}`;
-const syncConcurrencyKey = (provider: MasterPersonaLLMConfig['provider']): string =>
-    `sync_concurrency.${provider}`;
-
-const toErrorMessage = (error: unknown, fallback: string): string => {
-    if (typeof error === 'string' && error.trim() !== '') {
-        return error;
-    }
-    if (error && typeof error === 'object') {
-        const message = (error as { message?: unknown }).message;
-        if (typeof message === 'string' && message.trim() !== '') {
-            return message;
-        }
-    }
-    return fallback;
-};
-
-const statusMessageFromTask = (task: FrontendTask): string => {
-    switch (task.status) {
-        case 'running':
-            return 'リクエストを実行しています...';
-        case 'paused':
-        case 'cancelled':
-            return '一時停止中';
-        case 'request_generated':
-            return 'リクエスト生成完了';
-        case 'failed':
-            return 'タスク実行に失敗しました';
-        case 'completed':
-            return '処理完了';
-        default:
-            return '待機中';
-    }
-};
-
-const buildProviderConfigPairs = (cfg: MasterPersonaLLMConfig): Record<string, string> => ({
-    model: cfg.model,
-    endpoint: cfg.endpoint,
-    api_key: cfg.provider === 'lmstudio' ? '' : cfg.apiKey,
-    temperature: String(cfg.temperature),
-    context_length: String(cfg.contextLength),
-});
-
-const buildPromptConfigPairs = (cfg: MasterPersonaPromptConfig): Record<string, string> => ({
-    [USER_PROMPT_KEY]: cfg.userPrompt,
-    [SYSTEM_PROMPT_KEY]: cfg.systemPrompt,
-});
-
-const parseTaskTimestamp = (value: string | undefined): number => {
-    if (!value) {
-        return 0;
-    }
-    const t = Date.parse(value);
-    return Number.isFinite(t) ? t : 0;
-};
+import {
+    MASTER_PERSONA_LLM_NAMESPACE,
+    MASTER_PERSONA_PROMPT_NAMESPACE,
+    SELECTED_PROVIDER_KEY,
+    USER_PROMPT_KEY,
+    SYSTEM_PROMPT_KEY,
+    pickString,
+    formatUpdatedAt,
+    normalizeNpcStatus,
+    normalizeProvider,
+    providerNamespace,
+    syncConcurrencyKey,
+    toErrorMessage,
+    statusMessageFromTask,
+    buildProviderConfigPairs,
+    buildPromptConfigPairs,
+    parseTaskTimestamp,
+} from './helpers';
 
 const PERSONA_PAGE_SIZE = 100;
 
@@ -879,3 +810,4 @@ export function useMasterPersona() {
         providerNamespace,
     };
 }
+

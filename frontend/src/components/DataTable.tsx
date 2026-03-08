@@ -34,7 +34,6 @@ function DataTable<TData>({
     defaultOpen = true,
     enableColumnFilter = false,
 }: DataTableProps<TData>) {
-    // TanStack の rowSelection は { [rowIndex: string]: boolean } 形式
     const rowSelection: Record<string, boolean> = selectedRowId != null
         ? { [selectedRowId]: true }
         : {};
@@ -45,15 +44,16 @@ function DataTable<TData>({
         state: { rowSelection },
         getCoreRowModel: getCoreRowModel(),
         enableRowSelection: true,
-        getRowId: (row: any, index: number) => row.id !== undefined ? String(row.id) : String(index),
-        // 選択制御は onRowSelect 経由で親が行うため内部更新は無効化
+        getRowId: (row: TData, index: number) => {
+            const candidate = (row as { id?: unknown }).id;
+            return candidate !== undefined ? String(candidate) : String(index);
+        },
         onRowSelectionChange: () => { },
     });
 
     const handleRowClick = (rowId: string, rowData: TData) => {
         if (!onRowSelect) return;
         if (selectedRowId === rowId) {
-            // 同一行を再クリック → 閉じる
             onRowSelect(null, null);
         } else {
             onRowSelect(rowData, rowId);
@@ -66,18 +66,18 @@ function DataTable<TData>({
     return (
         <Wrapper
             className={collapsible
-                ? "collapse collapse-arrow bg-base-100 border border-base-200 shadow-sm flex flex-col open:flex-1 open:min-h-0"
-                : "card bg-base-100 border border-base-200 shadow-sm flex-1 flex flex-col min-h-0"}
+                ? 'collapse collapse-arrow bg-base-100 border border-base-200 shadow-sm flex flex-col open:flex-1 open:min-h-0'
+                : 'card bg-base-100 border border-base-200 shadow-sm flex-1 flex flex-col min-h-0'}
             open={collapsible ? defaultOpen : undefined}
             {...(collapsible ? {} : {})}
         >
             {(title || headerActions) && (
-                <HeaderWrapper className={collapsible ? "collapse-title flex flex-col xl:flex-row justify-between xl:items-center gap-4 px-6 py-3 min-h-0" : "flex flex-col xl:flex-row justify-between xl:items-center gap-4 px-6 pt-4 pb-2"}>
+                <HeaderWrapper className={collapsible ? 'collapse-title flex flex-col xl:flex-row justify-between xl:items-center gap-4 px-6 py-3 min-h-0' : 'flex flex-col xl:flex-row justify-between xl:items-center gap-4 px-6 pt-4 pb-2'}>
                     {title && <h2 className="card-title text-base font-bold whitespace-nowrap shrink-0">{title}</h2>}
                     {headerActions && <div className="flex flex-wrap gap-2 w-full xl:w-auto xl:justify-end" onClick={e => collapsible && e.stopPropagation()}>{headerActions}</div>}
                 </HeaderWrapper>
             )}
-            <div className={collapsible ? "collapse-content flex-1 flex flex-col min-h-0 p-0" : "flex-1 flex flex-col min-h-0"}>
+            <div className={collapsible ? 'collapse-content flex-1 flex flex-col min-h-0 p-0' : 'flex-1 flex flex-col min-h-0'}>
                 <div className="overflow-x-auto overflow-y-auto flex-1 min-h-0">
                     <table className="table table-zebra table-pin-rows w-full">
                         <thead>
