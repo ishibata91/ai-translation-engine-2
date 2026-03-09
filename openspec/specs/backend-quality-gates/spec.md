@@ -62,6 +62,28 @@
 - **WHEN** 品質ゲートを日常開発で実行する
 - **THEN** `govulncheck` は必須失敗条件に含まれず、任意実行手順として別途定義されている
 
+### Requirement: context伝播違反を品質ゲートで検出しなければならない
+システムは、`pkg/**` を対象に `context.Context` の伝播違反を検出する静的検査をバックエンド品質ゲートへ含めなければならない。検査は、公開入口で受けた `ctx` の未伝播、不適切な `context.Background()` / `context.TODO()` の利用、および goroutine 起点での `ctx` 脱落を検出できなければならない。
+
+#### Scenario: 公開入口で受けたctxを内部処理へ渡さない
+- **WHEN** 開発者が `ctx context.Context` を受けた公開メソッドから、I/O または外部依頼を行う内部処理へ `ctx` を渡さずに呼び出す
+- **THEN** 品質ゲートは `context` 伝播違反として報告しなければならない
+
+#### Scenario: context.BackgroundまたはTODOを業務処理で新規生成する
+- **WHEN** 開発者が公開入口や workflow / slice / gateway の業務処理内で、既存の `ctx` を無視して `context.Background()` または `context.TODO()` を利用する
+- **THEN** 品質ゲートは trace / cancel 伝播を壊す違反として報告しなければならない
+
+#### Scenario: goroutine起点でctxを落とす
+- **WHEN** 開発者が goroutine を起動する処理で、親 `ctx` を引き継がずに非同期処理を開始する
+- **THEN** 品質ゲートは goroutine 境界での `context` 脱落として報告しなければならない
+
+### Requirement: context伝播検査は正当な除外境界を持たなければならない
+システムは、初期化専用コード、テスト補助、純粋関数など `context.Context` 伝播義務の外にあるケースを識別し、実運用不能な誤検知を避けなければならない。
+
+#### Scenario: 初期化専用コードは一律違反にしない
+- **WHEN** 開発者が composition root やテストセットアップで `context.Background()` を利用する
+- **THEN** 品質ゲートは当該コードを除外対象として扱うか、少なくとも業務処理違反とは区別して報告しなければならない
+
 ### Requirement: slog利用規約違反を品質ゲートで検出しなければならない
 システムは、`pkg/**` を対象に `slog` 利用規約違反を検出する静的チェックをバックエンド品質ゲートへ含めなければならない。検査は、`slog.Info/Error/Warn/Debug` の直接利用、`slog.*Context` を使うべき箇所での context なし logging、および主要構造化 key の lower_snake_case 違反を対象に含めなければならない。
 
@@ -124,3 +146,18 @@
 #### Scenario: ローカル helper 再送出は MVP の必須境界に含めない
 - **WHEN** 開発者が非公開 helper 内で受け取った `error` を同一 package の内部都合として返す
 - **THEN** 品質ゲートは package 境界違反として一律に報告してはならない
+
+### Requirement: 高コストな設計lintはblocking導入前に成立性評価を完了しなければならない
+システムは、公開メソッドの責務過多のように誤検知コストが高い設計 lint をバックエンド品質ゲートへ追加する前に、実装可否、誤検知率、導入コスト、および最小 MVP を整理した成立性評価を完了しなければならない。
+
+#### Scenario: 設計lint候補をblocking追加したい
+- **WHEN** 開発者が公開メソッドの責務過多を検出する設計 lint を `backend:lint` の失敗条件へ加えようとする
+- **THEN** システムは事前に MVP ルール、想定誤検知、導入コストを整理した成立性評価を持たなければならない
+
+#### Scenario: 誤検知が高くblocking不適と判断される
+- **WHEN** 成立性評価の結果、責務過多の判定が安定せず誤検知率が高いと分かった
+- **THEN** システムは当該ルールを blocking lint として追加せず、レビュー観点または任意チェックとして扱う判断を残さなければならない
+
+#### Scenario: MVPが成立すると判断される
+- **WHEN** 成立性評価で、検出対象を限定した MVP なら実運用可能と判断された
+- **THEN** システムは検出対象、除外境界、導入段階を定義した上で次 change に実装を進められなければならない
