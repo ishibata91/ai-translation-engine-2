@@ -5,6 +5,7 @@ run:
 linters:
   default: none
   enable:
+    - depguard
     - errcheck
     - gosec
     - govet
@@ -17,6 +18,46 @@ formatters:
     - gofmt
 
 linters-settings:
+  depguard:
+    rules:
+      slice_boundary:
+        files:
+          - pkg/slice/**/*.go
+        list-mode: lax
+        deny:
+          - pkg: github.com/ishibata91/ai-translation-engine-2/pkg/gateway$
+            desc: slice must not import gateway directly
+          - pkg: github.com/ishibata91/ai-translation-engine-2/pkg/gateway/
+            desc: slice must not import gateway directly
+          - pkg: github.com/ishibata91/ai-translation-engine-2/pkg/controller$
+            desc: slice must not import controller
+          - pkg: github.com/ishibata91/ai-translation-engine-2/pkg/controller/
+            desc: slice must not import controller
+          - pkg: github.com/ishibata91/ai-translation-engine-2/pkg/workflow$
+            desc: slice must not import workflow
+          - pkg: github.com/ishibata91/ai-translation-engine-2/pkg/workflow/
+            desc: slice must not import workflow
+          - pkg: github.com/ishibata91/ai-translation-engine-2/pkg/runtime$
+            desc: slice must not import runtime
+          - pkg: github.com/ishibata91/ai-translation-engine-2/pkg/runtime/
+            desc: slice must not import runtime
+      runtime_boundary:
+        files:
+          - pkg/runtime/**/*.go
+        list-mode: lax
+        deny:
+          - pkg: github.com/ishibata91/ai-translation-engine-2/pkg/controller$
+            desc: runtime must not import controller
+          - pkg: github.com/ishibata91/ai-translation-engine-2/pkg/controller/
+            desc: runtime must not import controller
+          - pkg: github.com/ishibata91/ai-translation-engine-2/pkg/workflow$
+            desc: runtime must not import workflow
+          - pkg: github.com/ishibata91/ai-translation-engine-2/pkg/workflow/
+            desc: runtime must not import workflow
+          - pkg: github.com/ishibata91/ai-translation-engine-2/pkg/slice$
+            desc: runtime must not import slice
+          - pkg: github.com/ishibata91/ai-translation-engine-2/pkg/slice/
+            desc: runtime must not import slice
   revive:
     rules:
       - name: context-as-argument

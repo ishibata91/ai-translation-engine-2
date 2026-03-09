@@ -19,8 +19,8 @@ import (
 const (
 	goimportsVersion    = "golang.org/x/tools/cmd/goimports@v0.38.0"
 	golangciLintVersion = "github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8"
-	goCleanarchVersion  = "github.com/roblaszczak/go-cleanarch@v1.2.0"
 	govulncheckVersion  = "golang.org/x/vuln/cmd/govulncheck@v1.1.4"
+	wireVersion         = "github.com/google/wire/cmd/wire@v0.7.0"
 )
 
 func main() {
@@ -118,7 +118,7 @@ func runLint() error {
 	if err := runCmd(args...); err != nil {
 		return err
 	}
-	if err := runCleanarch(); err != nil {
+	if err := runWireCheck(); err != nil {
 		return err
 	}
 	if err := runContextCheck(patterns); err != nil {
@@ -172,18 +172,8 @@ func runVuln() error {
 	return runCmd("run", govulncheckVersion, "./pkg/...")
 }
 
-func runCleanarch() error {
-	args := []string{
-		"run",
-		goCleanarchVersion,
-		"-ignore-tests",
-		"-application", "workflow",
-		"-interfaces", "controller",
-		"-infrastructure", "runtime",
-		"-domain", "gateway",
-		"./pkg",
-	}
-	return runCmd(args...)
+func runWireCheck() error {
+	return runCmd("run", wireVersion, "check", "./...")
 }
 
 func runContextCheck(patterns []string) error {

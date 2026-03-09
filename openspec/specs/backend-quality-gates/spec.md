@@ -30,16 +30,27 @@
 - **THEN** 同一コマンド群または同等設定で判定結果が一致する
 
 ### Requirement: 依存方向 lint を品質ゲートへ含めなければならない
-システムは `go-cleanarch` を用いて責務区分の依存方向違反を検出し、バックエンド品質ゲートへ含めなければならない。
+システムは `depguard` を用いて責務区分の import 依存方向違反を検出し、バックエンド品質ゲートへ含めなければならない。
 
 #### Scenario: 依存方向違反が検出される
 - **WHEN** controller が runtime 具象へ直接依存するなどの違反を追加する
-- **THEN** `go-cleanarch` は違反を検出しなければならない
+- **THEN** `depguard` は違反を検出しなければならない
 
 #### Scenario: runtime から gateway の限定依存だけが許可される
 - **WHEN** queue worker が LLM gateway を利用する
 - **THEN** 品質ゲートは当該依存を許可しなければならない
 - **AND** runtime から slice 具象への依存は許可してはならない
+
+### Requirement: Wire 束縛整合性検査を品質ゲートへ含めなければならない
+システムは `google/wire` の `check` を用いて provider graph と interface 束縛の整合性を検証し、バックエンド品質ゲートへ含めなければならない。
+
+#### Scenario: Wire provider graph が壊れている
+- **WHEN** 開発者が `wire.Bind` の実装型や provider 戻り値を不整合な状態で追加する
+- **THEN** 品質ゲートは `wire check` の失敗として報告しなければならない
+
+#### Scenario: import 違反と束縛不整合を別系統で検知する
+- **WHEN** 開発者が package import では境界を守っているが、Wire で不正な束縛や解決不能な graph を導入する
+- **THEN** `depguard` とは別に `wire check` が束縛不整合を報告しなければならない
 
 ### Requirement: ファイル単位lint導線の提供
 システムは、バックエンド変更中の反復修正を支えるため、指定した `.go` ファイル群だけを対象にした lint 実行導線を提供しなければならない。

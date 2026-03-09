@@ -86,7 +86,7 @@
 
 1. `pkg/controller`
 2. `pkg/workflow`
-3. `pkg/<usecase-slice>`
+3. `pkg/slice/<usecase-slice>`
 4. `pkg/runtime`
 5. `pkg/artifact`
 6. `pkg/gateway`
@@ -102,8 +102,8 @@ graph TD
 
     C["pkg/controller"]:::controller
     W["pkg/workflow"]:::workflow
-    S1["pkg/persona"]:::slice
-    S2["pkg/translator"]:::slice
+    S1["pkg/slice/persona"]:::slice
+    S2["pkg/slice/translator"]:::slice
     R1["pkg/runtime/executor"]:::runtime
     R2["pkg/runtime/progress"]:::runtime
     A1["pkg/artifact/persona"]:::artifact
@@ -156,7 +156,7 @@ graph TD
 - runtime 内部の状態機械
 - artifact / gateway 実装の詳細
 
-### 3.3 `pkg/<usecase-slice>`
+### 3.3 `pkg/slice/<usecase-slice>`
 
 役割:
 
