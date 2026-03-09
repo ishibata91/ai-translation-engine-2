@@ -33,10 +33,10 @@ func (w *WailsNotifier) SetEventName(name string) {
 }
 
 // OnProgress は ProgressEvent をフロントエンドに送信する。
-func (w *WailsNotifier) OnProgress(_ context.Context, event ProgressEvent) {
+func (w *WailsNotifier) OnProgress(ctx context.Context, event ProgressEvent) {
 	if w.wailsCtx != nil {
 		runtime.EventsEmit(w.wailsCtx, w.eventName, event)
 	} else {
-		w.logger.Warn("wails context is not set, skipping progress event")
+		w.logger.WarnContext(ctx, "wails context is not set, skipping progress event")
 	}
 }

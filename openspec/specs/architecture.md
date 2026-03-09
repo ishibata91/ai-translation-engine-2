@@ -28,8 +28,10 @@
 - 接続は契約から考える
 - 具象実装の知識は composition root に閉じ込める
 - usecase slice は自分の業務ロジックと DTO に集中する
+- usecase slice は自 slice の永続化契約と artifact 契約に集中する
 - UI 入出力とユースケース進行を分離する
 - 実行制御基盤と外部依頼口を分離する
+- slice 間受け渡しを slice 直接依存ではなく artifact に集約する
 
 ---
 
@@ -58,20 +60,36 @@
 - 複数 contract を束ねる責務は `workflow` に集約する
 - controller は orchestration しない
 - runtime はユースケース進行を決定しない
+- artifact はユースケース進行を決定しない
 - gateway はユースケース進行を決定しない
 - usecase slice は UI イベントを送信せず、進行事実や結果を workflow へ返す
+
+### 2.5 Runtime Executes External IO
+
+- LLM、外部 API、ファイル、secret、config などの外部 I/O を伴う実処理は `runtime` が実行する
+- `workflow` は実行要求と進行管理を担い、外部 I/O の中身を実装しない
+- usecase slice は `gateway` を直接使わず、外部実行結果を業務的に解釈して自 slice の永続化契約へ反映する
+- `runtime` は外部実行結果を workflow に返し、workflow が後続 slice への受け渡しを制御する
+
+### 2.6 Artifact Is Shared Handoff Boundary
+
+- `artifact` は slice 間で受け渡す中間成果物、共有済みデータ、resume 用状態を保存・参照する共有境界とする
+- 他 slice が必要とするデータを、ある slice の内部保存物として直接参照してはならない
+- slice 間の受け渡しは、workflow が artifact 識別子や検索条件を束ねて実現する
+- artifact は保存・検索の責務だけを持ち、業務判断や進行決定を持たない
 
 ---
 
 ## 3. システムの責務区分
 
-このプロジェクトは、厳密な直列レイヤーではなく、責務を 5 区分に分ける。
+このプロジェクトは、厳密な直列レイヤーではなく、責務を 6 区分に分ける。
 
 1. `pkg/controller`
 2. `pkg/workflow`
 3. `pkg/<usecase-slice>`
 4. `pkg/runtime`
-5. `pkg/gateway`
+5. `pkg/artifact`
+6. `pkg/gateway`
 
 ```mermaid
 graph TD
@@ -79,26 +97,28 @@ graph TD
     classDef workflow fill:#fff0d6,stroke:#ef6c00,stroke-width:2px,color:#402100;
     classDef slice fill:#f3e5f5,stroke:#8e24aa,stroke-width:2px,color:#2d1633;
     classDef runtime fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#18361a;
+    classDef artifact fill:#fff8e1,stroke:#f9a825,stroke-width:2px,color:#3c2d00;
     classDef gateway fill:#fbe9e7,stroke:#d84315,stroke-width:2px,color:#3b1d14;
 
     C["pkg/controller"]:::controller
     W["pkg/workflow"]:::workflow
     S1["pkg/persona"]:::slice
     S2["pkg/translator"]:::slice
-    R1["pkg/runtime/queue"]:::runtime
+    R1["pkg/runtime/executor"]:::runtime
     R2["pkg/runtime/progress"]:::runtime
-    G1["pkg/gateway/datastore"]:::gateway
+    A1["pkg/artifact/persona"]:::artifact
+    A2["pkg/artifact/translation"]:::artifact
+    G1["pkg/gateway/file"]:::gateway
     G2["pkg/gateway/llm"]:::gateway
 
     C --> W
-    W --> S1
-    W --> S2
     W --> R1
     W --> R2
-    S1 --> G1
-    S1 --> G2
-    S2 --> G1
-    S2 --> G2
+    W --> S1
+    W --> S2
+    S1 --> A1
+    S2 --> A2
+    R1 --> G1
     R1 --> G2
 ```
 
@@ -115,7 +135,7 @@ graph TD
 - ユースケース進行
 - phase / progress / resume / cancel の決定
 - slice 間 DTO 変換
-- runtime / gateway の直接制御
+- runtime / artifact / gateway の直接制御
 
 ### 3.2 `pkg/workflow`
 
@@ -126,6 +146,7 @@ graph TD
 - phase / progress / resume / cancel / state の管理
 - controller から slice への DTO マッピング
 - runtime の利用
+- slice に渡す artifact 識別子や検索条件の管理
 - slice の呼び分け
 
 持ってはいけない責務:
@@ -133,7 +154,7 @@ graph TD
 - slice 固有の業務ロジック本体
 - UI の描画都合
 - runtime 内部の状態機械
-- gateway 実装の詳細
+- artifact / gateway 実装の詳細
 
 ### 3.3 `pkg/<usecase-slice>`
 
@@ -142,7 +163,7 @@ graph TD
 - 個別ユースケースの業務ロジック
 - 自前 DTO / contract の定義
 - 自分の永続化ルール
-- 自分に必要な gateway 契約の利用
+- 自 slice の永続化契約と artifact 契約の利用
 
 持ってはいけない責務:
 
@@ -150,14 +171,16 @@ graph TD
 - controller 依存
 - workflow 依存
 - runtime の主導
+- gateway 直接依存
 
 ### 3.4 `pkg/runtime`
 
 役割:
 
-- queue、progress、workflow state、event、telemetry など実行制御の基盤
+- executor、progress、workflow state、event、telemetry など実行制御の基盤
 - workflow がユースケース進行を実現するための実行時サービス
-- queue worker など、実行器が外部依頼を委譲するための gateway 呼び出し
+- 外部 I/O を伴う実処理の実行
+- 実行結果の返却や完了通知
 
 持ってはいけない責務:
 
@@ -166,19 +189,34 @@ graph TD
 - slice 固有ロジックの内包
 - slice 保存判定や slice 固有 DTO の解釈
 
-### 3.5 `pkg/gateway`
+### 3.5 `pkg/artifact`
 
 役割:
 
-- DB、LLM、config、secret、file、外部 API など外部資源への依頼口
-- usecase slice が必要とする技術接続の具象実装
-- runtime の executor が外部依頼を委譲する先
+- slice 間で共有する中間成果物、共有済みデータ、resume 用状態の保存・参照
+- workflow が次工程へ受け渡すための識別子、検索条件、保存先の境界
+- slice が後続工程へ渡す成果物の貯蔵先
 
 持ってはいけない責務:
 
 - ユースケース進行の決定
 - phase / progress / resume / cancel の管理
 - 特定 workflow の状態解釈
+- 特定 slice 固有の業務判断
+
+### 3.6 `pkg/gateway`
+
+役割:
+
+- LLM、外部 API、file、secret、config など外部資源への依頼口
+- runtime が外部 I/O を実行するための技術接続の具象実装
+
+持ってはいけない責務:
+
+- ユースケース進行の決定
+- phase / progress / resume / cancel の管理
+- 特定 workflow の状態解釈
+- slice への直接公開
 
 ---
 
@@ -189,31 +227,38 @@ graph TD
 - `controller -> workflow`
 - `workflow -> usecase slice`
 - `workflow -> runtime`
-- `workflow -> gateway` の最小限依存
-- `runtime -> gateway` の限定依存
-- `usecase slice -> gateway`
+- `usecase slice -> artifact`
+- `runtime -> gateway`
 
 禁止する依存:
 
 - `controller -> usecase slice`
 - `controller -> runtime`
+- `controller -> artifact`
 - `controller -> gateway`
 - `usecase slice -> controller`
 - `usecase slice -> workflow`
 - `usecase slice -> runtime`
+- `usecase slice -> gateway`
 - `runtime -> controller`
 - `runtime -> workflow`
 - `runtime -> usecase slice`
+- `artifact -> controller`
+- `artifact -> workflow`
+- `artifact -> runtime`
+- `artifact -> usecase slice`
+- `artifact -> gateway`
 - `gateway -> controller`
 - `gateway -> workflow`
 - `gateway -> usecase slice`
+- `gateway -> artifact`
 - `usecase slice -> usecase slice` の具象依存
 
 補足:
 
 - usecase slice 同士の連携が必要な場合は workflow で両者を束ねる
-- `workflow -> gateway` は workflow 自身の永続状態管理や初期化のように、slice に属さない外部依頼に限定する
-- `runtime -> gateway` は queue worker や executor が外部資源へ request を委譲する場合に限定する
+- 他 slice が必要とする成果物を、ある slice の内部保存物として直接参照してはならない
+- slice 間受け渡しは artifact を通し、workflow は artifact 識別子や検索条件だけを束ねる
 - `runtime -> gateway` を許可しても、runtime が slice 固有の保存処理や業務判断を持ってはならない
 - 共通化は技術的関心事に限定し、業務ロジックの安易な shared kernel 化を避ける
 
@@ -226,20 +271,23 @@ graph TD
 - 各 slice は自身が必要とする入力 DTO / 出力 DTO を自前で持つ
 - `pkg/domain` のような横断共有 DTO を基本形にしない
 - parser の出力を persona が直接読む、といった構造を避ける
+- slice 間共有が必要な場合も、他 slice の内部 DTO を直接参照せず artifact 契約を介する
 
 ### 5.2 マッピングは workflow が担う
 
 - controller 入力 -> slice 入力 DTO の変換は workflow が行う
 - slice A 出力 -> slice B 入力 DTO の変換も workflow が行う
-- runtime や gateway の返却値を slice 保存 DTO へ変換するのも workflow の責務とする
+- runtime の実行結果や artifact 上の中間成果物を slice 入力 DTO へ束ねるのも workflow の責務とする
 - runtime が gateway を使う場合でも、gateway の返却値を slice 保存 DTO や UI 状態へ解釈する責務は workflow が持つ
 - usecase slice が返す進行事実やドメインイベントを `phase/current/total/message` や UI 通知へ翻訳する責務も workflow が持つ
+- workflow は大規模データ本体を常時保持するのではなく、artifact 識別子、検索条件、batch / page / cursor を束ねて進行制御する
 
 ### 5.3 Contract は振る舞い単位で設計する
 
 - interface は役割ごとに分ける
 - ただし 1 メソッドごとに過剰分割しない
-- workflow や slice が必要とする操作単位で contract を切る
+- workflow、runtime、slice が必要とする操作単位で contract を切る
+- artifact 契約は保存・検索・参照の操作に限定し、業務判断 API を持たせない
 
 ---
 
@@ -274,7 +322,8 @@ composition root の責務外:
 2. これはユースケース進行の制御か
 3. これは slice 固有の業務ロジックか
 4. これは実行制御基盤か
-5. これは外部資源への依頼口か
+5. これは slice 間で受け渡す成果物や共有状態か
+6. これは外部資源への依頼口か
 
 対応先:
 
@@ -282,7 +331,8 @@ composition root の責務外:
 - 2 は `workflow`
 - 3 は usecase slice
 - 4 は `runtime`
-- 5 は `gateway`
+- 5 は `artifact`
+- 6 は `gateway`
 
 曖昧な場合の原則:
 
@@ -290,6 +340,7 @@ composition root の責務外:
 - 複数 contract を束ねるなら workflow
 - ドメイン知識が強いなら slice
 - 実行制御なら runtime
+- 工程間で受け渡す保存物なら artifact
 - 外部資源への依頼なら gateway
 
 ---

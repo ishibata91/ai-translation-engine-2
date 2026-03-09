@@ -73,7 +73,7 @@ func RetryWithBackoff(ctx context.Context, cfg RetryConfig, fn func() error) err
 		var retryErr *RetryableError
 		if !errors.As(lastErr, &retryErr) {
 			// 非リトライエラーは即返す
-			return lastErr
+			return fmt.Errorf("non-retryable error on attempt %d: %w", attempt+1, lastErr)
 		}
 
 		// 最後の試行ではスリープしない

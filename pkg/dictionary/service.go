@@ -45,7 +45,7 @@ func (s *DictionaryService) DeleteSource(ctx context.Context, id int64) error {
 // GetEntries は指定ソースに紐付く辞書エントリ一覧を返す（後方互換用）。
 func (s *DictionaryService) GetEntries(ctx context.Context, sourceID int64) ([]DictTerm, error) {
 	defer telemetry.StartSpan(ctx, telemetry.ActionDBQuery)()
-	s.logger.DebugContext(ctx, "fetching entries for source", slog.Int64("sourceID", sourceID))
+	s.logger.DebugContext(ctx, "fetching entries for source", slog.Int64("source_id", sourceID))
 	return s.store.GetEntriesBySourceID(ctx, sourceID)
 }
 
@@ -54,7 +54,7 @@ func (s *DictionaryService) GetEntries(ctx context.Context, sourceID int64) ([]D
 func (s *DictionaryService) GetEntriesPaginated(ctx context.Context, sourceID int64, query string, filters map[string]string, page, pageSize int) (*DictTermPage, error) {
 	defer telemetry.StartSpan(ctx, telemetry.ActionDBQuery)()
 	s.logger.DebugContext(ctx, "fetching entries paginated",
-		slog.Int64("sourceID", sourceID),
+		slog.Int64("source_id", sourceID),
 		slog.String("query", query),
 		slog.Int("page", page),
 	)
@@ -99,7 +99,7 @@ func (s *DictionaryService) DeleteEntry(ctx context.Context, id int64) error {
 // 戻り値は作成されたソースの ID。
 func (s *DictionaryService) StartImport(ctx context.Context, filePath string) (int64, error) {
 	defer telemetry.StartSpan(ctx, telemetry.ActionImport)()
-	s.logger.InfoContext(ctx, "starting dictionary import", slog.String("filePath", filePath))
+	s.logger.InfoContext(ctx, "starting dictionary import", slog.String("file_path", filePath))
 
 	// ファイル情報を取得
 	stat, err := os.Stat(filePath)
@@ -128,12 +128,12 @@ func (s *DictionaryService) StartImport(ctx context.Context, filePath string) (i
 		bgCtx := telemetry.WithAttrs(ctx, slog.String("request_id", "async-import-"+uuid.New().String()))
 		defer telemetry.StartSpan(bgCtx, telemetry.ActionImport)()
 
-		s.logger.InfoContext(bgCtx, "background import task started", slog.Int64("sourceID", sourceID))
+		s.logger.InfoContext(bgCtx, "background import task started", slog.Int64("source_id", sourceID))
 
 		file, err := os.Open(filePath)
 		if err != nil {
 			s.logger.ErrorContext(bgCtx, "failed to open import file",
-				append(telemetry.ErrorAttrs(err), slog.Int64("sourceID", sourceID))...)
+				append(telemetry.ErrorAttrs(err), slog.Int64("source_id", sourceID))...)
 			_ = s.store.UpdateSourceStatus(bgCtx, sourceID, "ERROR", 0, err.Error())
 			return
 		}
@@ -142,10 +142,10 @@ func (s *DictionaryService) StartImport(ctx context.Context, filePath string) (i
 		count, err := s.importer.ImportXML(bgCtx, sourceID, src.FileName, file)
 		if err != nil {
 			s.logger.ErrorContext(bgCtx, "import process failed",
-				append(telemetry.ErrorAttrs(err), slog.Int64("sourceID", sourceID), slog.Int("processed_count", count))...)
+				append(telemetry.ErrorAttrs(err), slog.Int64("source_id", sourceID), slog.Int("processed_count", count))...)
 		} else {
 			s.logger.InfoContext(bgCtx, "import process completed",
-				slog.Int64("sourceID", sourceID), slog.Int("processed_count", count))
+				slog.Int64("source_id", sourceID), slog.Int("processed_count", count))
 		}
 	}()
 

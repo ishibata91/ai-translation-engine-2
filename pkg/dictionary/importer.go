@@ -31,7 +31,7 @@ func NewImporter(config Config, store DictionaryStore, notifier progress.Progres
 // 許可された名詞レコードを sourceID に紐付けて保存する。
 // 処理中は progress パッケージを通じて進捗をフロントエンドに通知する。
 func (i *xmlImporter) ImportXML(ctx context.Context, sourceID int64, fileName string, file io.Reader) (int, error) {
-	i.logger.DebugContext(ctx, "ENTER DictionaryImporter.ImportXML", "sourceID", sourceID, "fileName", fileName)
+	i.logger.DebugContext(ctx, "ENTER DictionaryImporter.ImportXML", "source_id", sourceID, "file_name", fileName)
 	defer i.logger.DebugContext(ctx, "EXIT DictionaryImporter.ImportXML")
 
 	// dlc_sources を IMPORTING 状態に更新
@@ -51,14 +51,20 @@ func (i *xmlImporter) ImportXML(ctx context.Context, sourceID int64, fileName st
 	totalImported, err := i.parseAndSave(ctx, sourceID, correlationID, file)
 	if err != nil {
 		// エラー状態に更新して通知
-		_ = i.store.UpdateSourceStatus(ctx, sourceID, "ERROR", totalImported, err.Error())
+		if updateErr := i.store.UpdateSourceStatus(ctx, sourceID, "ERROR", totalImported, err.Error()); updateErr != nil {
+			i.logger.ErrorContext(ctx, "failed to persist dictionary import error status",
+				slog.Int64("source_id", sourceID),
+				slog.Int("imported_count", totalImported),
+				slog.String("error", updateErr.Error()),
+			)
+		}
 		i.notifier.OnProgress(ctx, progress.ProgressEvent{
 			CorrelationID: correlationID,
 			Completed:     totalImported,
 			Status:        progress.StatusFailed,
 			Message:       fmt.Sprintf("インポートエラー: %v", err),
 		})
-		return totalImported, err
+		return totalImported, fmt.Errorf("parse and save dictionary source_id=%d: %w", sourceID, err)
 	}
 
 	// COMPLETED に更新
@@ -74,7 +80,7 @@ func (i *xmlImporter) ImportXML(ctx context.Context, sourceID int64, fileName st
 		Message:       fmt.Sprintf("インポート完了: %d 件", totalImported),
 	})
 
-	i.logger.InfoContext(ctx, "Successfully imported terms", "total", totalImported, "sourceID", sourceID)
+	i.logger.InfoContext(ctx, "Successfully imported terms", "total", totalImported, "source_id", sourceID)
 	return totalImported, nil
 }
 
@@ -190,7 +196,7 @@ func (i *xmlImporter) handleStringElement(ctx context.Context, decoder *xml.Deco
 
 // flushBatch はバッチのエントリをストアに保存し、保存件数を返す。
 func (i *xmlImporter) flushBatch(ctx context.Context, batch []DictTerm) (int, error) {
-	i.logger.DebugContext(ctx, "ENTER DictionaryImporter.flushBatch", slog.Int("batchSize", len(batch)))
+	i.logger.DebugContext(ctx, "ENTER DictionaryImporter.flushBatch", slog.Int("batch_size", len(batch)))
 
 	if err := i.store.SaveTerms(ctx, batch); err != nil {
 		return 0, fmt.Errorf("error saving batch: %w", err)

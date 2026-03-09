@@ -28,7 +28,7 @@ func main() {
 	xmlFilePath := args[0]
 
 	ctx := context.Background()
-	slog.InfoContext(ctx, "Starting Dictionary Builder", "dbPath", *dbPath, "xmlFilePath", xmlFilePath)
+	slog.InfoContext(ctx, "Starting Dictionary Builder", "db_path", *dbPath, "xml_file_path", xmlFilePath)
 
 	// 1. Initialize DB
 	db, dbCleanup, err := datastore.NewSQLiteDB(ctx, *dbPath) // Use *dbPath instead of hardcoded "dictionary.db"
@@ -38,7 +38,10 @@ func main() {
 	defer dbCleanup()
 
 	// 構築部分
-	store, _ := dictionary.NewDictionaryStore(db)
+	store, err := dictionary.NewDictionaryStore(db)
+	if err != nil {
+		log.Fatalf("failed to initialize dictionary store: %v", err)
+	}
 	config := dictionary.DefaultConfig()
 	notifier := progress.NewNoopNotifier()
 	logger := slog.Default() // Define logger as it's used in NewImporter

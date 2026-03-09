@@ -54,7 +54,10 @@ func (c *geminiClient) ListModels(ctx context.Context) ([]ModelInfo, error) {
 		return nil, fmt.Errorf("gemini: ListModels request failed: %w", err)
 	}
 	defer httpResp.Body.Close()
-	body, _ := io.ReadAll(httpResp.Body)
+	body, err := io.ReadAll(httpResp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("gemini: ListModels response read failed: %w", err)
+	}
 	if httpResp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("gemini: ListModels status %d: %s", httpResp.StatusCode, string(body))
 	}
@@ -91,7 +94,7 @@ func (c *geminiClient) Complete(ctx context.Context, req Request) (Response, err
 	})
 	if err != nil {
 		c.logger.ErrorContext(ctx, "Gemini request failed", telemetry.ErrorAttrs(err)...)
-		return Response{}, err
+		return Response{}, fmt.Errorf("gemini: complete request failed: %w", err)
 	}
 
 	resp.Metadata = req.Metadata
@@ -114,7 +117,7 @@ func (c *geminiClient) StreamComplete(ctx context.Context, req Request) (StreamR
 	c.logger.DebugContext(ctx, "ENTER StreamComplete (non-streaming fallback)")
 	resp, err := c.Complete(ctx, req)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("gemini: stream completion fallback failed: %w", err)
 	}
 	c.logger.DebugContext(ctx, "EXIT StreamComplete")
 	return &geminiStreamResponse{resp: resp}, nil
@@ -150,7 +153,7 @@ func (c *geminiClient) HealthCheck(ctx context.Context) error {
 func (c *geminiClient) doComplete(ctx context.Context, req Request) (Response, error) {
 	httpReq, err := c.buildRequest(ctx, req)
 	if err != nil {
-		return Response{}, err
+		return Response{}, fmt.Errorf("gemini: build request failed: %w", err)
 	}
 
 	start := time.Now()

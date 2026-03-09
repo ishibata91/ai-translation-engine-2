@@ -55,7 +55,7 @@ func getCurrentVersion(ctx context.Context, db *sql.DB) (int, error) {
 
 // applyPendingMigrations runs all migrations that haven't been applied yet.
 func applyPendingMigrations(ctx context.Context, db *sql.DB, currentVersion int) error {
-	slog.DebugContext(ctx, "ENTER applyPendingMigrations", slog.Int("currentVersion", currentVersion))
+	slog.DebugContext(ctx, "ENTER applyPendingMigrations", slog.Int("current_version", currentVersion))
 
 	targetVersion := 2
 	for v := currentVersion + 1; v <= targetVersion; v++ {
@@ -136,7 +136,7 @@ func buildV2MigrationQueries() []string {
 
 // executeMigrationQueries executes a list of migration SQL statements sequentially.
 func executeMigrationQueries(ctx context.Context, db *sql.DB, queries []string) error {
-	slog.DebugContext(ctx, "ENTER executeMigrationQueries", slog.Int("queryCount", len(queries)))
+	slog.DebugContext(ctx, "ENTER executeMigrationQueries", slog.Int("query_count", len(queries)))
 
 	now := time.Now()
 	for _, q := range queries {

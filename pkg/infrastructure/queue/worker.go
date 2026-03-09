@@ -82,7 +82,10 @@ func (w *Worker) Recover(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("recover fail: %w", err)
 	}
-	affected, _ := res.RowsAffected()
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("recover rows affected failed: %w", err)
+	}
 	w.logger.DebugContext(ctx, "EXIT Recover", slog.Int("recovered", int(affected)))
 	return nil
 }
@@ -115,7 +118,10 @@ func (w *Worker) ProcessProcessIDWithOptions(ctx context.Context, processID stri
 	}
 
 	w.logger.DebugContext(ctx, "EXIT ProcessProcessID", slog.String("process_id", processID), slog.Any("error", err))
-	return err
+	if err != nil {
+		return fmt.Errorf("process queue jobs process_id=%s: %w", processID, err)
+	}
+	return nil
 }
 
 func (w *Worker) processSync(ctx context.Context, processID string, llmConfig gatewayllm.LLMConfig, opts ProcessOptions) error {
@@ -246,19 +252,41 @@ func (w *Worker) processSync(ctx context.Context, processID string, llmConfig ga
 				if i < len(responses) {
 					res := responses[i]
 					if res.Success {
-						respJSON, _ := json.Marshal(res)
+						respJSON, marshalErr := json.Marshal(res)
+						if marshalErr != nil {
+							w.logger.ErrorContext(persistCtx, "failed to marshal completed response during cancellation",
+								slog.String("job_id", job.ID),
+								slog.String("error", marshalErr.Error()),
+							)
+							continue
+						}
 						respStr := string(respJSON)
-						_ = w.queue.UpdateJob(persistCtx, job.ID, StatusCompleted, &respStr, nil, nil)
+						if updateErr := w.queue.UpdateJob(persistCtx, job.ID, StatusCompleted, &respStr, nil, nil); updateErr != nil {
+							w.logger.ErrorContext(persistCtx, "failed to persist completed job during cancellation",
+								slog.String("job_id", job.ID),
+								slog.String("error", updateErr.Error()),
+							)
+						}
 						continue
 					}
 					// Empty result means this request was not processed yet.
 					if res.Error != "" {
 						errMsg := res.Error
-						_ = w.queue.UpdateJob(persistCtx, job.ID, StatusCancelled, nil, &errMsg, nil)
+						if updateErr := w.queue.UpdateJob(persistCtx, job.ID, StatusCancelled, nil, &errMsg, nil); updateErr != nil {
+							w.logger.ErrorContext(persistCtx, "failed to persist errored cancellation status",
+								slog.String("job_id", job.ID),
+								slog.String("error", updateErr.Error()),
+							)
+						}
 						continue
 					}
 				}
-				_ = w.queue.UpdateJob(persistCtx, job.ID, StatusCancelled, nil, &cancelMsg, nil)
+				if updateErr := w.queue.UpdateJob(persistCtx, job.ID, StatusCancelled, nil, &cancelMsg, nil); updateErr != nil {
+					w.logger.ErrorContext(persistCtx, "failed to persist canceled job status",
+						slog.String("job_id", job.ID),
+						slog.String("error", updateErr.Error()),
+					)
+				}
 			}
 		} else {
 			w.logger.ErrorContext(ctx, "ExecuteBulkSync failed", slog.String("error", err.Error()))
@@ -274,7 +302,10 @@ func (w *Worker) processSync(ctx context.Context, processID string, llmConfig ga
 			opts.Hooks.OnSaving(i+1, len(jobs))
 		}
 		if res.Success {
-			respJSON, _ := json.Marshal(res)
+			respJSON, marshalErr := json.Marshal(res)
+			if marshalErr != nil {
+				return fmt.Errorf("marshal completed response job_id=%s: %w", jobID, marshalErr)
+			}
 			respStr := string(respJSON)
 			if err := w.queue.UpdateJob(ctx, jobID, StatusCompleted, &respStr, nil, nil); err != nil {
 				return fmt.Errorf("failed to store completed job %s: %w", jobID, err)
@@ -341,7 +372,10 @@ func (w *Worker) processBatch(ctx context.Context, processID string, llmConfig g
 		return fmt.Errorf("submit batch failed: %w", err)
 	}
 
-	batchIDJSON, _ := json.Marshal(batchJobID)
+	batchIDJSON, err := json.Marshal(batchJobID)
+	if err != nil {
+		return fmt.Errorf("marshal batch job id process_id=%s: %w", processID, err)
+	}
 	batchIDString := string(batchIDJSON)
 
 	for _, job := range jobs {
@@ -399,7 +433,10 @@ func (w *Worker) processBatch(ctx context.Context, processID string, llmConfig g
 					}
 					jobID := jobs[i].ID
 					if res.Success {
-						respJSON, _ := json.Marshal(res)
+						respJSON, marshalErr := json.Marshal(res)
+						if marshalErr != nil {
+							return fmt.Errorf("marshal batch result job_id=%s: %w", jobID, marshalErr)
+						}
 						respStr := string(respJSON)
 						if err := w.queue.UpdateJob(ctx, jobID, StatusCompleted, &respStr, nil, nil); err != nil {
 							return fmt.Errorf("failed to store batch result for %s: %w", jobID, err)
@@ -457,7 +494,10 @@ func (c *progressReportingClient) Complete(ctx context.Context, req gatewayllm.R
 			Message:       "Processing...",
 		})
 	}
-	return resp, err
+	if err != nil {
+		return resp, fmt.Errorf("reporting client completion failed: %w", err)
+	}
+	return resp, nil
 }
 
 func (w *Worker) fetchLLMConfig(ctx context.Context, opts ProcessOptions) (gatewayllm.LLMConfig, error) {
@@ -520,7 +560,14 @@ func (w *Worker) fetchLLMConfig(ctx context.Context, opts ProcessOptions) (gatew
 		}
 	}
 	if provider != "lmstudio" && apiKey == "" {
-		if val, err := w.secretStore.GetSecret(ctx, ns, provider+"_api_key"); err == nil {
+		val, err := w.secretStore.GetSecret(ctx, ns, provider+"_api_key")
+		if err != nil {
+			w.logger.WarnContext(ctx, "failed to load provider api key from secret store",
+				slog.String("namespace", ns),
+				slog.String("provider", provider),
+				slog.String("error", err.Error()),
+			)
+		} else {
 			apiKey = val
 		}
 	}

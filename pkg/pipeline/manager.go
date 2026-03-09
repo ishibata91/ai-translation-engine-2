@@ -63,20 +63,20 @@ func (m *Manager) ExecuteSlice(ctx context.Context, sliceID string, input any, i
 
 	registeredSlice, err := m.resolveSlice(ctx, sliceID)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("resolve pipeline slice=%s: %w", sliceID, err)
 	}
 
 	requests, err := m.prepareRequests(ctx, registeredSlice, sliceID, input)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("prepare pipeline requests slice=%s: %w", sliceID, err)
 	}
 
 	processID := uuid.New().String()
 	if err := m.persistDispatchedState(ctx, processID, sliceID, inputFile); err != nil {
-		return "", err
+		return "", fmt.Errorf("persist pipeline state process_id=%s: %w", processID, err)
 	}
 	if err := m.submitJobs(ctx, processID, requests); err != nil {
-		return "", err
+		return "", fmt.Errorf("submit pipeline jobs process_id=%s: %w", processID, err)
 	}
 
 	go m.runProcessInBackground(ctx, processID)

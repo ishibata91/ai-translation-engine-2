@@ -2,6 +2,7 @@ package translator
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/ishibata91/ai-translation-engine-2/pkg/persona"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/summary"
@@ -20,7 +21,7 @@ func NewPersonaLookupAdapter(store persona.PersonaStore) PersonaLookup {
 func (a *personaLookupAdapter) FindBySpeakerID(ctx context.Context, speakerID string) (*string, error) {
 	text, err := a.store.GetPersona(ctx, "", speakerID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("lookup persona speaker_id=%s: %w", speakerID, err)
 	}
 	if text == "" {
 		return nil, nil
@@ -40,7 +41,7 @@ func NewSummaryLookupAdapter(store summary.SummaryStore) SummaryLookup {
 func (a *summaryLookupAdapter) FindDialogueSummary(ctx context.Context, dialogueGroupID string) (*string, error) {
 	s, err := a.store.GetByRecordID(ctx, dialogueGroupID, "dialogue")
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("lookup dialogue summary record_id=%s: %w", dialogueGroupID, err)
 	}
 	if s == nil {
 		return nil, nil
@@ -51,7 +52,7 @@ func (a *summaryLookupAdapter) FindDialogueSummary(ctx context.Context, dialogue
 func (a *summaryLookupAdapter) FindQuestSummary(ctx context.Context, questID string) (*string, error) {
 	s, err := a.store.GetByRecordID(ctx, questID, "quest")
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("lookup quest summary record_id=%s: %w", questID, err)
 	}
 	if s == nil {
 		return nil, nil

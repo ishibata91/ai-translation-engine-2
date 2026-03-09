@@ -59,12 +59,12 @@ func (s *ModelCatalogService) ListModels(input ListModelsInput) ([]ModelOption, 
 		Model:    model,
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get llm client provider=%s namespace=%s: %w", provider, ns, err)
 	}
 
 	models, err := client.ListModels(ctx)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("list models provider=%s namespace=%s: %w", provider, ns, err)
 	}
 
 	out := make([]ModelOption, 0, len(models))

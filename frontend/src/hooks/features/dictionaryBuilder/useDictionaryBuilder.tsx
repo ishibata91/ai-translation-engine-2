@@ -8,8 +8,8 @@ import {
     DictSearchAllEntriesPaginated,
     DictStartImport,
     DictUpdateEntry,
-    SelectFiles,
-} from '../../../wailsjs/go/main/App';
+} from '../../../wailsjs/go/controller/DictionaryController';
+import { SelectFiles } from '../../../wailsjs/go/controller/FileDialogController';
 import { useWailsEvent } from '../../useWailsEvent';
 import {
     mapEntriesPaginatedResponse,

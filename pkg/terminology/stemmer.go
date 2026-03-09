@@ -1,6 +1,7 @@
 package terminology
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/kljensen/snowball"
@@ -31,7 +32,7 @@ func (s *SnowballStemmer) Stem(word string) (string, error) {
 	// Snowball stemmer handles lowercase words best
 	stemmed, err := snowball.Stem(strings.ToLower(word), s.language, true)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("stem keyword %q: %w", word, err)
 	}
 	return stemmed, nil
 }

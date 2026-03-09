@@ -83,6 +83,7 @@ func main() {
 	configController := controller.NewConfigController(configStore, logger)
 	llmManager := llm.NewLLMManager(logger)
 	modelCatalogService := modelcatalog.NewModelCatalogService(configStore, configStore, llmManager, logger)
+	modelCatalogController := controller.NewModelCatalogController(modelCatalogService)
 
 	// 6. Setup Persona + Parser dependencies for task bridge.
 	parserLoader := parser.ProvideParser(configStore)
@@ -118,6 +119,7 @@ func main() {
 		configStore,
 	)
 	personaService := persona.NewService(personaStore, logger)
+	personaController := controller.NewPersonaController(personaService)
 
 	// 7. Setup Bridge
 	masterPersonaWorkflow := workflow.NewMasterPersonaService(taskManager, logger, parserLoader, personaGenerator, personaProgressNotifier, llmQueue, queueWorker)
@@ -125,11 +127,11 @@ func main() {
 	taskManager.RegisterCompletionHook(task.TypePersonaExtraction, masterPersonaWorkflow.CleanupCompletedTask)
 	taskController := controller.NewTaskController(taskManager)
 	personaTaskController := controller.NewPersonaTaskController(taskManager, masterPersonaWorkflow)
+	dictionaryController := controller.NewDictionaryController(dictService)
+	fileDialogController := controller.NewFileDialogController()
 
 	// Create an instance of the app structure
 	app := NewApp()
-	app.SetDictService(dictService)
-	app.SetConfigService(configController)
 
 	// Create application with options
 	err = wails.Run(&options.App{
@@ -149,6 +151,10 @@ func main() {
 			configController.SetContext(ctx)
 			taskController.SetContext(ctx)
 			personaTaskController.SetContext(ctx)
+			dictionaryController.SetContext(ctx)
+			fileDialogController.SetContext(ctx)
+			modelCatalogController.SetContext(ctx)
+			personaController.SetContext(ctx)
 			if err := taskManager.Initialize(ctx); err != nil {
 				log.Printf("failed to initialize task manager: %v", err)
 			}
@@ -158,12 +164,13 @@ func main() {
 		},
 		OnShutdown: app.shutdown,
 		Bind: []interface{}{
-			app,
 			taskController,
 			personaTaskController,
 			configController,
-			modelCatalogService,
-			personaService,
+			dictionaryController,
+			fileDialogController,
+			modelCatalogController,
+			personaController,
 		},
 	})
 

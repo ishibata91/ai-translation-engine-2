@@ -22,9 +22,10 @@ func NewService(store PersonaStore, logger *slog.Logger) *Service {
 
 // ListNPCs returns persona NPC rows for UI table rendering.
 func (s *Service) ListNPCs() ([]PersonaNPCView, error) {
-	rows, err := s.store.ListNPCs(context.Background())
+	ctx := context.Background()
+	rows, err := s.store.ListNPCs(ctx)
 	if err != nil {
-		s.logger.Error("failed to list persona npcs", slog.String("error", err.Error()))
+		s.logger.ErrorContext(ctx, "failed to list persona npcs", slog.String("error", err.Error()))
 		return nil, fmt.Errorf("failed to list persona npcs: %w", err)
 	}
 	return rows, nil
@@ -32,9 +33,10 @@ func (s *Service) ListNPCs() ([]PersonaNPCView, error) {
 
 // ListDialoguesByPersonaID returns dialogues for one stored persona row.
 func (s *Service) ListDialoguesByPersonaID(personaID int64) ([]PersonaDialogueView, error) {
-	rows, err := s.store.ListDialoguesByPersonaID(context.Background(), personaID)
+	ctx := context.Background()
+	rows, err := s.store.ListDialoguesByPersonaID(ctx, personaID)
 	if err != nil {
-		s.logger.Error("failed to list persona dialogues", slog.Int64("persona_id", personaID), slog.String("error", err.Error()))
+		s.logger.ErrorContext(ctx, "failed to list persona dialogues", slog.Int64("persona_id", personaID), slog.String("error", err.Error()))
 		return nil, fmt.Errorf("failed to list persona dialogues: %w", err)
 	}
 	return rows, nil

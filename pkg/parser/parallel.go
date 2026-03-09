@@ -32,7 +32,7 @@ func (p *ParallelProcessor) Process(ctx context.Context) (*ParserOutput, error) 
 
 	result, err := p.waitAndCollectErrors(ctx, errChan)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("process parser sections: %w", err)
 	}
 	_ = result
 

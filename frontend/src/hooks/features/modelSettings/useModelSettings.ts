@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { z } from 'zod';
-import { ListModels } from '../../../wailsjs/go/modelcatalog/ModelCatalogService';
+import { ListModels } from '../../../wailsjs/go/controller/ModelCatalogController';
 import { type MasterPersonaLLMConfig, type MasterPersonaProvider } from '../../../types/masterPersona';
 
 type ModelOptionItem = { id: string; label: string };

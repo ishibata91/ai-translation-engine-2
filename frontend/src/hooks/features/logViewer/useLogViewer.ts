@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouse
 import { z } from 'zod';
 import type { LogEntry } from '../../../components/log/LogDetail';
 import { useUIStore } from '../../../store/uiStore';
-import { UIStateGetJSON, UIStateSetJSON } from '../../../wailsjs/go/config/ConfigService';
+import { UIStateGetJSON, UIStateSetJSON } from '../../../wailsjs/go/controller/ConfigController';
 import { useWailsEvent } from '../../useWailsEvent';
 
 const WAILS_LOG_EVENT = 'telemetry.log';

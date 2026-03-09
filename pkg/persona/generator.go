@@ -173,7 +173,10 @@ func (g *DefaultPersonaGenerator) SaveResults(
 	results []gatewayllm.Response,
 ) error {
 	_, err := g.SaveResultsWithSummary(ctx, results)
-	return err
+	if err != nil {
+		return fmt.Errorf("save persona results: %w", err)
+	}
+	return nil
 }
 
 // SaveResultsWithSummary parses responses, persists valid personas, and returns save counts.

@@ -3,14 +3,14 @@ declare module '*wailsjs/runtime/runtime' {
   export function EventsOff(eventName: string): void;
 }
 
-declare module '*wailsjs/go/config/ConfigService' {
+declare module '*wailsjs/go/controller/ConfigController' {
   export function ConfigGetAll(namespace: string): Promise<Record<string, string>>;
   export function ConfigSet(namespace: string, key: string, value: string): Promise<void>;
   export function UIStateGetJSON(namespace: string, key: string): Promise<string>;
   export function UIStateSetJSON(namespace: string, key: string, value: unknown): Promise<void>;
 }
 
-declare module '*wailsjs/go/modelcatalog/ModelCatalogService' {
+declare module '*wailsjs/go/controller/ModelCatalogController' {
   export function ListModels(input: {
     namespace: string;
     provider: string;
@@ -19,9 +19,12 @@ declare module '*wailsjs/go/modelcatalog/ModelCatalogService' {
   }): Promise<Array<{ id: string; display_name?: string }>>;
 }
 
-declare module '*wailsjs/go/main/App' {
+declare module '*wailsjs/go/controller/FileDialogController' {
   export function SelectJSONFile(): Promise<string>;
   export function SelectFiles(): Promise<string[]>;
+}
+
+declare module '*wailsjs/go/controller/DictionaryController' {
   export function DictGetSources(): Promise<unknown[]>;
   export function DictStartImport(filePath: string): Promise<number>;
   export function DictGetEntriesPaginated(sourceID: number, query: string, filters: Record<string, string>, page: number, pageSize: number): Promise<unknown>;
@@ -29,6 +32,11 @@ declare module '*wailsjs/go/main/App' {
   export function DictUpdateEntry(entry: unknown): Promise<void>;
   export function DictDeleteEntry(id: number): Promise<void>;
   export function DictDeleteSource(id: number): Promise<void>;
+}
+
+declare module '*wailsjs/go/controller/PersonaController' {
+  export function ListNPCs(): Promise<unknown[]>;
+  export function ListDialoguesByPersonaID(personaID: number): Promise<unknown[]>;
 }
 
 declare module '*wailsjs/go/controller/TaskController' {

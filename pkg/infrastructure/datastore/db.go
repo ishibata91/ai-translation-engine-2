@@ -31,7 +31,7 @@ func NewSQLiteDB(ctx context.Context, filename string) (*sql.DB, func(), error) 
 	dbPath, err := resolveDBPath(ctx, filename)
 	if err != nil {
 		slog.ErrorContext(ctx, "failed to resolve database path", telemetry.ErrorAttrs(err)...)
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("resolve sqlite db path filename=%s: %w", filename, err)
 	}
 
 	return openAndConfigureDB(ctx, dbPath)
@@ -63,7 +63,12 @@ func openAndConfigureDB(ctx context.Context, dbPath string) (*sql.DB, func(), er
 	}
 
 	if err := db.PingContext(ctx); err != nil {
-		db.Close()
+		if closeErr := db.Close(); closeErr != nil {
+			slog.WarnContext(ctx, "failed to close database after ping failure",
+				slog.String("path", dbPath),
+				slog.String("error", closeErr.Error()),
+			)
+		}
 		return nil, nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 
@@ -73,7 +78,12 @@ func openAndConfigureDB(ctx context.Context, dbPath string) (*sql.DB, func(), er
 
 	cleanup := func() {
 		slog.DebugContext(ctx, "closing database connection", slog.String("path", dbPath))
-		db.Close()
+		if err := db.Close(); err != nil {
+			slog.WarnContext(ctx, "failed to close database connection",
+				slog.String("path", dbPath),
+				slog.String("error", err.Error()),
+			)
+		}
 	}
 
 	return db, cleanup, nil
@@ -82,7 +92,7 @@ func openAndConfigureDB(ctx context.Context, dbPath string) (*sql.DB, func(), er
 func getWorkspaceDBDir() (string, error) {
 	wd, err := os.Getwd()
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("get working directory: %w", err)
 	}
 	return filepath.Join(wd, "db"), nil
 }

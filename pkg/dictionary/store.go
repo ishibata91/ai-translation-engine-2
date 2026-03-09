@@ -91,12 +91,15 @@ func (s *sqliteDictionaryStore) GetSources(ctx context.Context) ([]DictSource, e
 		}
 		sources = append(sources, src)
 	}
-	return sources, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate source rows: %w", err)
+	}
+	return sources, nil
 }
 
 // CreateSource は新しい辞書ソースレコードを作成し、採番された ID を返す。
 func (s *sqliteDictionaryStore) CreateSource(ctx context.Context, src *DictSource) (int64, error) {
-	slog.DebugContext(ctx, "ENTER DictionaryStore.CreateSource", "fileName", src.FileName)
+	slog.DebugContext(ctx, "ENTER DictionaryStore.CreateSource", "file_name", src.FileName)
 	defer slog.DebugContext(ctx, "EXIT DictionaryStore.CreateSource")
 
 	result, err := s.db.ExecContext(ctx, `
@@ -106,7 +109,11 @@ func (s *sqliteDictionaryStore) CreateSource(ctx context.Context, src *DictSourc
 	if err != nil {
 		return 0, fmt.Errorf("failed to create source: %w", err)
 	}
-	return result.LastInsertId()
+	id, err := result.LastInsertId()
+	if err != nil {
+		return 0, fmt.Errorf("resolve source insert id: %w", err)
+	}
+	return id, nil
 }
 
 // UpdateSourceStatus は指定ソースのステータス・エントリ数・エラーメッセージを更新する。
@@ -147,7 +154,7 @@ func (s *sqliteDictionaryStore) DeleteSource(ctx context.Context, id int64) erro
 
 // GetEntriesBySourceID は指定ソースに紐付く全エントリを返す（後方互換用）。
 func (s *sqliteDictionaryStore) GetEntriesBySourceID(ctx context.Context, sourceID int64) ([]DictTerm, error) {
-	slog.DebugContext(ctx, "ENTER DictionaryStore.GetEntriesBySourceID", "sourceID", sourceID)
+	slog.DebugContext(ctx, "ENTER DictionaryStore.GetEntriesBySourceID", "source_id", sourceID)
 	defer slog.DebugContext(ctx, "EXIT DictionaryStore.GetEntriesBySourceID")
 
 	rows, err := s.db.QueryContext(ctx, `
@@ -220,7 +227,7 @@ func buildMapSearchWhere(query string, filters map[string]string, prefix string)
 
 // GetEntriesBySourceIDPaginated は指定ソースのエントリをページネーション付きで返す。
 func (s *sqliteDictionaryStore) GetEntriesBySourceIDPaginated(ctx context.Context, sourceID int64, query string, filters map[string]string, limit, offset int) (*DictTermPage, error) {
-	slog.DebugContext(ctx, "ENTER DictionaryStore.GetEntriesBySourceIDPaginated", "sourceID", sourceID, "query", query, "filters", filters, "limit", limit, "offset", offset)
+	slog.DebugContext(ctx, "ENTER DictionaryStore.GetEntriesBySourceIDPaginated", "source_id", sourceID, "query", query, "filters", filters, "limit", limit, "offset", offset)
 	defer slog.DebugContext(ctx, "EXIT DictionaryStore.GetEntriesBySourceIDPaginated")
 
 	whereClause, args := buildMapSearchWhere(query, filters, "")
@@ -255,7 +262,7 @@ func (s *sqliteDictionaryStore) GetEntriesBySourceIDPaginated(ctx context.Contex
 		entries = append(entries, e)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("iterate paginated entry rows: %w", err)
 	}
 	if entries == nil {
 		entries = []DictTerm{}
@@ -318,7 +325,7 @@ func (s *sqliteDictionaryStore) SearchAllEntriesPaginated(ctx context.Context, q
 		entries = append(entries, e)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("iterate global entry rows: %w", err)
 	}
 	if entries == nil {
 		entries = []DictTerm{}

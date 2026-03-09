@@ -43,7 +43,7 @@ func (s *SQLiteModTermStore) SaveTerms(ctx context.Context, results []TermTransl
 
 // GetTerm retrieves a translation by its original English text.
 func (s *SQLiteModTermStore) GetTerm(ctx context.Context, originalEN string) (string, error) {
-	s.logger.DebugContext(ctx, "ENTER SQLiteModTermStore.GetTerm", slog.String("originalEN", originalEN))
+	s.logger.DebugContext(ctx, "ENTER SQLiteModTermStore.GetTerm", slog.String("original_en", originalEN))
 	defer s.logger.DebugContext(ctx, "EXIT SQLiteModTermStore.GetTerm")
 
 	var translatedJA string

@@ -78,13 +78,13 @@ func (g *summaryGenerator) ProposeJobs(ctx context.Context, input SummaryInput) 
 	// ── Phase 1: Dialogue – parallel cache lookup ──────────────────────────
 	if err := g.proposeDialogueJobs(ctx, input.DialogueItems, output); err != nil {
 		slog.ErrorContext(ctx, "failed to propose dialogue summary jobs", telemetry.ErrorAttrs(err)...)
-		return nil, err
+		return nil, fmt.Errorf("propose dialogue summary jobs: %w", err)
 	}
 
 	// ── Phase 2: Quest – sequential (stage order must be preserved) ─────────
 	if err := g.proposeQuestJobs(ctx, input.QuestItems, output); err != nil {
 		slog.ErrorContext(ctx, "failed to propose quest summary jobs", telemetry.ErrorAttrs(err)...)
-		return nil, err
+		return nil, fmt.Errorf("propose quest summary jobs: %w", err)
 	}
 
 	slog.InfoContext(ctx, "summary job proposal completed",

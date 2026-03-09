@@ -68,7 +68,10 @@ func (c *xaiClient) ListModels(ctx context.Context) ([]ModelInfo, error) {
 		return nil, fmt.Errorf("xai: ListModels request failed: %w", err)
 	}
 	defer httpResp.Body.Close()
-	body, _ := io.ReadAll(httpResp.Body)
+	body, err := io.ReadAll(httpResp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("xai: ListModels response read failed: %w", err)
+	}
 	if httpResp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("xai: ListModels status %d: %s", httpResp.StatusCode, string(body))
 	}
@@ -103,7 +106,7 @@ func (c *xaiClient) Complete(ctx context.Context, req Request) (Response, error)
 	})
 	if err != nil {
 		c.logger.ErrorContext(ctx, "xAI request failed", telemetry.ErrorAttrs(err)...)
-		return Response{}, err
+		return Response{}, fmt.Errorf("xai: complete request failed: %w", err)
 	}
 
 	resp.Metadata = req.Metadata
@@ -126,7 +129,7 @@ func (c *xaiClient) StreamComplete(ctx context.Context, req Request) (StreamResp
 	c.logger.DebugContext(ctx, "ENTER StreamComplete (non-streaming fallback)")
 	resp, err := c.Complete(ctx, req)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("xai: stream completion fallback failed: %w", err)
 	}
 	c.logger.DebugContext(ctx, "EXIT StreamComplete")
 	return &xaiStreamResponse{resp: resp}, nil
@@ -164,7 +167,7 @@ func (c *xaiClient) HealthCheck(ctx context.Context) error {
 func (c *xaiClient) doComplete(ctx context.Context, req Request) (Response, error) {
 	httpReq, err := c.buildRequest(ctx, req)
 	if err != nil {
-		return Response{}, err
+		return Response{}, fmt.Errorf("xai: build request failed: %w", err)
 	}
 
 	start := time.Now()
@@ -322,7 +325,7 @@ func (b *xaiBatchClient) SubmitBatch(ctx context.Context, reqs []Request) (Batch
 	batchID, err := b.createBatch(ctx, fmt.Sprintf("translate-%d", len(reqs)))
 	if err != nil {
 		b.logger.ErrorContext(ctx, "xAI createBatch failed", telemetry.ErrorAttrs(err)...)
-		return BatchJobID{}, err
+		return BatchJobID{}, fmt.Errorf("xai: create batch failed: %w", err)
 	}
 	b.logger.DebugContext(ctx, "batch created", slog.String("batch_id", batchID))
 
@@ -379,14 +382,17 @@ func (b *xaiBatchClient) GetBatchStatus(ctx context.Context, id BatchJobID) (Bat
 	}
 	defer httpResp.Body.Close()
 
-	body, _ := io.ReadAll(httpResp.Body)
+	body, err := io.ReadAll(httpResp.Body)
+	if err != nil {
+		return BatchStatus{}, fmt.Errorf("xai: GetBatchStatus response read failed: %w", err)
+	}
 	if httpResp.StatusCode != http.StatusOK {
 		return BatchStatus{}, fmt.Errorf("xai: GetBatchStatus error %d: %s", httpResp.StatusCode, string(body))
 	}
 
 	status, err := b.parseBatchStatus(ctx, body, id.ID)
 	if err != nil {
-		return BatchStatus{}, err
+		return BatchStatus{}, fmt.Errorf("xai: parse batch status batch_id=%s: %w", id.ID, err)
 	}
 
 	b.logger.DebugContext(ctx, "EXIT GetBatchStatus",
@@ -407,7 +413,7 @@ func (b *xaiBatchClient) GetBatchResults(ctx context.Context, id BatchJobID) ([]
 	for {
 		results, nextToken, err := b.fetchResultPage(ctx, id.ID, paginationToken)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("xai: fetch batch results page batch_id=%s: %w", id.ID, err)
 		}
 		allResults = append(allResults, results...)
 
@@ -444,7 +450,10 @@ func (b *xaiBatchClient) createBatch(ctx context.Context, name string) (string, 
 		Name:             name,
 	}
 
-	bodyBytes, _ := json.Marshal(body)
+	bodyBytes, err := json.Marshal(body)
+	if err != nil {
+		return "", fmt.Errorf("xai: createBatch marshal failed: %w", err)
+	}
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(bodyBytes))
 	if err != nil {
 		return "", fmt.Errorf("xai: createBatch request creation failed: %w", err)
@@ -458,7 +467,10 @@ func (b *xaiBatchClient) createBatch(ctx context.Context, name string) (string, 
 	}
 	defer httpResp.Body.Close()
 
-	respBody, _ := io.ReadAll(httpResp.Body)
+	respBody, err := io.ReadAll(httpResp.Body)
+	if err != nil {
+		return "", fmt.Errorf("xai: createBatch response read failed: %w", err)
+	}
 	if httpResp.StatusCode != http.StatusOK && httpResp.StatusCode != http.StatusCreated {
 		return "", fmt.Errorf("xai: createBatch error %d: %s", httpResp.StatusCode, string(respBody))
 	}
@@ -523,7 +535,10 @@ func (b *xaiBatchClient) addRequests(ctx context.Context, batchID string, reqs [
 	}
 
 	payload := map[string]interface{}{"batch_requests": batchReqs}
-	bodyBytes, _ := json.Marshal(payload)
+	bodyBytes, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("xai: addRequests marshal failed: %w", err)
+	}
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(bodyBytes))
 	if err != nil {
@@ -538,7 +553,10 @@ func (b *xaiBatchClient) addRequests(ctx context.Context, batchID string, reqs [
 	}
 	defer httpResp.Body.Close()
 
-	respBody, _ := io.ReadAll(httpResp.Body)
+	respBody, err := io.ReadAll(httpResp.Body)
+	if err != nil {
+		return fmt.Errorf("xai: addRequests response read failed: %w", err)
+	}
 	if httpResp.StatusCode != http.StatusOK && httpResp.StatusCode != http.StatusCreated {
 		return fmt.Errorf("xai: addRequests error %d: %s", httpResp.StatusCode, string(respBody))
 	}
@@ -660,14 +678,17 @@ func (b *xaiBatchClient) fetchResultPage(ctx context.Context, batchID, paginatio
 	}
 	defer httpResp.Body.Close()
 
-	body, _ := io.ReadAll(httpResp.Body)
+	body, err := io.ReadAll(httpResp.Body)
+	if err != nil {
+		return nil, "", fmt.Errorf("xai: fetchResultPage response read failed: %w", err)
+	}
 	if httpResp.StatusCode != http.StatusOK {
 		return nil, "", fmt.Errorf("xai: fetchResultPage error %d: %s", httpResp.StatusCode, string(body))
 	}
 
 	results, nextToken, err := b.parseResults(ctx, body)
 	if err != nil {
-		return nil, "", err
+		return nil, "", fmt.Errorf("xai: parse batch results failed: %w", err)
 	}
 
 	b.logger.DebugContext(ctx, "EXIT fetchResultPage",

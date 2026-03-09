@@ -2,6 +2,7 @@ package llm
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"sync"
 )
@@ -25,7 +26,7 @@ func ExecuteBulkSync(ctx context.Context, client LLMClient, reqs []Request, conc
 	results := make([]Response, len(reqs))
 
 	if err := runWorkerPool(ctx, client, reqs, concurrency, results); err != nil {
-		return results, err
+		return results, fmt.Errorf("execute bulk sync: %w", err)
 	}
 
 	return results, nil

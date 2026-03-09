@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import type { NpcRow } from '../../../types/npc';
-import { SelectJSONFile } from '../../../wailsjs/go/main/App';
+import { SelectJSONFile } from '../../../wailsjs/go/controller/FileDialogController';
 import { CancelTask, GetAllTasks, GetTaskRequestState, ResumeTask, StartMasterPersonTask } from '../../../wailsjs/go/controller/PersonaTaskController';
-import { ListDialoguesByPersonaID, ListNPCs } from '../../../wailsjs/go/persona/Service';
-import { ConfigGetAll, ConfigSet } from '../../../wailsjs/go/config/ConfigService';
+import { ListDialoguesByPersonaID, ListNPCs } from '../../../wailsjs/go/controller/PersonaController';
+import { ConfigGetAll, ConfigSet } from '../../../wailsjs/go/controller/ConfigController';
 import type { PhaseCompletedEvent, FrontendTask } from '../../../types/task';
 import {
     DEFAULT_MASTER_PERSONA_LLM_CONFIG,

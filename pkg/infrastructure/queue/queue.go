@@ -124,20 +124,20 @@ func resolveDSN(raw string) (string, error) {
 	}
 	wd, err := os.Getwd()
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("resolve queue working directory: %w", err)
 	}
 
 	// Relative path is placed under workspace db/.
 	if !filepath.IsAbs(trimmed) {
 		path := filepath.Join(wd, "db", trimmed)
 		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
-			return "", err
+			return "", fmt.Errorf("create queue db directory for %s: %w", path, err)
 		}
 		return path, nil
 	}
 
 	if err := os.MkdirAll(filepath.Dir(trimmed), 0755); err != nil {
-		return "", err
+		return "", fmt.Errorf("create queue db directory for %s: %w", trimmed, err)
 	}
 	return trimmed, nil
 }
@@ -272,7 +272,9 @@ func runMigrations(ctx context.Context, db *sql.DB) error {
 
 func (q *Queue) Close() error {
 	if q.db != nil {
-		return q.db.Close()
+		if err := q.db.Close(); err != nil {
+			return fmt.Errorf("close queue db: %w", err)
+		}
 	}
 	return nil
 }
@@ -429,7 +431,10 @@ func (q *Queue) DeleteJobs(ctx context.Context, processID string) error {
 		return fmt.Errorf("DeleteJobs failed: %w", err)
 	}
 
-	deleted, _ := res.RowsAffected()
+	deleted, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("DeleteJobs rows affected failed: %w", err)
+	}
 	q.logger.InfoContext(ctx, "jobs deleted", slog.String("process_id", processID), slog.Int64("deleted_count", deleted))
 	return nil
 }
@@ -445,7 +450,10 @@ func (q *Queue) DeleteTaskRequests(ctx context.Context, taskID string) error {
 		return fmt.Errorf("DeleteTaskRequests failed: %w", err)
 	}
 
-	deleted, _ := res.RowsAffected()
+	deleted, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("DeleteTaskRequests rows affected failed: %w", err)
+	}
 	q.logger.InfoContext(ctx, "task jobs deleted", slog.String("task_id", taskID), slog.Int64("deleted_count", deleted))
 	return nil
 }
@@ -525,7 +533,10 @@ func (q *Queue) UpdateJob(ctx context.Context, jobID string, status string, resp
 		return fmt.Errorf("UpdateJob failed: %w", err)
 	}
 
-	affected, _ := res.RowsAffected()
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("UpdateJob rows affected failed for job_id=%s: %w", jobID, err)
+	}
 	q.logger.InfoContext(ctx, "job updated",
 		slog.String("job_id", jobID),
 		slog.String("new_status", status),

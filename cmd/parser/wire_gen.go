@@ -8,6 +8,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/ishibata91/ai-translation-engine-2/pkg/config"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/datastore"
@@ -21,13 +22,13 @@ import (
 func InitializeParser(ctx context.Context) (parser.Parser, func(), error) {
 	db, cleanup, err := datastore.NewConfigDB()
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("initialize config db for parser: %w", err)
 	}
 	logger, _ := telemetry.ProvideLogger()
 	sqLiteStore, err := config.NewSQLiteStore(ctx, db, logger)
 	if err != nil {
 		cleanup()
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("initialize sqlite store for parser: %w", err)
 	}
 	parserParser := parser.ProvideParser(sqLiteStore)
 	return parserParser, func() {

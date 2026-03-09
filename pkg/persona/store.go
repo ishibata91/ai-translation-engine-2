@@ -39,7 +39,7 @@ func (s *sqlitePersonaStore) InitSchema(ctx context.Context) error {
 	}
 	if needsReset {
 		if err := s.resetSchema(ctx); err != nil {
-			return err
+			return fmt.Errorf("reset persona schema: %w", err)
 		}
 	}
 

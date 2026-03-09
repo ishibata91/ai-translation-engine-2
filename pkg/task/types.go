@@ -2,6 +2,7 @@ package task
 
 import (
 	"encoding/json"
+	"fmt"
 	"time"
 )
 
@@ -50,7 +51,7 @@ func (m TaskMetadata) MarshalJSON() ([]byte, error) {
 func (m *TaskMetadata) UnmarshalJSON(data []byte) error {
 	var tmp map[string]interface{}
 	if err := json.Unmarshal(data, &tmp); err != nil {
-		return err
+		return fmt.Errorf("unmarshal task metadata: %w", err)
 	}
 	*m = tmp
 	return nil

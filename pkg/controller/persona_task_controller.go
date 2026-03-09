@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	runtimequeue "github.com/ishibata91/ai-translation-engine-2/pkg/runtime/queue"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/task"
@@ -68,7 +69,12 @@ func (c *PersonaTaskController) CancelTask(taskID string) {
 	if c.masterPersonaWorkflow == nil {
 		return
 	}
-	_ = c.masterPersonaWorkflow.CancelMasterPersona(c.ctx, taskID)
+	if err := c.masterPersonaWorkflow.CancelMasterPersona(c.ctx, taskID); err != nil {
+		slog.ErrorContext(c.ctx, "cancel master persona task failed",
+			slog.String("task_id", taskID),
+			slog.String("error", err.Error()),
+		)
+	}
 }
 
 // GetTaskRequestState returns aggregate queued request state for one task.

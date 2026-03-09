@@ -12,13 +12,13 @@ import (
 func DecodeFile(path string) (map[string]json.RawMessage, error) {
 	f, err := openFile(path)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("open parser input path=%s: %w", path, err)
 	}
 	defer f.Close()
 
 	reader, err := createUTF8Reader(f)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("create utf8 reader path=%s: %w", path, err)
 	}
 
 	return decodeJSON(reader)

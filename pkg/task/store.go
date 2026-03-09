@@ -27,7 +27,10 @@ func (s *Store) InsertTask(ctx context.Context, task Task) error {
 		INSERT INTO frontend_tasks (id, name, type, status, phase, progress, error_msg, metadata, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, task.ID, task.Name, task.Type, task.Status, task.Phase, task.Progress, task.ErrorMsg, string(metadataJSON), now, now)
-	return err
+	if err != nil {
+		return fmt.Errorf("insert task id=%s: %w", task.ID, err)
+	}
+	return nil
 }
 
 func (s *Store) UpdateTask(ctx context.Context, id string, status TaskStatus, phase string, progress float64, errorMsg string) error {
@@ -36,7 +39,10 @@ func (s *Store) UpdateTask(ctx context.Context, id string, status TaskStatus, ph
 		UPDATE frontend_tasks SET status = ?, phase = ?, progress = ?, error_msg = ?, updated_at = ?
 		WHERE id = ?
 	`, status, phase, progress, errorMsg, now, id)
-	return err
+	if err != nil {
+		return fmt.Errorf("update task id=%s: %w", id, err)
+	}
+	return nil
 }
 
 func (s *Store) SaveMetadata(ctx context.Context, id string, metadata TaskMetadata) error {
@@ -50,14 +56,17 @@ func (s *Store) SaveMetadata(ctx context.Context, id string, metadata TaskMetada
 		UPDATE frontend_tasks SET metadata = ?, updated_at = ?
 		WHERE id = ?
 	`, string(metadataJSON), now, id)
-	return err
+	if err != nil {
+		return fmt.Errorf("save task metadata id=%s: %w", id, err)
+	}
+	return nil
 }
 
 func (s *Store) GetMetadata(ctx context.Context, id string) (TaskMetadata, error) {
 	var metadataStr string
 	err := s.db.QueryRowContext(ctx, "SELECT metadata FROM frontend_tasks WHERE id = ?", id).Scan(&metadataStr)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get task metadata id=%s: %w", id, err)
 	}
 
 	var metadata TaskMetadata
@@ -73,7 +82,7 @@ func (s *Store) GetAllTasks(ctx context.Context) ([]Task, error) {
 		FROM frontend_tasks ORDER BY created_at DESC
 	`)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("list all tasks: %w", err)
 	}
 	defer rows.Close()
 
@@ -88,7 +97,7 @@ func (s *Store) GetActiveTasks(ctx context.Context) ([]Task, error) {
 		ORDER BY created_at DESC
 	`, StatusPending, StatusRunning, StatusPaused, StatusRequestGenerated, StatusCancelled)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("list active tasks: %w", err)
 	}
 	defer rows.Close()
 
@@ -102,12 +111,15 @@ func (s *Store) scanTasks(rows *sql.Rows) ([]Task, error) {
 		var metadataStr string
 		err := rows.Scan(&t.ID, &t.Name, &t.Type, &t.Status, &t.Phase, &t.Progress, &t.ErrorMsg, &metadataStr, &t.CreatedAt, &t.UpdatedAt)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("scan task row: %w", err)
 		}
 		if err := json.Unmarshal([]byte(metadataStr), &t.Metadata); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal task metadata: %w", err)
 		}
 		tasks = append(tasks, t)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate task rows: %w", err)
 	}
 	return tasks, nil
 }

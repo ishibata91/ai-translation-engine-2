@@ -2,121 +2,24 @@ package main
 
 import (
 	"context"
-	"fmt"
-
-	"github.com/ishibata91/ai-translation-engine-2/pkg/controller"
-	"github.com/ishibata91/ai-translation-engine-2/pkg/dictionary"
-	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/telemetry"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
-// App struct
+// App stores the Wails lifecycle context.
 type App struct {
-	ctx           context.Context
-	dictService   *dictionary.DictionaryService
-	configService *controller.ConfigController
+	ctx context.Context
 }
 
-// NewApp creates a new App application struct
+// NewApp creates a new App application struct.
 func NewApp() *App {
 	return &App{}
 }
 
-// SetDictService sets the dictionary service instance
-func (a *App) SetDictService(dictService *dictionary.DictionaryService) {
-	a.dictService = dictService
-}
-
-// SetConfigService sets the config service instance
-func (a *App) SetConfigService(configService *controller.ConfigController) {
-	a.configService = configService
-}
-
-// startup is called when the app starts. The context is saved
-// so we can call the runtime methods
+// startup is called when the app starts. The context is saved for lifecycle coordination.
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 }
 
-// shutdown is called at application termination
+// shutdown is called at application termination.
 func (a *App) shutdown(ctx context.Context) {
-	// Perform cleanup operations here if needed
-}
-
-// Greet returns a greeting for the given name
-func (a *App) Greet(name string) string {
-	return fmt.Sprintf("Hello, %s!", name)
-}
-
-// ── 辞書ビルダー用 API ラッパー ──────────────────────────
-
-// DictGetSources は登録済みの辞書ソース一覧を返す。
-func (a *App) DictGetSources() ([]dictionary.DictSource, error) {
-	ctx := telemetry.WithTraceID(a.ctx)
-	return a.dictService.GetSources(ctx)
-}
-
-// DictDeleteSource は指定された辞書ソースとその全エントリを削除する。
-func (a *App) DictDeleteSource(id int64) error {
-	ctx := telemetry.WithTraceID(a.ctx)
-	return a.dictService.DeleteSource(ctx, id)
-}
-
-// DictGetEntries は指定ソースに紐付く辞書エントリ一覧を返す（後方互換用）。
-func (a *App) DictGetEntries(sourceID int64) ([]dictionary.DictTerm, error) {
-	ctx := telemetry.WithTraceID(a.ctx)
-	return a.dictService.GetEntries(ctx, sourceID)
-}
-
-// DictGetEntriesPaginated は指定ソースのエントリをページネーション付きで返す。
-// page は1始まり、pageSize は取得件数（例: 500）、query は検索キーワード（空文字で全件）。
-func (a *App) DictGetEntriesPaginated(sourceID int64, query string, filters map[string]string, page, pageSize int) (*dictionary.DictTermPage, error) {
-	ctx := telemetry.WithTraceID(a.ctx)
-	return a.dictService.GetEntriesPaginated(ctx, sourceID, query, filters, page, pageSize)
-}
-
-// DictSearchAllEntriesPaginated は全辞書ソースを横断してエントリを検索する。
-func (a *App) DictSearchAllEntriesPaginated(query string, filters map[string]string, page, pageSize int) (*dictionary.DictTermPage, error) {
-	ctx := telemetry.WithTraceID(a.ctx)
-	return a.dictService.SearchAll(ctx, query, filters, page, pageSize)
-}
-
-// DictUpdateEntry は指定エントリの source_text / dest_text を更新する。
-func (a *App) DictUpdateEntry(term dictionary.DictTerm) error {
-	ctx := telemetry.WithTraceID(a.ctx)
-	return a.dictService.UpdateEntry(ctx, term)
-}
-
-// DictDeleteEntry は指定エントリを削除する。
-func (a *App) DictDeleteEntry(id int64) error {
-	ctx := telemetry.WithTraceID(a.ctx)
-	return a.dictService.DeleteEntry(ctx, id)
-}
-
-// DictStartImport は指定ファイルのインポートを開始する。
-func (a *App) DictStartImport(filePath string) (int64, error) {
-	ctx := telemetry.WithTraceID(a.ctx)
-	return a.dictService.StartImport(ctx, filePath)
-}
-
-// SelectFiles はOSのファイル選択ダイアログを開き、選択されたファイルの絶対パス一覧を返す。
-func (a *App) SelectFiles() ([]string, error) {
-	return runtime.OpenMultipleFilesDialog(a.ctx, runtime.OpenDialogOptions{
-		Title: "インポートする辞書ファイルを選択",
-		Filters: []runtime.FileFilter{
-			{DisplayName: "XML Files (*.xml)", Pattern: "*.xml"},
-			{DisplayName: "All Files (*.*)", Pattern: "*.*"},
-		},
-	})
-}
-
-// SelectJSONFile は JSON ファイル選択ダイアログを開き、選択された単一ファイルの絶対パスを返す。
-func (a *App) SelectJSONFile() (string, error) {
-	return runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
-		Title: "JSONファイルを選択",
-		Filters: []runtime.FileFilter{
-			{DisplayName: "JSON Files (*.json)", Pattern: "*.json"},
-			{DisplayName: "All Files (*.*)", Pattern: "*.*"},
-		},
-	})
+	_ = ctx
 }

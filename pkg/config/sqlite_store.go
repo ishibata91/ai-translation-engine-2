@@ -112,7 +112,7 @@ func (s *SQLiteStore) SetJSON(ctx context.Context, namespace string, key string,
 
 	data, err := s.marshalToJSON(value)
 	if err != nil {
-		return err
+		return fmt.Errorf("marshal ui state namespace=%s key=%s: %w", namespace, key, err)
 	}
 
 	return s.upsertUIState(ctx, namespace, key, data)
@@ -123,7 +123,7 @@ func (s *SQLiteStore) GetJSON(ctx context.Context, namespace string, key string,
 
 	value, err := s.queryUIStateValue(ctx, namespace, key)
 	if err != nil {
-		return err
+		return fmt.Errorf("query ui state namespace=%s key=%s: %w", namespace, key, err)
 	}
 	if value == "" {
 		return nil // Target remains unchanged

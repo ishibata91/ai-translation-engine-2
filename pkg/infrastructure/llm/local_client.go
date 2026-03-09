@@ -118,7 +118,7 @@ func (c *lmStudioClient) Complete(ctx context.Context, req Request) (Response, e
 		return innerErr
 	})
 	if err != nil {
-		return Response{}, err
+		return Response{}, fmt.Errorf("lmstudio: complete request failed: %w", err)
 	}
 	resp.Metadata = req.Metadata
 	return resp, nil
@@ -140,7 +140,7 @@ func (c *lmStudioClient) GenerateStructured(ctx context.Context, req Request) (R
 		return innerErr
 	})
 	if err != nil {
-		return Response{}, err
+		return Response{}, fmt.Errorf("lmstudio: structured request failed: %w", err)
 	}
 	resp.Metadata = req.Metadata
 	return resp, nil
@@ -149,7 +149,7 @@ func (c *lmStudioClient) GenerateStructured(ctx context.Context, req Request) (R
 func (c *lmStudioClient) StreamComplete(ctx context.Context, req Request) (StreamResponse, error) {
 	resp, err := c.Complete(ctx, req)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("lmstudio: stream completion fallback failed: %w", err)
 	}
 	return &localStreamResponse{resp: resp}, nil
 }
@@ -160,7 +160,10 @@ func (c *lmStudioClient) GetEmbedding(_ context.Context, _ string) ([]float32, e
 
 func (c *lmStudioClient) HealthCheck(ctx context.Context) error {
 	_, err := c.ListModels(ctx)
-	return err
+	if err != nil {
+		return fmt.Errorf("lmstudio: health check failed: %w", err)
+	}
+	return nil
 }
 
 func (c *lmStudioClient) LoadModel(ctx context.Context, model string, contextLength int) (string, error) {
@@ -173,7 +176,10 @@ func (c *lmStudioClient) LoadModel(ctx context.Context, model string, contextLen
 	if contextLength > 0 {
 		payload["context_length"] = contextLength
 	}
-	bodyBytes, _ := json.Marshal(payload)
+	bodyBytes, err := json.Marshal(payload)
+	if err != nil {
+		return "", fmt.Errorf("lmstudio: load request marshal failed: %w", err)
+	}
 
 	url := fmt.Sprintf("%s/api/v1/models/load", c.config.Endpoint)
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(bodyBytes))
@@ -189,7 +195,10 @@ func (c *lmStudioClient) LoadModel(ctx context.Context, model string, contextLen
 	}
 	defer httpResp.Body.Close()
 
-	respBody, _ := io.ReadAll(httpResp.Body)
+	respBody, err := io.ReadAll(httpResp.Body)
+	if err != nil {
+		return "", fmt.Errorf("lmstudio: load response read failed: %w", err)
+	}
 	if httpResp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("lmstudio: load error %d: %s", httpResp.StatusCode, string(respBody))
 	}
@@ -211,7 +220,10 @@ func (c *lmStudioClient) UnloadModel(ctx context.Context, instanceID string) err
 		return nil
 	}
 	payload := map[string]string{"instance_id": instanceID}
-	bodyBytes, _ := json.Marshal(payload)
+	bodyBytes, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("lmstudio: unload request marshal failed: %w", err)
+	}
 
 	url := fmt.Sprintf("%s/api/v1/models/unload", c.config.Endpoint)
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(bodyBytes))
@@ -227,7 +239,10 @@ func (c *lmStudioClient) UnloadModel(ctx context.Context, instanceID string) err
 	}
 	defer httpResp.Body.Close()
 	if httpResp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(httpResp.Body)
+		body, err := io.ReadAll(httpResp.Body)
+		if err != nil {
+			return fmt.Errorf("lmstudio: unload response read failed: %w", err)
+		}
 		return fmt.Errorf("lmstudio: unload error %d: %s", httpResp.StatusCode, string(body))
 	}
 	return nil
@@ -291,7 +306,10 @@ func (c *lmStudioClient) doChatCompletion(ctx context.Context, req Request, stru
 		return Response{}, fmt.Errorf("lmstudio: request failed: %w", err)
 	}
 	defer httpResp.Body.Close()
-	respBody, _ := io.ReadAll(httpResp.Body)
+	respBody, err := io.ReadAll(httpResp.Body)
+	if err != nil {
+		return Response{}, fmt.Errorf("lmstudio: response read failed: %w", err)
+	}
 
 	if IsRetryableStatusCode(httpResp.StatusCode) {
 		return Response{}, &RetryableError{StatusCode: httpResp.StatusCode, Message: string(respBody)}

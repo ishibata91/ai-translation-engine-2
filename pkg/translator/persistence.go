@@ -45,8 +45,10 @@ func (p *sqlitePersistence) getDB(pluginName string) (*sql.DB, error) {
 
 	// Initialize schema
 	if err := p.initSchema(db); err != nil {
-		db.Close()
-		return nil, err
+		if closeErr := db.Close(); closeErr != nil {
+			return nil, fmt.Errorf("initialize translation schema plugin=%s: %w (close failed: %v)", pluginName, err, closeErr)
+		}
+		return nil, fmt.Errorf("initialize translation schema plugin=%s: %w", pluginName, err)
 	}
 
 	p.dbs[pluginName] = db
@@ -89,7 +91,7 @@ func (p *sqlitePersistence) LoadCachedResults(pluginName string, baseDir string)
 
 	db, err := p.getDB(pluginName)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get translation database plugin=%s: %w", pluginName, err)
 	}
 
 	query := `SELECT form_id, record_type, source_text, translated_text, stage_index, status, error_message, source_plugin, editor_id, parent_form_id, parent_editor_id FROM main_translations`
@@ -133,7 +135,7 @@ func (p *sqlitePersistence) LoadCachedResults(pluginName string, baseDir string)
 func (p *sqlitePersistence) Write(result TranslationResult) error {
 	db, err := p.getDB(result.SourcePlugin)
 	if err != nil {
-		return err
+		return fmt.Errorf("get translation database plugin=%s: %w", result.SourcePlugin, err)
 	}
 
 	query := `
@@ -189,7 +191,9 @@ func (p *sqlitePersistence) Close() error {
 	defer p.mu.Unlock()
 
 	for name, db := range p.dbs {
-		db.Close()
+		if err := db.Close(); err != nil {
+			return fmt.Errorf("close translation database plugin=%s: %w", name, err)
+		}
 		delete(p.dbs, name)
 	}
 	return nil

@@ -64,7 +64,10 @@ func (m *Manager) RegisterCompletionHook(ttype TaskType, hook CompletionHook) {
 }
 
 func (m *Manager) ResumeTask(id string) error {
-	return m.ResumeTaskWithContext(m.ctx, id)
+	if err := m.ResumeTaskWithContext(m.ctx, id); err != nil {
+		return fmt.Errorf("resume task id=%s: %w", id, err)
+	}
+	return nil
 }
 
 func (m *Manager) ResumeTaskWithContext(ctx context.Context, id string) error {
@@ -75,7 +78,7 @@ func (m *Manager) ResumeTaskWithContext(ctx context.Context, id string) error {
 
 	currentTask, err := m.loadTaskForResume(logCtx, id)
 	if err != nil {
-		return err
+		return fmt.Errorf("load task for resume task_id=%s: %w", id, err)
 	}
 	if currentTask.Status == StatusRunning {
 		return nil
@@ -97,7 +100,7 @@ func (m *Manager) ResumeTaskWithContext(ctx context.Context, id string) error {
 
 	taskCtx, err := m.prepareTaskExecution(logCtx, currentTask)
 	if err != nil {
-		return err
+		return fmt.Errorf("prepare task execution task_id=%s: %w", id, err)
 	}
 
 	go m.runTask(taskCtx, currentTask, runner, StatusCompleted)

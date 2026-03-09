@@ -1,7 +1,8 @@
 import { renderHook, waitFor, act } from '@testing-library/react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { useDictionaryBuilder } from './useDictionaryBuilder';
-import * as AppBindings from '../../../wailsjs/go/main/App';
+import * as DictionaryBindings from '../../../wailsjs/go/controller/DictionaryController';
+import * as FileDialogBindings from '../../../wailsjs/go/controller/FileDialogController';
 
 const eventHandlers = new Map<string, (payload: unknown) => void>();
 
@@ -20,15 +21,18 @@ vi.mock('../../../wailsjs/runtime/runtime', () => ({
     }),
 }));
 
-vi.mock('../../../wailsjs/go/main/App', () => ({
+vi.mock('../../../wailsjs/go/controller/DictionaryController', () => ({
     DictGetSources: vi.fn(),
     DictStartImport: vi.fn(),
     DictGetEntriesPaginated: vi.fn(),
     DictSearchAllEntriesPaginated: vi.fn(),
     DictUpdateEntry: vi.fn(),
     DictDeleteEntry: vi.fn(),
-    SelectFiles: vi.fn(),
     DictDeleteSource: vi.fn(),
+}));
+
+vi.mock('../../../wailsjs/go/controller/FileDialogController', () => ({
+    SelectFiles: vi.fn(),
 }));
 
 describe('useDictionaryBuilder', () => {
@@ -36,7 +40,7 @@ describe('useDictionaryBuilder', () => {
         vi.clearAllMocks();
         eventHandlers.clear();
 
-        asMock(AppBindings.DictGetSources).mockResolvedValue([
+        asMock(DictionaryBindings.DictGetSources).mockResolvedValue([
             {
                 id: 1,
                 file_name: 'Skyrim.esm.xml',
@@ -49,13 +53,13 @@ describe('useDictionaryBuilder', () => {
                 error_message: undefined,
             },
         ]);
-        asMock(AppBindings.DictGetEntriesPaginated).mockResolvedValue({ entries: [], totalCount: 0 });
-        asMock(AppBindings.DictSearchAllEntriesPaginated).mockResolvedValue({ entries: [], totalCount: 0 });
-        asMock(AppBindings.SelectFiles).mockResolvedValue([]);
-        asMock(AppBindings.DictDeleteEntry).mockResolvedValue(undefined);
-        asMock(AppBindings.DictUpdateEntry).mockResolvedValue(undefined);
-        asMock(AppBindings.DictDeleteSource).mockResolvedValue(undefined);
-        asMock(AppBindings.DictStartImport).mockResolvedValue(1);
+        asMock(DictionaryBindings.DictGetEntriesPaginated).mockResolvedValue({ entries: [], totalCount: 0 });
+        asMock(DictionaryBindings.DictSearchAllEntriesPaginated).mockResolvedValue({ entries: [], totalCount: 0 });
+        asMock(FileDialogBindings.SelectFiles).mockResolvedValue([]);
+        asMock(DictionaryBindings.DictDeleteEntry).mockResolvedValue(undefined);
+        asMock(DictionaryBindings.DictUpdateEntry).mockResolvedValue(undefined);
+        asMock(DictionaryBindings.DictDeleteSource).mockResolvedValue(undefined);
+        asMock(DictionaryBindings.DictStartImport).mockResolvedValue(1);
     });
 
     it('初期化時にソース一覧を取得して state に反映する', async () => {
