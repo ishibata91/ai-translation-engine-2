@@ -42,3 +42,12 @@
 - 重点的に見るべきファイル: `tools/backendquality/**`, 追加する analyzer / rule 実装, 代表 fixture
 - 重点的に見るべきテスト: package 境界 `return err`, `fmt.Errorf` `%w` 欠落, cleanup 例外ケース
 - verify 時の補足メモ: wrap 必須境界の定義が spec と実装で一致しているか確認する
+
+## 6. Adoption Notes
+
+- `go test ./tools/backendquality/...` は成功した。
+- `npm run backend:check` は成功し、既存テストや goimports 差分には影響しなかった。
+- `npm run backend:lint` は `errorwrapcheck` により 106 件の既存違反を検出して失敗した。
+- 既存違反は主に `pkg/infrastructure/llm`, `pkg/infrastructure/queue`, `pkg/config`, `pkg/task`, `pkg/summary`, `pkg/controller`, `cmd/parser` に集中している。
+- 第一段の修正優先度は、公開境界 `return err` が多い package からとし、`do not ignore errors` は best-effort か本流かを切り分けながら段階的に潰す。
+- `strings.Builder` / `bytes.Buffer` の `Write*` と `fmt.Print*` は best-effort 例外として analyzer 側で除外済みであり、残件は実コード側の wrap 不足または追加例外検討候補として扱う。

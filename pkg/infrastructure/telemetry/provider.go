@@ -33,7 +33,10 @@ func globalAttrsFromEnv() GlobalAttrs {
 	if service == "" {
 		service = "ai-translation-engine"
 	}
-	host, _ := os.Hostname()
+	host, err := os.Hostname()
+	if err != nil {
+		host = ""
+	}
 	if host == "" {
 		host = runtime.GOOS
 	}

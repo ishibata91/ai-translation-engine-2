@@ -3,6 +3,7 @@ package telemetry
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"sync"
 	"time"
@@ -60,7 +61,7 @@ func (h *wailsHandler) Enabled(ctx context.Context, level slog.Level) bool {
 func (h *wailsHandler) Handle(ctx context.Context, r slog.Record) error {
 	// まず下流ハンドラー（コンソール出力）に渡す
 	if err := h.next.Handle(ctx, r); err != nil {
-		return err
+		return fmt.Errorf("wails handler delegate failed: %w", err)
 	}
 
 	// Wails コンテキストが未設定の場合はスキップ

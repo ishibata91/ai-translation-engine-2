@@ -35,13 +35,13 @@ func (s *SQLiteStore) Set(ctx context.Context, namespace string, key string, val
 
 	oldValue, err := s.Get(ctx, namespace, key)
 	if err != nil {
-		return err
+		return fmt.Errorf("load previous config value namespace=%s key=%s: %w", namespace, key, err)
 	}
 
 	if err := s.upsertConfig(ctx, namespace, key, value); err != nil {
 		s.logger.ErrorContext(ctx, "config.set_failed",
 			append(telemetry.ErrorAttrs(err), slog.String("namespace", namespace), slog.String("key", key))...)
-		return err
+		return fmt.Errorf("set config namespace=%s key=%s: %w", namespace, key, err)
 	}
 
 	s.detectAndNotifyChange(namespace, key, oldValue, value)
@@ -52,12 +52,15 @@ func (s *SQLiteStore) Delete(ctx context.Context, namespace string, key string) 
 	defer telemetry.StartSpan(ctx, telemetry.ActionConfigOperation)()
 	s.logger.InfoContext(ctx, "config.delete", slog.String("namespace", namespace), slog.String("key", key))
 
-	oldValue, _ := s.Get(ctx, namespace, key)
+	oldValue, err := s.Get(ctx, namespace, key)
+	if err != nil {
+		return fmt.Errorf("load previous config value for delete namespace=%s key=%s: %w", namespace, key, err)
+	}
 
 	if err := s.deleteConfigRow(ctx, namespace, key); err != nil {
 		s.logger.ErrorContext(ctx, "config.delete_failed",
 			append(telemetry.ErrorAttrs(err), slog.String("namespace", namespace), slog.String("key", key))...)
-		return err
+		return fmt.Errorf("delete config namespace=%s key=%s: %w", namespace, key, err)
 	}
 
 	s.detectAndNotifyChange(namespace, key, oldValue, "")
@@ -139,7 +142,10 @@ func (s *SQLiteStore) DeleteUIState(ctx context.Context, namespace string, key s
 	s.logger.DebugContext(ctx, "config.ui_state.delete", slog.String("namespace", namespace), slog.String("key", key))
 
 	_, err := s.db.ExecContext(ctx, "DELETE FROM ui_state WHERE namespace = ? AND key = ?", namespace, key)
-	return err
+	if err != nil {
+		return fmt.Errorf("delete ui state namespace=%s key=%s: %w", namespace, key, err)
+	}
+	return nil
 }
 
 func (s *SQLiteStore) GetAllUIState(ctx context.Context, namespace string) (map[string]string, error) {
@@ -147,7 +153,7 @@ func (s *SQLiteStore) GetAllUIState(ctx context.Context, namespace string) (map[
 
 	rows, err := s.queryAllByNamespace(ctx, "ui_state", namespace)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("list ui state namespace=%s: %w", namespace, err)
 	}
 	defer rows.Close()
 
@@ -291,6 +297,9 @@ func (s *SQLiteStore) scanKeyValueRows(rows *sql.Rows) (map[string]string, error
 		}
 		result[key] = value
 	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate key value rows: %w", err)
+	}
 	return result, nil
 }
 
@@ -303,6 +312,9 @@ func (s *SQLiteStore) scanStringColumn(rows *sql.Rows) ([]string, error) {
 			return nil, fmt.Errorf("failed to scan row: %w", err)
 		}
 		results = append(results, val)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate string rows: %w", err)
 	}
 	return results, nil
 }

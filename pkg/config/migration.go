@@ -14,12 +14,12 @@ func Migrate(ctx context.Context, db *sql.DB) error {
 	defer slog.DebugContext(ctx, "EXIT Migrate")
 
 	if err := ensureSchemaVersionTable(ctx, db); err != nil {
-		return err
+		return fmt.Errorf("ensure schema version table: %w", err)
 	}
 
 	currentVersion, err := getCurrentVersion(ctx, db)
 	if err != nil {
-		return err
+		return fmt.Errorf("get current schema version: %w", err)
 	}
 
 	return applyPendingMigrations(ctx, db, currentVersion)
@@ -67,7 +67,7 @@ func applyPendingMigrations(ctx context.Context, db *sql.DB, currentVersion int)
 			err = runMigrationV2(ctx, db)
 		}
 		if err != nil {
-			return err
+			return fmt.Errorf("apply migration version %d: %w", v, err)
 		}
 	}
 	return nil

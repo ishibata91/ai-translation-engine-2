@@ -110,6 +110,18 @@ sequenceDiagram
 Rollback Strategy:
 - 誤検知が多い場合は warning 相当の任意実行へ戻し、境界定義と fixture を補強してから blocking に戻す。
 
+## Fixture Matrix
+
+| ケース | 例 | 期待 |
+| :-- | :-- | :-- |
+| package 境界 `return err` | 公開メソッドが下位 call の `err` をそのまま返す | violation |
+| `%w` 欠落 | `fmt.Errorf("load failed: %v", err)` | violation |
+| 自己 wrap 再代入 | `err = fmt.Errorf("retry failed: %w", err)` | violation |
+| 本流の握りつぶし | 通常処理で `error` 戻り値を `_` に捨てる、または戻り値を無視する | violation |
+| cleanup 例外 | `defer tx.Rollback()` / `defer func(){ _ = file.Close() }()` | allowed |
+| best-effort cleanup with log | cleanup 失敗をログ記録だけ行い正常系継続 | allowed |
+| 明示的 error 変換 | sentinel error へ置き換えて返す、`errors.Is` 分岐で別 error を返す | allowed |
+
 ## Open Questions
 
 - `errors.Join` や sentinel error への変換を MVP でどこまで許容対象にするか。

@@ -121,7 +121,13 @@ func runLint() error {
 	if err := runCleanarch(); err != nil {
 		return err
 	}
-	return runContextCheck(patterns)
+	if err := runContextCheck(patterns); err != nil {
+		return err
+	}
+	if err := runErrorWrapCheck(patterns); err != nil {
+		return err
+	}
+	return runSlogCheck(patterns)
 }
 
 func runLintFile(args []string) error {
@@ -182,6 +188,18 @@ func runCleanarch() error {
 
 func runContextCheck(patterns []string) error {
 	args := []string{"run", "./tools/backendquality/cmd/contextcheck"}
+	args = append(args, patterns...)
+	return runCmd(args...)
+}
+
+func runErrorWrapCheck(patterns []string) error {
+	args := []string{"run", "./tools/backendquality/cmd/errorwrapcheck"}
+	args = append(args, patterns...)
+	return runCmd(args...)
+}
+
+func runSlogCheck(patterns []string) error {
+	args := []string{"run", "./tools/backendquality/cmd/slogcheck"}
 	args = append(args, patterns...)
 	return runCmd(args...)
 }
@@ -643,6 +661,8 @@ func runCmdJSONOutput(args ...string) (string, error) {
 }
 
 func exitf(format string, args ...any) {
-	_, _ = fmt.Fprintf(os.Stderr, format+"\n", args...)
+	if _, err := fmt.Fprintf(os.Stderr, format+"\n", args...); err != nil {
+		os.Exit(1)
+	}
 	os.Exit(1)
 }

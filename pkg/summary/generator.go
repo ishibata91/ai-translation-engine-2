@@ -58,7 +58,7 @@ func (g *summaryGenerator) PreparePrompts(ctx context.Context, input any) ([]llm
 	}
 	output, err := g.ProposeJobs(ctx, typedInput)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("propose summary jobs: %w", err)
 	}
 	return output.Jobs, nil
 }
@@ -295,7 +295,11 @@ func (g *summaryGenerator) SaveResults(ctx context.Context, responses []llm.Resp
 		case float64:
 			lineCount = int(v)
 		case string:
-			lineCount, _ = strconv.Atoi(v)
+			parsedLineCount, parseErr := strconv.Atoi(v)
+			if parseErr != nil {
+				return fmt.Errorf("parse line_count record_id=%s value=%q: %w", recordID, v, parseErr)
+			}
+			lineCount = parsedLineCount
 		}
 
 		record := SummaryRecord{
@@ -330,7 +334,7 @@ func (g *summaryGenerator) GetSummary(ctx context.Context, recordID string, summ
 
 	record, err := g.store.GetByRecordID(ctx, recordID, summaryType)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get summary record record_id=%s type=%s: %w", recordID, summaryType, err)
 	}
 	if record == nil {
 		return nil, nil
@@ -428,7 +432,7 @@ func (s *summaryStore) Get(ctx context.Context, cacheKey string) (*SummaryRecord
 		return nil, nil
 	}
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("query summary by cache key %s: %w", cacheKey, err)
 	}
 	return &r, nil
 }
@@ -448,7 +452,7 @@ func (s *summaryStore) GetByRecordID(ctx context.Context, recordID string, summa
 		return nil, nil
 	}
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("query summary by record_id=%s type=%s: %w", recordID, summaryType, err)
 	}
 	return &r, nil
 }
@@ -471,7 +475,10 @@ func (s *summaryStore) Upsert(ctx context.Context, record SummaryRecord) error {
 		record.InputLineCount,
 		now,
 	)
-	return err
+	if err != nil {
+		return fmt.Errorf("upsert summary record record_id=%s type=%s: %w", record.RecordID, record.SummaryType, err)
+	}
+	return nil
 }
 
 func (s *summaryStore) Close() error {

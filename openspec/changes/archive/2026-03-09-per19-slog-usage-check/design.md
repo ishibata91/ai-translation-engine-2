@@ -113,3 +113,10 @@ Rollback Strategy:
 
 - wrapper 許容を明示リストで持つか、軽量な内部呼び出し追跡で自動判定するか。
 - key 命名チェックを `task_id` など主要キーだけに絞るか、全 key へ拡大するか。
+
+## Implementation Notes
+
+- MVP では wrapper の許容判定を「`log/slog` パッケージまたは `*slog.Logger` のシンボルだけを検査対象にする」方式で実装する。
+- これにより `slog.*Context` を内部で呼ぶ独自 wrapper は analyzer 対象外となり、明示リストなしで代表的な誤検知を避ける。
+- key 命名検査は文字列リテラルのみを対象にし、定数展開・動的生成・message 文言品質は将来拡張へ残す。
+- 既存 `pkg/**` への導入では、まず direct `slog` 呼び出しと key 命名違反の顕在化を `backend:lint` で確認し、必要な既存修正は別 change へ切り出せる前提で進める。
