@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/ishibata91/ai-translation-engine-2/pkg/config"
+	config2 "github.com/ishibata91/ai-translation-engine-2/pkg/workflow/config"
 )
 
 type promptConfig struct {
@@ -15,25 +15,25 @@ type promptConfig struct {
 
 func defaultPromptConfig() promptConfig {
 	return promptConfig{
-		UserPrompt:   config.DefaultMasterPersonaUserPrompt,
-		SystemPrompt: config.DefaultMasterPersonaSystemPrompt,
+		UserPrompt:   config2.DefaultMasterPersonaUserPrompt,
+		SystemPrompt: config2.DefaultMasterPersonaSystemPrompt,
 	}
 }
 
-func loadPromptConfig(ctx context.Context, store config.Config) (promptConfig, error) {
+func loadPromptConfig(ctx context.Context, store config2.Config) (promptConfig, error) {
 	defaults := defaultPromptConfig()
 	if store == nil {
 		return defaults, nil
 	}
 
-	values, err := store.GetAll(ctx, config.MasterPersonaPromptNamespace)
+	values, err := store.GetAll(ctx, config2.MasterPersonaPromptNamespace)
 	if err != nil {
 		return defaults, err
 	}
-	merged := config.MergeMasterPersonaPromptDefaults(values)
+	merged := config2.MergeMasterPersonaPromptDefaults(values)
 	return promptConfig{
-		UserPrompt:   strings.TrimSpace(merged[config.MasterPersonaUserPromptKey]),
-		SystemPrompt: strings.TrimSpace(merged[config.MasterPersonaSystemPromptKey]),
+		UserPrompt:   strings.TrimSpace(merged[config2.MasterPersonaUserPromptKey]),
+		SystemPrompt: strings.TrimSpace(merged[config2.MasterPersonaSystemPromptKey]),
 	}, nil
 }
 

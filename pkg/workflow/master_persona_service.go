@@ -12,17 +12,17 @@ import (
 
 	gatewayllm "github.com/ishibata91/ai-translation-engine-2/pkg/gateway/llm"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/telemetry"
-	"github.com/ishibata91/ai-translation-engine-2/pkg/parser"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/persona"
-	"github.com/ishibata91/ai-translation-engine-2/pkg/pipeline"
 	runtimeprogress "github.com/ishibata91/ai-translation-engine-2/pkg/runtime/progress"
 	runtimequeue "github.com/ishibata91/ai-translation-engine-2/pkg/runtime/queue"
-	"github.com/ishibata91/ai-translation-engine-2/pkg/task"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/slice/parser"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/workflow/pipeline"
+	task2 "github.com/ishibata91/ai-translation-engine-2/pkg/workflow/task"
 )
 
 // MasterPersonaService orchestrates master persona request preparation and execution.
 type MasterPersonaService struct {
-	manager          *task.Manager
+	manager          *task2.Manager
 	logger           *slog.Logger
 	parser           parser.Parser
 	personaGenerator persona.NPCPersonaGenerator
@@ -41,7 +41,7 @@ type personaSaveSummary struct {
 
 // NewMasterPersonaService constructs the workflow implementation.
 func NewMasterPersonaService(
-	manager *task.Manager,
+	manager *task2.Manager,
 	logger *slog.Logger,
 	parser parser.Parser,
 	personaGenerator persona.NPCPersonaGenerator,
@@ -66,7 +66,7 @@ func (s *MasterPersonaService) StartMasterPersona(ctx context.Context, input Sta
 		return "", fmt.Errorf("source_json_path is required")
 	}
 
-	metadata := task.TaskMetadata{
+	metadata := task2.TaskMetadata{
 		"source_json_path":   input.SourceJSONPath,
 		"overwrite_existing": input.OverwriteExisting,
 		"entrypoint":         "master_persona",
@@ -76,10 +76,10 @@ func (s *MasterPersonaService) StartMasterPersona(ctx context.Context, input Sta
 	taskID, err := s.manager.AddTaskWithCompletionStatusContext(
 		ctx,
 		"Master Persona Request Generation",
-		task.TypePersonaExtraction,
+		task2.TypePersonaExtraction,
 		"pending",
 		metadata,
-		task.StatusRequestGenerated,
+		task2.StatusRequestGenerated,
 		func(runCtx context.Context, taskID string, update func(phase string, progress float64)) error {
 			return s.executeRequestPreparation(runCtx, taskID, input, update)
 		},
@@ -130,7 +130,7 @@ func (s *MasterPersonaService) GetTaskRequests(ctx context.Context, taskID strin
 }
 
 // StartMasterPersonTask is the controller-facing wrapper used by task.Bridge.
-func (s *MasterPersonaService) StartMasterPersonTask(ctx context.Context, input task.StartMasterPersonTaskInput) (string, error) {
+func (s *MasterPersonaService) StartMasterPersonTask(ctx context.Context, input task2.StartMasterPersonTaskInput) (string, error) {
 	return s.StartMasterPersona(ctx, StartMasterPersonaInput{
 		SourceJSONPath:    input.SourceJSONPath,
 		OverwriteExisting: input.OverwriteExisting,
@@ -151,8 +151,8 @@ func (s *MasterPersonaService) CancelTask(ctx context.Context, taskID string) {
 }
 
 // CleanupCompletedTask removes queued requests after a MasterPersona task is confirmed completed.
-func (s *MasterPersonaService) CleanupCompletedTask(ctx context.Context, currentTask *task.Task) error {
-	if currentTask.Type != task.TypePersonaExtraction {
+func (s *MasterPersonaService) CleanupCompletedTask(ctx context.Context, currentTask *task2.Task) error {
+	if currentTask.Type != task2.TypePersonaExtraction {
 		return nil
 	}
 	if s.queue == nil {
@@ -165,8 +165,8 @@ func (s *MasterPersonaService) CleanupCompletedTask(ctx context.Context, current
 }
 
 // Run satisfies task.Runner and keeps task execution in workflow.
-func (s *MasterPersonaService) Run(ctx context.Context, currentTask *task.Task, update func(phase string, progress float64)) error {
-	if currentTask.Type != task.TypePersonaExtraction {
+func (s *MasterPersonaService) Run(ctx context.Context, currentTask *task2.Task, update func(phase string, progress float64)) error {
+	if currentTask.Type != task2.TypePersonaExtraction {
 		return fmt.Errorf("unsupported task type for workflow runner")
 	}
 	return s.runPersonaExecution(ctx, currentTask, update)
@@ -185,7 +185,7 @@ func (s *MasterPersonaService) reportProgress(ctx context.Context, correlationID
 	})
 }
 
-func (s *MasterPersonaService) reportTaskPhaseProgress(ctx context.Context, taskID string, taskType task.TaskType, phase string, current int, total int, status string, message string) {
+func (s *MasterPersonaService) reportTaskPhaseProgress(ctx context.Context, taskID string, taskType task2.TaskType, phase string, current int, total int, status string, message string) {
 	if s.notifier == nil {
 		return
 	}
@@ -202,7 +202,7 @@ func (s *MasterPersonaService) reportTaskPhaseProgress(ctx context.Context, task
 	})
 }
 
-func (s *MasterPersonaService) runPersonaExecution(ctx context.Context, currentTask *task.Task, update func(phase string, progress float64)) error {
+func (s *MasterPersonaService) runPersonaExecution(ctx context.Context, currentTask *task2.Task, update func(phase string, progress float64)) error {
 	if s.queue == nil || s.worker == nil {
 		return fmt.Errorf("request queue worker is not configured")
 	}
@@ -270,7 +270,7 @@ func (s *MasterPersonaService) executeRequestPreparation(ctx context.Context, ta
 		return wrappedErr
 	}
 
-	taskMetadata := task.TaskMetadata{
+	taskMetadata := task2.TaskMetadata{
 		"source_json_path":   input.SourceJSONPath,
 		"overwrite_existing": input.OverwriteExisting,
 		"entrypoint":         "master_persona",
@@ -282,7 +282,7 @@ func (s *MasterPersonaService) executeRequestPreparation(ctx context.Context, ta
 	if s.queue == nil {
 		return fmt.Errorf("request queue is not configured")
 	}
-	if err := s.queue.SubmitTaskRequests(runCtx, taskID, string(task.TypePersonaExtraction), requests); err != nil {
+	if err := s.queue.SubmitTaskRequests(runCtx, taskID, string(task2.TypePersonaExtraction), requests); err != nil {
 		wrappedErr := fmt.Errorf("submit task requests task_id=%s request_count=%d: %w", taskID, len(requests), err)
 		s.reportProgress(runCtx, taskID, 80, runtimeprogress.StatusFailed, "キュー保存に失敗")
 		s.logger.ErrorContext(runCtx, "persona.requests.queue_save_failed",
@@ -325,7 +325,7 @@ func (s *MasterPersonaService) loadTaskRequestState(ctx context.Context, taskID 
 
 func (s *MasterPersonaService) processQueuedRequests(
 	ctx context.Context,
-	currentTask *task.Task,
+	currentTask *task2.Task,
 	state runtimequeue.TaskRequestState,
 	update func(phase string, progress float64),
 	baseCompleted int,
@@ -389,9 +389,9 @@ func (s *MasterPersonaService) loadUpdatedTaskState(ctx context.Context, taskID 
 	return state, nil
 }
 
-func (s *MasterPersonaService) finalizePersonaExecution(ctx context.Context, currentTask *task.Task, updatedState runtimequeue.TaskRequestState) error {
+func (s *MasterPersonaService) finalizePersonaExecution(ctx context.Context, currentTask *task2.Task, updatedState runtimequeue.TaskRequestState) error {
 	saveSummary, saveErr := s.persistPersonaResponses(ctx, currentTask)
-	metadata := mergeTaskMetadata(currentTask.Metadata, task.TaskMetadata{
+	metadata := mergeTaskMetadata(currentTask.Metadata, task2.TaskMetadata{
 		"phase":                "REQUEST_COMPLETED",
 		"resume_cursor":        updatedState.Completed,
 		"saved_request_ids":    saveSummary.SavedRequestIDs,
@@ -422,7 +422,7 @@ func (s *MasterPersonaService) finalizePersonaExecution(ctx context.Context, cur
 	return nil
 }
 
-func (s *MasterPersonaService) persistPersonaResponses(ctx context.Context, currentTask *task.Task) (personaSaveSummary, error) {
+func (s *MasterPersonaService) persistPersonaResponses(ctx context.Context, currentTask *task2.Task) (personaSaveSummary, error) {
 	out := personaSaveSummary{}
 	if s.personaGenerator == nil {
 		return out, fmt.Errorf("persona generator is not configured")
@@ -516,8 +516,8 @@ func buildPersonaResponseFromJob(job runtimequeue.JobRequest) (gatewayllm.Respon
 	return resp, nil
 }
 
-func mergeTaskMetadata(base task.TaskMetadata, updates task.TaskMetadata) task.TaskMetadata {
-	out := task.TaskMetadata{}
+func mergeTaskMetadata(base task2.TaskMetadata, updates task2.TaskMetadata) task2.TaskMetadata {
+	out := task2.TaskMetadata{}
 	for k, v := range base {
 		out[k] = v
 	}

@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ishibata91/ai-translation-engine-2/pkg/config"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/llm"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/progress"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/queue"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/workflow/config"
 )
 
 // mockSlice implements Slice interface for testing.

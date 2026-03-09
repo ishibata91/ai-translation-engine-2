@@ -2,7 +2,7 @@ package parser
 
 import (
 	"github.com/google/wire"
-	"github.com/ishibata91/ai-translation-engine-2/pkg/config"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/workflow/config"
 )
 
 // ProvideParser returns an implementation of Parser.

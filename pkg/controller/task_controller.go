@@ -3,17 +3,17 @@ package controller
 import (
 	"context"
 
-	"github.com/ishibata91/ai-translation-engine-2/pkg/task"
+	task2 "github.com/ishibata91/ai-translation-engine-2/pkg/workflow/task"
 )
 
 // TaskController exposes generic Wails-facing task operations.
 type TaskController struct {
 	ctx     context.Context
-	manager *task.Manager
+	manager *task2.Manager
 }
 
 // NewTaskController constructs the task controller adapter.
-func NewTaskController(manager *task.Manager) *TaskController {
+func NewTaskController(manager *task2.Manager) *TaskController {
 	return &TaskController{
 		ctx:     context.Background(),
 		manager: manager,
@@ -30,12 +30,12 @@ func (c *TaskController) SetContext(ctx context.Context) {
 }
 
 // GetActiveTasks returns in-memory active tasks for dashboard polling.
-func (c *TaskController) GetActiveTasks() []task.Task {
+func (c *TaskController) GetActiveTasks() []task2.Task {
 	return c.manager.GetActiveTasks()
 }
 
 // GetAllTasks loads all persisted tasks.
-func (c *TaskController) GetAllTasks() ([]task.Task, error) {
+func (c *TaskController) GetAllTasks() ([]task2.Task, error) {
 	return c.manager.Store().GetAllTasks(c.ctx)
 }
 

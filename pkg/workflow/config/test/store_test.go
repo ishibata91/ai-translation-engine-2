@@ -7,18 +7,18 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ishibata91/ai-translation-engine-2/pkg/config"
+	config2 "github.com/ishibata91/ai-translation-engine-2/pkg/workflow/config"
 	_ "modernc.org/sqlite"
 )
 
-func setupTestDB(t *testing.T) (*sql.DB, *config.SQLiteStore) {
+func setupTestDB(t *testing.T) (*sql.DB, *config2.SQLiteStore) {
 	db, err := sql.Open("sqlite", ":memory:")
 	if err != nil {
 		t.Fatalf("failed to open in-memory db: %v", err)
 	}
 
 	ctx := context.Background()
-	store, err := config.NewSQLiteStore(ctx, db, slog.Default())
+	store, err := config2.NewSQLiteStore(ctx, db, slog.Default())
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
@@ -65,7 +65,7 @@ func TestTypedAccessor(t *testing.T) {
 	defer db.Close()
 
 	ctx := context.Background()
-	accessor := config.NewTypedAccessor(store)
+	accessor := config2.NewTypedAccessor(store)
 
 	// Set some values
 	if err := store.Set(ctx, "test", "int", "123"); err != nil {
@@ -107,7 +107,7 @@ func TestWatch(t *testing.T) {
 	ctx := context.Background()
 	changed := make(chan bool, 1)
 
-	store.Watch("test", "key", func(event config.ChangeEvent) {
+	store.Watch("test", "key", func(event config2.ChangeEvent) {
 		if event.NewValue == "new" {
 			changed <- true
 		}

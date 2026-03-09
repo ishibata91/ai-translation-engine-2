@@ -8,9 +8,9 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/ishibata91/ai-translation-engine-2/pkg/dictionary"
-	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/datastore"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/gateway/datastore"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/progress"
+	dictionary2 "github.com/ishibata91/ai-translation-engine-2/pkg/slice/dictionary"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -38,14 +38,14 @@ func main() {
 	defer dbCleanup()
 
 	// 構築部分
-	store, err := dictionary.NewDictionaryStore(db)
+	store, err := dictionary2.NewDictionaryStore(db)
 	if err != nil {
 		log.Fatalf("failed to initialize dictionary store: %v", err)
 	}
-	config := dictionary.DefaultConfig()
+	config := dictionary2.DefaultConfig()
 	notifier := progress.NewNoopNotifier()
 	logger := slog.Default() // Define logger as it's used in NewImporter
-	importer := dictionary.NewImporter(config, store, notifier, logger)
+	importer := dictionary2.NewImporter(config, store, notifier, logger)
 
 	// Open XML file for reading
 	file, err := os.Open(xmlFilePath) // Use xmlFilePath

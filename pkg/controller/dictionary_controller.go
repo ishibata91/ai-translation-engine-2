@@ -3,18 +3,18 @@ package controller
 import (
 	"context"
 
-	"github.com/ishibata91/ai-translation-engine-2/pkg/dictionary"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/telemetry"
+	dictionary2 "github.com/ishibata91/ai-translation-engine-2/pkg/slice/dictionary"
 )
 
 // DictionaryController exposes Wails-facing dictionary operations.
 type DictionaryController struct {
 	ctx     context.Context
-	service *dictionary.DictionaryService
+	service *dictionary2.DictionaryService
 }
 
 // NewDictionaryController constructs the dictionary controller adapter.
-func NewDictionaryController(service *dictionary.DictionaryService) *DictionaryController {
+func NewDictionaryController(service *dictionary2.DictionaryService) *DictionaryController {
 	return &DictionaryController{
 		ctx:     context.Background(),
 		service: service,
@@ -31,7 +31,7 @@ func (c *DictionaryController) SetContext(ctx context.Context) {
 }
 
 // DictGetSources returns all registered dictionary sources.
-func (c *DictionaryController) DictGetSources() ([]dictionary.DictSource, error) {
+func (c *DictionaryController) DictGetSources() ([]dictionary2.DictSource, error) {
 	return c.service.GetSources(c.context())
 }
 
@@ -41,22 +41,22 @@ func (c *DictionaryController) DictDeleteSource(id int64) error {
 }
 
 // DictGetEntries returns dictionary entries for the source.
-func (c *DictionaryController) DictGetEntries(sourceID int64) ([]dictionary.DictTerm, error) {
+func (c *DictionaryController) DictGetEntries(sourceID int64) ([]dictionary2.DictTerm, error) {
 	return c.service.GetEntries(c.context(), sourceID)
 }
 
 // DictGetEntriesPaginated returns paginated dictionary entries for the source.
-func (c *DictionaryController) DictGetEntriesPaginated(sourceID int64, query string, filters map[string]string, page, pageSize int) (*dictionary.DictTermPage, error) {
+func (c *DictionaryController) DictGetEntriesPaginated(sourceID int64, query string, filters map[string]string, page, pageSize int) (*dictionary2.DictTermPage, error) {
 	return c.service.GetEntriesPaginated(c.context(), sourceID, query, filters, page, pageSize)
 }
 
 // DictSearchAllEntriesPaginated searches dictionary entries across all sources.
-func (c *DictionaryController) DictSearchAllEntriesPaginated(query string, filters map[string]string, page, pageSize int) (*dictionary.DictTermPage, error) {
+func (c *DictionaryController) DictSearchAllEntriesPaginated(query string, filters map[string]string, page, pageSize int) (*dictionary2.DictTermPage, error) {
 	return c.service.SearchAll(c.context(), query, filters, page, pageSize)
 }
 
 // DictUpdateEntry updates one dictionary entry.
-func (c *DictionaryController) DictUpdateEntry(term dictionary.DictTerm) error {
+func (c *DictionaryController) DictUpdateEntry(term dictionary2.DictTerm) error {
 	return c.service.UpdateEntry(c.context(), term)
 }
 

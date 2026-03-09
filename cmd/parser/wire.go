@@ -7,17 +7,17 @@ import (
 	"context"
 
 	"github.com/google/wire"
-	"github.com/ishibata91/ai-translation-engine-2/pkg/config"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure"
-	"github.com/ishibata91/ai-translation-engine-2/pkg/parser"
+	parser2 "github.com/ishibata91/ai-translation-engine-2/pkg/slice/parser"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/workflow/config"
 )
 
 // InitializeParser creates a new Parser instance with all dependencies wired.
-func InitializeParser(ctx context.Context) (parser.Parser, func(), error) {
+func InitializeParser(ctx context.Context) (parser2.Parser, func(), error) {
 	wire.Build(
 		infrastructure.InfrastructureSet,
 		config.ConfigSet,
-		parser.ParserSet,
+		parser2.ParserSet,
 	)
 	return nil, nil, nil
 }

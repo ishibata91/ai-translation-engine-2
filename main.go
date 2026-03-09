@@ -5,19 +5,19 @@ import (
 	"embed"
 	"log"
 
-	"github.com/ishibata91/ai-translation-engine-2/pkg/config"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/controller"
-	"github.com/ishibata91/ai-translation-engine-2/pkg/dictionary"
-	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/datastore"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/gateway/datastore"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/llm"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/progress"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/queue"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/telemetry"
-	"github.com/ishibata91/ai-translation-engine-2/pkg/modelcatalog"
-	"github.com/ishibata91/ai-translation-engine-2/pkg/parser"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/persona"
-	"github.com/ishibata91/ai-translation-engine-2/pkg/task"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/runtime/modelcatalog"
+	dictionary2 "github.com/ishibata91/ai-translation-engine-2/pkg/slice/dictionary"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/slice/parser"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/workflow"
+	config2 "github.com/ishibata91/ai-translation-engine-2/pkg/workflow/config"
+	task2 "github.com/ishibata91/ai-translation-engine-2/pkg/workflow/task"
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
@@ -42,17 +42,17 @@ func main() {
 	defer taskDBCleanup()
 
 	// 2. Run Migrations
-	if err := config.Migrate(context.Background(), db); err != nil {
+	if err := config2.Migrate(context.Background(), db); err != nil {
 		log.Fatalf("failed to run database migrations: %v", err)
 	}
 
 	// 3. Setup Task Manager
 	logger, wailsLogH := telemetry.ProvideLogger()
-	if err := task.Migrate(context.Background(), taskDB); err != nil {
+	if err := task2.Migrate(context.Background(), taskDB); err != nil {
 		log.Fatalf("failed to run task database migrations: %v", err)
 	}
-	taskStore := task.NewStore(taskDB)
-	taskManager := task.NewManager(context.TODO(), logger, taskStore) // Context will be set in startup
+	taskStore := task2.NewStore(taskDB)
+	taskManager := task2.NewManager(context.TODO(), logger, taskStore) // Context will be set in startup
 	personaProgressNotifier := progress.NewWailsNotifier(logger)
 	personaProgressNotifier.SetEventName("persona:progress")
 
@@ -63,7 +63,7 @@ func main() {
 	}
 	defer dictDBCleanup()
 
-	dictStore, err := dictionary.NewDictionaryStore(dictDB)
+	dictStore, err := dictionary2.NewDictionaryStore(dictDB)
 	if err != nil {
 		log.Fatalf("failed to initialize dictionary store: %v", err)
 	}
@@ -71,12 +71,12 @@ func main() {
 	wailsNotifier.SetEventName("dictionary:import_progress") // 必要に応じて変更可能
 
 	// Wails AST needs `New<StructName>` pattern or `&StructName{}` pattern to discover bindings properly
-	dictConfig := dictionary.DefaultConfig()
-	dictImporter := dictionary.NewImporter(dictConfig, dictStore, wailsNotifier, logger)
-	dictService := dictionary.NewDictionaryService(dictStore, dictImporter, logger)
+	dictConfig := dictionary2.DefaultConfig()
+	dictImporter := dictionary2.NewImporter(dictConfig, dictStore, wailsNotifier, logger)
+	dictService := dictionary2.NewDictionaryService(dictStore, dictImporter, logger)
 
 	// 5. Setup Config Controller (UIStateStore Wails binding)
-	configStore, err := config.NewSQLiteStore(context.Background(), db, logger)
+	configStore, err := config2.NewSQLiteStore(context.Background(), db, logger)
 	if err != nil {
 		log.Fatalf("failed to initialize config store: %v", err)
 	}
@@ -123,8 +123,8 @@ func main() {
 
 	// 7. Setup Bridge
 	masterPersonaWorkflow := workflow.NewMasterPersonaService(taskManager, logger, parserLoader, personaGenerator, personaProgressNotifier, llmQueue, queueWorker)
-	taskManager.RegisterRunner(task.TypePersonaExtraction, masterPersonaWorkflow)
-	taskManager.RegisterCompletionHook(task.TypePersonaExtraction, masterPersonaWorkflow.CleanupCompletedTask)
+	taskManager.RegisterRunner(task2.TypePersonaExtraction, masterPersonaWorkflow)
+	taskManager.RegisterCompletionHook(task2.TypePersonaExtraction, masterPersonaWorkflow.CleanupCompletedTask)
 	taskController := controller.NewTaskController(taskManager)
 	personaTaskController := controller.NewPersonaTaskController(taskManager, masterPersonaWorkflow)
 	dictionaryController := controller.NewDictionaryController(dictService)

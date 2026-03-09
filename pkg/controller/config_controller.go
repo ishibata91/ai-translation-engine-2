@@ -5,19 +5,19 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/ishibata91/ai-translation-engine-2/pkg/config"
+	config2 "github.com/ishibata91/ai-translation-engine-2/pkg/workflow/config"
 )
 
 // ConfigController exposes Wails-facing config and UI state operations.
 type ConfigController struct {
 	ctx          context.Context
 	logger       *slog.Logger
-	uiStateStore config.UIStateStore
-	configStore  config.Config
+	uiStateStore config2.UIStateStore
+	configStore  config2.Config
 }
 
 // NewConfigController constructs the config controller adapter.
-func NewConfigController(store *config.SQLiteStore, logger *slog.Logger) *ConfigController {
+func NewConfigController(store *config2.SQLiteStore, logger *slog.Logger) *ConfigController {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -75,8 +75,8 @@ func (c *ConfigController) ConfigGet(namespace, key string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("get config namespace=%s key=%s: %w", namespace, key, err)
 	}
-	if namespace == config.MasterPersonaPromptNamespace && value == "" {
-		defaults := config.DefaultMasterPersonaPromptValues()
+	if namespace == config2.MasterPersonaPromptNamespace && value == "" {
+		defaults := config2.DefaultMasterPersonaPromptValues()
 		return defaults[key], nil
 	}
 	return value, nil
@@ -121,8 +121,8 @@ func (c *ConfigController) ConfigGetAll(namespace string) (map[string]string, er
 	if err != nil {
 		return nil, fmt.Errorf("get all config namespace=%s: %w", namespace, err)
 	}
-	if namespace == config.MasterPersonaPromptNamespace {
-		return config.MergeMasterPersonaPromptDefaults(values), nil
+	if namespace == config2.MasterPersonaPromptNamespace {
+		return config2.MergeMasterPersonaPromptDefaults(values), nil
 	}
 	return values, nil
 }

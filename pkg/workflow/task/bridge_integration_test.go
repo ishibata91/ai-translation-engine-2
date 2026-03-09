@@ -10,16 +10,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ishibata91/ai-translation-engine-2/pkg/config"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/controller"
 	gatewayllm "github.com/ishibata91/ai-translation-engine-2/pkg/gateway/llm"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/llm"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/progress"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/queue"
-	"github.com/ishibata91/ai-translation-engine-2/pkg/parser"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/persona"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/slice/parser"
 	. "github.com/ishibata91/ai-translation-engine-2/pkg/task"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/workflow"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/workflow/config"
+	. "github.com/ishibata91/ai-translation-engine-2/pkg/workflow/task"
 	_ "modernc.org/sqlite"
 )
 

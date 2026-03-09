@@ -6,19 +6,19 @@ import (
 	"log/slog"
 
 	runtimequeue "github.com/ishibata91/ai-translation-engine-2/pkg/runtime/queue"
-	"github.com/ishibata91/ai-translation-engine-2/pkg/task"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/workflow"
+	task2 "github.com/ishibata91/ai-translation-engine-2/pkg/workflow/task"
 )
 
 // PersonaTaskController exposes MasterPersona-specific Wails-facing task operations.
 type PersonaTaskController struct {
 	ctx                   context.Context
-	manager               *task.Manager
+	manager               *task2.Manager
 	masterPersonaWorkflow workflow.MasterPersona
 }
 
 // NewPersonaTaskController constructs the MasterPersona controller adapter.
-func NewPersonaTaskController(manager *task.Manager, masterPersonaWorkflow workflow.MasterPersona) *PersonaTaskController {
+func NewPersonaTaskController(manager *task2.Manager, masterPersonaWorkflow workflow.MasterPersona) *PersonaTaskController {
 	return &PersonaTaskController{
 		ctx:                   context.Background(),
 		manager:               manager,
@@ -36,12 +36,12 @@ func (c *PersonaTaskController) SetContext(ctx context.Context) {
 }
 
 // GetAllTasks loads all persisted tasks so persona-specific tests and screens can hydrate state.
-func (c *PersonaTaskController) GetAllTasks() ([]task.Task, error) {
+func (c *PersonaTaskController) GetAllTasks() ([]task2.Task, error) {
 	return c.manager.Store().GetAllTasks(c.ctx)
 }
 
 // StartMasterPersonTask starts the MasterPersona workflow while keeping the existing Wails API signature.
-func (c *PersonaTaskController) StartMasterPersonTask(input task.StartMasterPersonTaskInput) (string, error) {
+func (c *PersonaTaskController) StartMasterPersonTask(input task2.StartMasterPersonTaskInput) (string, error) {
 	if c.masterPersonaWorkflow == nil {
 		return "", fmt.Errorf("master persona workflow is not configured")
 	}

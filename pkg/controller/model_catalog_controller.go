@@ -3,17 +3,17 @@ package controller
 import (
 	"context"
 
-	"github.com/ishibata91/ai-translation-engine-2/pkg/modelcatalog"
+	modelcatalog2 "github.com/ishibata91/ai-translation-engine-2/pkg/runtime/modelcatalog"
 )
 
 // ModelCatalogController exposes Wails-facing model catalog operations.
 type ModelCatalogController struct {
 	ctx     context.Context
-	service *modelcatalog.ModelCatalogService
+	service *modelcatalog2.ModelCatalogService
 }
 
 // NewModelCatalogController constructs the model catalog controller adapter.
-func NewModelCatalogController(service *modelcatalog.ModelCatalogService) *ModelCatalogController {
+func NewModelCatalogController(service *modelcatalog2.ModelCatalogService) *ModelCatalogController {
 	return &ModelCatalogController{
 		ctx:     context.Background(),
 		service: service,
@@ -30,6 +30,6 @@ func (c *ModelCatalogController) SetContext(ctx context.Context) {
 }
 
 // ListModels returns selectable models for the given UI input.
-func (c *ModelCatalogController) ListModels(input modelcatalog.ListModelsInput) ([]modelcatalog.ModelOption, error) {
+func (c *ModelCatalogController) ListModels(input modelcatalog2.ListModelsInput) ([]modelcatalog2.ModelOption, error) {
 	return c.service.ListModels(input)
 }

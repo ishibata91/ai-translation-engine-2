@@ -1,21 +1,23 @@
 package config
 
-import base "github.com/ishibata91/ai-translation-engine-2/pkg/config"
+import (
+	config2 "github.com/ishibata91/ai-translation-engine-2/pkg/workflow/config"
+)
 
 // ChangeCallback aliases the existing config callback contract at the gateway boundary.
-type ChangeCallback = base.ChangeCallback
+type ChangeCallback = config2.ChangeCallback
 
 // ChangeEvent aliases the existing config change event at the gateway boundary.
-type ChangeEvent = base.ChangeEvent
+type ChangeEvent = config2.ChangeEvent
 
 // UnsubscribeFunc aliases the existing config watcher contract at the gateway boundary.
-type UnsubscribeFunc = base.UnsubscribeFunc
+type UnsubscribeFunc = config2.UnsubscribeFunc
 
 // Config exposes configuration reads and writes as a gateway contract.
-type Config = base.Config
+type Config = config2.Config
 
 // UIStateStore exposes UI state persistence as a gateway contract.
-type UIStateStore = base.UIStateStore
+type UIStateStore = config2.UIStateStore
 
 // SecretStore exposes secret persistence as a gateway contract.
-type SecretStore = base.SecretStore
+type SecretStore = config2.SecretStore

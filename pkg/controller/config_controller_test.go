@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ishibata91/ai-translation-engine-2/pkg/config"
+	config2 "github.com/ishibata91/ai-translation-engine-2/pkg/workflow/config"
 	_ "modernc.org/sqlite"
 )
 
@@ -57,7 +57,7 @@ func (s *recordingConfigStore) GetAll(ctx context.Context, namespace string) (ma
 	return map[string]string{}, nil
 }
 
-func (s *recordingConfigStore) Watch(namespace string, key string, callback config.ChangeCallback) config.UnsubscribeFunc {
+func (s *recordingConfigStore) Watch(namespace string, key string, callback config2.ChangeCallback) config2.UnsubscribeFunc {
 	return func() {}
 }
 
@@ -78,7 +78,7 @@ func setupConfigControllerTest(t *testing.T) (*sql.DB, *ConfigController) {
 		t.Fatalf("failed to open sqlite: %v", err)
 	}
 	logger := slog.Default()
-	store, err := config.NewSQLiteStore(context.Background(), db, logger)
+	store, err := config2.NewSQLiteStore(context.Background(), db, logger)
 	if err != nil {
 		t.Fatalf("failed to init sqlite store: %v", err)
 	}
@@ -132,15 +132,15 @@ func TestConfigController_ConfigGetAll_MasterPersonaPromptDefaults(t *testing.T)
 	db, controller := setupConfigControllerTest(t)
 	defer db.Close()
 
-	got, err := controller.ConfigGetAll(config.MasterPersonaPromptNamespace)
+	got, err := controller.ConfigGetAll(config2.MasterPersonaPromptNamespace)
 	if err != nil {
 		t.Fatalf("ConfigGetAll failed: %v", err)
 	}
-	if got[config.MasterPersonaUserPromptKey] != config.DefaultMasterPersonaUserPrompt {
-		t.Fatalf("unexpected default user prompt: %q", got[config.MasterPersonaUserPromptKey])
+	if got[config2.MasterPersonaUserPromptKey] != config2.DefaultMasterPersonaUserPrompt {
+		t.Fatalf("unexpected default user prompt: %q", got[config2.MasterPersonaUserPromptKey])
 	}
-	if got[config.MasterPersonaSystemPromptKey] != config.DefaultMasterPersonaSystemPrompt {
-		t.Fatalf("unexpected default system prompt: %q", got[config.MasterPersonaSystemPromptKey])
+	if got[config2.MasterPersonaSystemPromptKey] != config2.DefaultMasterPersonaSystemPrompt {
+		t.Fatalf("unexpected default system prompt: %q", got[config2.MasterPersonaSystemPromptKey])
 	}
 }
 
@@ -148,11 +148,11 @@ func TestConfigController_ConfigGet_MasterPersonaPromptDefault(t *testing.T) {
 	db, controller := setupConfigControllerTest(t)
 	defer db.Close()
 
-	got, err := controller.ConfigGet(config.MasterPersonaPromptNamespace, config.MasterPersonaSystemPromptKey)
+	got, err := controller.ConfigGet(config2.MasterPersonaPromptNamespace, config2.MasterPersonaSystemPromptKey)
 	if err != nil {
 		t.Fatalf("ConfigGet failed: %v", err)
 	}
-	if got != config.DefaultMasterPersonaSystemPrompt {
+	if got != config2.DefaultMasterPersonaSystemPrompt {
 		t.Fatalf("unexpected default system prompt: %q", got)
 	}
 }

@@ -10,16 +10,16 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/ishibata91/ai-translation-engine-2/pkg/config"
-	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/datastore"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/gateway/datastore"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/telemetry"
-	"github.com/ishibata91/ai-translation-engine-2/pkg/parser"
+	parser2 "github.com/ishibata91/ai-translation-engine-2/pkg/slice/parser"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/workflow/config"
 )
 
 // Injectors from wire.go:
 
 // InitializeParser creates a new Parser instance with all dependencies wired.
-func InitializeParser(ctx context.Context) (parser.Parser, func(), error) {
+func InitializeParser(ctx context.Context) (parser2.Parser, func(), error) {
 	db, cleanup, err := datastore.NewConfigDB()
 	if err != nil {
 		return nil, nil, fmt.Errorf("initialize config db for parser: %w", err)
@@ -30,7 +30,7 @@ func InitializeParser(ctx context.Context) (parser.Parser, func(), error) {
 		cleanup()
 		return nil, nil, fmt.Errorf("initialize sqlite store for parser: %w", err)
 	}
-	parserParser := parser.ProvideParser(sqLiteStore)
+	parserParser := parser2.ProvideParser(sqLiteStore)
 	return parserParser, func() {
 		cleanup()
 	}, nil

@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ishibata91/ai-translation-engine-2/pkg/config"
 	gatewayllm "github.com/ishibata91/ai-translation-engine-2/pkg/gateway/llm"
 	persona "github.com/ishibata91/ai-translation-engine-2/pkg/persona"
+	config2 "github.com/ishibata91/ai-translation-engine-2/pkg/workflow/config"
 	_ "modernc.org/sqlite"
 )
 
@@ -45,7 +45,7 @@ func (m *mockConfigStore) GetAll(ctx context.Context, namespace string) (map[str
 	}
 	return nil, nil
 }
-func (m *mockConfigStore) Watch(namespace string, key string, callback config.ChangeCallback) config.UnsubscribeFunc {
+func (m *mockConfigStore) Watch(namespace string, key string, callback config2.ChangeCallback) config2.UnsubscribeFunc {
 	return func() {}
 }
 
@@ -249,9 +249,9 @@ func TestPersonaGenSlice_UsesConfiguredPromptSplit(t *testing.T) {
 
 	configStore := &mockConfigStore{
 		values: map[string]map[string]string{
-			config.MasterPersonaPromptNamespace: {
-				config.MasterPersonaUserPromptKey:   "会話から口調と性格を抽出してください。",
-				config.MasterPersonaSystemPromptKey: "SYSTEM RULES",
+			config2.MasterPersonaPromptNamespace: {
+				config2.MasterPersonaUserPromptKey:   "会話から口調と性格を抽出してください。",
+				config2.MasterPersonaSystemPromptKey: "SYSTEM RULES",
 			},
 		},
 	}
