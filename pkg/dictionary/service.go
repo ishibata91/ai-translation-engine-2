@@ -125,7 +125,7 @@ func (s *DictionaryService) StartImport(ctx context.Context, filePath string) (i
 	// 非同期でインポート実行
 	go func() {
 		// リクエストIDを引き継ぐ
-		bgCtx := telemetry.WithAttrs(context.Background(), slog.String("request_id", "async-import-"+uuid.New().String()))
+		bgCtx := telemetry.WithAttrs(ctx, slog.String("request_id", "async-import-"+uuid.New().String()))
 		defer telemetry.StartSpan(bgCtx, telemetry.ActionImport)()
 
 		s.logger.InfoContext(bgCtx, "background import task started", slog.Int64("sourceID", sourceID))

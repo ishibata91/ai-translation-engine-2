@@ -118,7 +118,10 @@ func runLint() error {
 	if err := runCmd(args...); err != nil {
 		return err
 	}
-	return runCleanarch()
+	if err := runCleanarch(); err != nil {
+		return err
+	}
+	return runContextCheck(patterns)
 }
 
 func runLintFile(args []string) error {
@@ -174,6 +177,12 @@ func runCleanarch() error {
 		"-domain", "gateway",
 		"./pkg",
 	}
+	return runCmd(args...)
+}
+
+func runContextCheck(patterns []string) error {
+	args := []string{"run", "./tools/backendquality/cmd/contextcheck"}
+	args = append(args, patterns...)
 	return runCmd(args...)
 }
 

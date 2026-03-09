@@ -197,7 +197,8 @@ func (w *Worker) processSync(ctx context.Context, processID string, llmConfig ga
 			return fmt.Errorf("failed to load model: %w", err)
 		}
 		defer func() {
-			if unloadErr := lifecycleClient.UnloadModel(context.Background(), instanceID); unloadErr != nil {
+			unloadCtx := context.WithoutCancel(ctx)
+			if unloadErr := lifecycleClient.UnloadModel(unloadCtx, instanceID); unloadErr != nil {
 				w.logger.ErrorContext(ctx, "failed to unload model", slog.String("instance_id", instanceID), slog.String("error", unloadErr.Error()))
 			}
 		}()
@@ -239,7 +240,7 @@ func (w *Worker) processSync(ctx context.Context, processID string, llmConfig ga
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			w.logger.InfoContext(ctx, "ExecuteBulkSync canceled", slog.String("error", err.Error()))
 			cancelMsg := "task canceled"
-			persistCtx := context.Background()
+			persistCtx := context.WithoutCancel(ctx)
 			for i, job := range jobs {
 				// Keep completed responses even when the overall run is canceled.
 				if i < len(responses) {
