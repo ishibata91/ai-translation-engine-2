@@ -9,7 +9,7 @@ import (
 	"os"
 
 	"github.com/ishibata91/ai-translation-engine-2/pkg/gateway/datastore"
-	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/progress"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/runtime/progress"
 	dictionary2 "github.com/ishibata91/ai-translation-engine-2/pkg/slice/dictionary"
 	_ "github.com/mattn/go-sqlite3"
 )

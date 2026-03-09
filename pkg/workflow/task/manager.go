@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/telemetry"
+	telemetry2 "github.com/ishibata91/ai-translation-engine-2/pkg/runtime/telemetry"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
@@ -72,7 +72,7 @@ func (m *Manager) ResumeTask(id string) error {
 
 func (m *Manager) ResumeTaskWithContext(ctx context.Context, id string) error {
 	logCtx := m.newTaskContext(ctx, id)
-	defer telemetry.StartSpan(logCtx, telemetry.ActionTaskManagement)()
+	defer telemetry2.StartSpan(logCtx, telemetry2.ActionTaskManagement)()
 
 	m.logger.InfoContext(logCtx, "task.resume.started", slog.String("task_id", id))
 
@@ -88,7 +88,7 @@ func (m *Manager) ResumeTaskWithContext(ctx context.Context, id string) error {
 	if err != nil {
 		wrappedErr := fmt.Errorf("resolve runner for task_id=%s task_type=%s: %w", id, currentTask.Type, err)
 		m.logger.ErrorContext(logCtx, "task.resume.failed",
-			append(telemetry.ErrorAttrs(wrappedErr),
+			append(telemetry2.ErrorAttrs(wrappedErr),
 				slog.String("task_id", id),
 				slog.String("task_type", string(currentTask.Type)),
 				slog.String("task_status", string(currentTask.Status)),
@@ -130,7 +130,7 @@ func (m *Manager) Initialize(ctx context.Context) error {
 			task.ErrorMsg = "interrupted by application shutdown"
 			if err := m.store.UpdateTask(ctx, task.ID, task.Status, task.Phase, task.Progress, task.ErrorMsg); err != nil {
 				m.logger.ErrorContext(ctx, "task.manager.initialize.update_failed",
-					append(telemetry.ErrorAttrs(fmt.Errorf("update interrupted task task_id=%s: %w", task.ID, err)),
+					append(telemetry2.ErrorAttrs(fmt.Errorf("update interrupted task task_id=%s: %w", task.ID, err)),
 						slog.String("task_id", task.ID),
 					)...,
 				)
@@ -172,8 +172,8 @@ func (m *Manager) AddTaskWithCompletionStatusContext(
 	completionStatus TaskStatus,
 	runner func(ctx context.Context, taskID string, update func(phase string, progress float64)) error,
 ) (string, error) {
-	baseCtx := telemetry.WithTraceID(m.contextOrBackground(ctx))
-	defer telemetry.StartSpan(baseCtx, telemetry.ActionTaskManagement)()
+	baseCtx := telemetry2.WithTraceID(m.contextOrBackground(ctx))
+	defer telemetry2.StartSpan(baseCtx, telemetry2.ActionTaskManagement)()
 
 	id := uuid.New().String()
 	currentTask := &Task{
@@ -188,7 +188,7 @@ func (m *Manager) AddTaskWithCompletionStatusContext(
 		UpdatedAt: time.Now().UTC(),
 	}
 
-	taskCtx := telemetry.WithAction(baseCtx, telemetry.ActionTaskManagement, telemetry.ResourceTask, id)
+	taskCtx := telemetry2.WithAction(baseCtx, telemetry2.ActionTaskManagement, telemetry2.ResourceTask, id)
 	m.logger.InfoContext(taskCtx, "task.create.started",
 		slog.String("task_id", id),
 		slog.String("task_name", name),
@@ -198,7 +198,7 @@ func (m *Manager) AddTaskWithCompletionStatusContext(
 	if err := m.store.InsertTask(taskCtx, *currentTask); err != nil {
 		wrappedErr := fmt.Errorf("insert task task_id=%s: %w", id, err)
 		m.logger.ErrorContext(taskCtx, "task.create.failed",
-			append(telemetry.ErrorAttrs(wrappedErr), slog.String("task_id", id))...)
+			append(telemetry2.ErrorAttrs(wrappedErr), slog.String("task_id", id))...)
 		return "", wrappedErr
 	}
 
@@ -243,7 +243,7 @@ func (m *Manager) markTaskRunning(ctx context.Context, id string) {
 
 	if err := m.persistTaskState(ctx, currentTask, ""); err != nil {
 		m.logger.ErrorContext(ctx, "task.status_persist_failed",
-			append(telemetry.ErrorAttrs(err), slog.String("task_id", currentTask.ID))...)
+			append(telemetry2.ErrorAttrs(err), slog.String("task_id", currentTask.ID))...)
 	}
 	m.emitTaskUpdate(currentTask)
 }
@@ -287,7 +287,7 @@ func (m *Manager) throttleDBUpdate(ctx context.Context, currentTask *Task) {
 	if !ok || time.Since(last) > 3*time.Second {
 		if err := m.persistTaskState(ctx, currentTask, currentTask.ErrorMsg); err != nil {
 			m.logger.ErrorContext(ctx, "task.progress_persist_failed",
-				append(telemetry.ErrorAttrs(err), slog.String("task_id", currentTask.ID))...)
+				append(telemetry2.ErrorAttrs(err), slog.String("task_id", currentTask.ID))...)
 		}
 		m.lastDBUpdate[currentTask.ID] = time.Now()
 	}
@@ -312,7 +312,7 @@ func (m *Manager) handleTaskCompletionWithStatus(ctx context.Context, id string,
 	}
 	if err := m.persistTaskState(ctx, currentTask, ""); err != nil {
 		m.logger.ErrorContext(ctx, "task.status_persist_failed",
-			append(telemetry.ErrorAttrs(err),
+			append(telemetry2.ErrorAttrs(err),
 				slog.String("task_id", currentTask.ID),
 				slog.String("task_status", string(currentTask.Status)),
 			)...,
@@ -330,7 +330,7 @@ func (m *Manager) runCompletionHooks(ctx context.Context, currentTask *Task) {
 		if err := hook(ctx, currentTask); err != nil {
 			wrappedErr := fmt.Errorf("run completion hook task_id=%s task_type=%s: %w", currentTask.ID, currentTask.Type, err)
 			m.logger.ErrorContext(ctx, "task.completion_hook_failed",
-				append(telemetry.ErrorAttrs(wrappedErr),
+				append(telemetry2.ErrorAttrs(wrappedErr),
 					slog.String("task_id", currentTask.ID),
 					slog.String("task_type", string(currentTask.Type)),
 				)...,
@@ -356,10 +356,10 @@ func (m *Manager) handleTaskFailure(ctx context.Context, id string, err error) {
 
 	if persistErr := m.persistTaskState(logCtx, currentTask, currentTask.ErrorMsg); persistErr != nil {
 		m.logger.ErrorContext(logCtx, "task.status_persist_failed",
-			append(telemetry.ErrorAttrs(persistErr), slog.String("task_id", currentTask.ID))...)
+			append(telemetry2.ErrorAttrs(persistErr), slog.String("task_id", currentTask.ID))...)
 	}
 	m.logger.ErrorContext(logCtx, "task.failed",
-		append(telemetry.ErrorAttrs(err),
+		append(telemetry2.ErrorAttrs(err),
 			slog.String("task_id", currentTask.ID),
 			slog.String("task_phase", currentTask.Phase),
 			slog.String("reason", currentTask.ErrorMsg),
@@ -385,7 +385,7 @@ func (m *Manager) handleTaskCancellation(ctx context.Context, id string) {
 
 	if err := m.persistTaskState(logCtx, currentTask, "cancelled by user"); err != nil {
 		m.logger.ErrorContext(logCtx, "task.status_persist_failed",
-			append(telemetry.ErrorAttrs(err), slog.String("task_id", currentTask.ID))...)
+			append(telemetry2.ErrorAttrs(err), slog.String("task_id", currentTask.ID))...)
 	}
 	m.emitTaskUpdate(currentTask)
 }
@@ -437,8 +437,8 @@ func (m *Manager) contextOrBackground(ctx context.Context) context.Context {
 }
 
 func (m *Manager) newTaskContext(ctx context.Context, taskID string) context.Context {
-	baseCtx := telemetry.WithTraceID(m.contextOrBackground(ctx))
-	return telemetry.WithAction(baseCtx, telemetry.ActionTaskManagement, telemetry.ResourceTask, taskID)
+	baseCtx := telemetry2.WithTraceID(m.contextOrBackground(ctx))
+	return telemetry2.WithAction(baseCtx, telemetry2.ActionTaskManagement, telemetry2.ResourceTask, taskID)
 }
 
 func (m *Manager) loadTaskForResume(ctx context.Context, id string) (*Task, error) {
@@ -456,7 +456,7 @@ func (m *Manager) loadTaskForResume(ctx context.Context, id string) (*Task, erro
 	if err != nil {
 		wrappedErr := fmt.Errorf("load persisted tasks for task_id=%s: %w", id, err)
 		m.logger.ErrorContext(ctx, "task.resume.failed",
-			append(telemetry.ErrorAttrs(wrappedErr), slog.String("task_id", id))...)
+			append(telemetry2.ErrorAttrs(wrappedErr), slog.String("task_id", id))...)
 		return nil, wrappedErr
 	}
 	for _, persistedTask := range tasks {
@@ -527,7 +527,7 @@ func (m *Manager) prepareTaskExecution(ctx context.Context, currentTask *Task) (
 	if err := m.persistTaskState(taskCtx, currentTask, ""); err != nil {
 		wrappedErr := fmt.Errorf("persist running task task_id=%s: %w", currentTask.ID, err)
 		m.logger.ErrorContext(taskCtx, "task.resume.failed",
-			append(telemetry.ErrorAttrs(wrappedErr),
+			append(telemetry2.ErrorAttrs(wrappedErr),
 				slog.String("task_id", currentTask.ID),
 				slog.String("task_type", string(currentTask.Type)),
 			)...,
@@ -556,7 +556,7 @@ func (m *Manager) runTask(ctx context.Context, currentTask *Task, runner Runner,
 		}
 
 		m.logger.ErrorContext(ctx, "task.runner_failed",
-			append(telemetry.ErrorAttrs(err),
+			append(telemetry2.ErrorAttrs(err),
 				slog.String("task_id", currentTask.ID),
 				slog.String("task_type", string(currentTask.Type)),
 				slog.String("reason", err.Error()),

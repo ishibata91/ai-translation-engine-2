@@ -3,7 +3,7 @@ package terminology
 import (
 	"context"
 
-	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/llm"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/gateway/llm"
 )
 
 // TerminologyInput is the input data required for term translation.

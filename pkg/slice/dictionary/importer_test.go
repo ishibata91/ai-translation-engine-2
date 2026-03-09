@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/progress"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/runtime/progress"
 	dictionary2 "github.com/ishibata91/ai-translation-engine-2/pkg/slice/dictionary"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/assert"

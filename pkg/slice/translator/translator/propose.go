@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/llm"
-	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/telemetry"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/gateway/llm"
+	telemetry2 "github.com/ishibata91/ai-translation-engine-2/pkg/runtime/telemetry"
 )
 
 type translatorSlice struct {
@@ -49,7 +49,7 @@ func (s *translatorSlice) PreparePrompts(ctx context.Context, input any) ([]llm.
 }
 
 func (s *translatorSlice) ProposeJobs(ctx context.Context, input TranslatorInput) ([]llm.Request, error) {
-	defer telemetry.StartSpan(ctx, telemetry.ActionProcessTranslation)()
+	defer telemetry2.StartSpan(ctx, telemetry2.ActionProcessTranslation)()
 	slog.DebugContext(ctx, "starting job proposal",
 		slog.String("plugin", input.OutputConfig.PluginName),
 		slog.Int("dialogue_count", len(input.GameData.Dialogues)),
@@ -58,7 +58,7 @@ func (s *translatorSlice) ProposeJobs(ctx context.Context, input TranslatorInput
 	// 1. Load cached results for resume
 	cached, err := s.resumeLoader.LoadCachedResults(input.OutputConfig.PluginName, input.OutputConfig.OutputBaseDir)
 	if err != nil {
-		slog.ErrorContext(ctx, "failed to load cached results", telemetry.ErrorAttrs(err)...)
+		slog.ErrorContext(ctx, "failed to load cached results", telemetry2.ErrorAttrs(err)...)
 		return nil, fmt.Errorf("failed to load cached results: %w", err)
 	}
 
@@ -78,7 +78,7 @@ func (s *translatorSlice) ProposeJobs(ctx context.Context, input TranslatorInput
 		pass2Ctx, terms, forced, err := s.contextEngine.BuildTranslationContext(ctx, dial, &input.GameData)
 		if err != nil {
 			slog.ErrorContext(ctx, "failed to build translation context",
-				append(telemetry.ErrorAttrs(err), slog.String("resource_id", dial.ID))...)
+				append(telemetry2.ErrorAttrs(err), slog.String("resource_id", dial.ID))...)
 			continue
 		}
 
@@ -99,7 +99,7 @@ func (s *translatorSlice) ProposeJobs(ctx context.Context, input TranslatorInput
 			}
 			if err := s.resultWriter.Write(result); err != nil {
 				slog.ErrorContext(ctx, "failed to write forced result",
-					append(telemetry.ErrorAttrs(err), slog.String("resource_id", dial.ID))...)
+					append(telemetry2.ErrorAttrs(err), slog.String("resource_id", dial.ID))...)
 			}
 			continue
 		}
@@ -136,7 +136,7 @@ func (s *translatorSlice) ProposeJobs(ctx context.Context, input TranslatorInput
 			systemPrompt, userPrompt, err := s.promptBuilder.Build(ctx, req)
 			if err != nil {
 				slog.ErrorContext(ctx, "failed to build prompt",
-					append(telemetry.ErrorAttrs(err),
+					append(telemetry2.ErrorAttrs(err),
 						slog.String("resource_id", dial.ID),
 						slog.Int("chunk_index", i))...)
 				continue

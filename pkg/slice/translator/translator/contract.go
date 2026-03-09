@@ -3,7 +3,7 @@ package translator
 import (
 	"context"
 
-	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/llm"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/gateway/llm"
 )
 
 // TranslatorSlice is the main interface for the Pass 2 Translator vertical slice.

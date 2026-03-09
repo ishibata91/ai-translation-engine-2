@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/llm"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/gateway/llm"
 	_ "modernc.org/sqlite"
 )
 

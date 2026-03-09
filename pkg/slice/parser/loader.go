@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/telemetry"
+	telemetry2 "github.com/ishibata91/ai-translation-engine-2/pkg/runtime/telemetry"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/workflow/config"
 )
 
@@ -24,13 +24,13 @@ func newJSONLoader(config config.Config) Parser {
 // 1. Decode file into map[string]json.RawMessage (Serial)
 // 2. Unmarshal and normalize each section in parallel (Parallel)
 func (l *jsonLoader) LoadExtractedJSON(ctx context.Context, path string) (*ParserOutput, error) {
-	defer telemetry.StartSpan(ctx, telemetry.ActionParser)()
+	defer telemetry2.StartSpan(ctx, telemetry2.ActionParser)()
 	slog.DebugContext(ctx, "starting JSON load", slog.String("path", path))
 
 	// Phase 1: Serial Decode
 	rawMap, err := DecodeFile(path)
 	if err != nil {
-		slog.ErrorContext(ctx, "JSON decode phase failed", telemetry.ErrorAttrs(err)...)
+		slog.ErrorContext(ctx, "JSON decode phase failed", telemetry2.ErrorAttrs(err)...)
 		return nil, fmt.Errorf("phase 1 (decode) failed: %w", err)
 	}
 
@@ -40,7 +40,7 @@ func (l *jsonLoader) LoadExtractedJSON(ctx context.Context, path string) (*Parse
 	processor := NewParallelProcessor(rawMap)
 	data, err := processor.Process(ctx)
 	if err != nil {
-		slog.ErrorContext(ctx, "parallel processing phase failed", telemetry.ErrorAttrs(err)...)
+		slog.ErrorContext(ctx, "parallel processing phase failed", telemetry2.ErrorAttrs(err)...)
 		return nil, fmt.Errorf("phase 2 (process) failed: %w", err)
 	}
 

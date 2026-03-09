@@ -7,7 +7,8 @@ import (
 	"context"
 
 	"github.com/google/wire"
-	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/gateway/datastore"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/runtime/telemetry"
 	parser2 "github.com/ishibata91/ai-translation-engine-2/pkg/slice/parser"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/workflow/config"
 )
@@ -15,7 +16,8 @@ import (
 // InitializeParser creates a new Parser instance with all dependencies wired.
 func InitializeParser(ctx context.Context) (parser2.Parser, func(), error) {
 	wire.Build(
-		infrastructure.InfrastructureSet,
+		datastore.ProviderSet,
+		telemetry.ProviderSet,
 		config.ConfigSet,
 		parser2.ParserSet,
 	)

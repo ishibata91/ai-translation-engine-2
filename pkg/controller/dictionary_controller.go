@@ -3,7 +3,7 @@ package controller
 import (
 	"context"
 
-	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/telemetry"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/runtime/telemetry"
 	dictionary2 "github.com/ishibata91/ai-translation-engine-2/pkg/slice/dictionary"
 )
 

@@ -8,7 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/telemetry"
+	telemetry2 "github.com/ishibata91/ai-translation-engine-2/pkg/runtime/telemetry"
 
 	"github.com/google/wire"
 	_ "modernc.org/sqlite"
@@ -25,12 +25,12 @@ func NewConfigDB() (*sql.DB, func(), error) {
 // NewSQLiteDB creates a new SQLite database connection for the given filename.
 // It resolves the data directory based on the OS.
 func NewSQLiteDB(ctx context.Context, filename string) (*sql.DB, func(), error) {
-	defer telemetry.StartSpan(ctx, telemetry.ActionDBQuery)()
+	defer telemetry2.StartSpan(ctx, telemetry2.ActionDBQuery)()
 	slog.DebugContext(ctx, "opening database", slog.String("filename", filename))
 
 	dbPath, err := resolveDBPath(ctx, filename)
 	if err != nil {
-		slog.ErrorContext(ctx, "failed to resolve database path", telemetry.ErrorAttrs(err)...)
+		slog.ErrorContext(ctx, "failed to resolve database path", telemetry2.ErrorAttrs(err)...)
 		return nil, nil, fmt.Errorf("resolve sqlite db path filename=%s: %w", filename, err)
 	}
 

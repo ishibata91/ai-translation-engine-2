@@ -7,7 +7,7 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/telemetry"
+	telemetry2 "github.com/ishibata91/ai-translation-engine-2/pkg/runtime/telemetry"
 )
 
 // SQLiteTermDictionarySearcher implements TermDictionarySearcher using an existing SQLite dictionary DB.
@@ -28,7 +28,7 @@ func NewSQLiteTermDictionarySearcher(db *sql.DB, logger *slog.Logger, stemmer Ke
 
 // SearchExact searches for exact matches in the dictionary.
 func (s *SQLiteTermDictionarySearcher) SearchExact(ctx context.Context, text string) ([]ReferenceTerm, error) {
-	defer telemetry.StartSpan(ctx, telemetry.ActionDBQuery)()
+	defer telemetry2.StartSpan(ctx, telemetry2.ActionDBQuery)()
 	s.logger.DebugContext(ctx, "searching exact match", slog.String("text", text))
 
 	if text == "" {
@@ -41,7 +41,7 @@ func (s *SQLiteTermDictionarySearcher) SearchExact(ctx context.Context, text str
 		WHERE original_en = ?
 	`, text)
 	if err != nil {
-		s.logger.ErrorContext(ctx, "exact search failed", telemetry.ErrorAttrs(err)...)
+		s.logger.ErrorContext(ctx, "exact search failed", telemetry2.ErrorAttrs(err)...)
 		return nil, fmt.Errorf("exact search query failed: %w", err)
 	}
 	defer rows.Close()
@@ -58,7 +58,7 @@ func (s *SQLiteTermDictionarySearcher) SearchExact(ctx context.Context, text str
 
 // SearchKeywords searches the dictionary using stemmed keywords.
 func (s *SQLiteTermDictionarySearcher) SearchKeywords(ctx context.Context, keywords []string) ([]ReferenceTerm, error) {
-	defer telemetry.StartSpan(ctx, telemetry.ActionDBQuery)()
+	defer telemetry2.StartSpan(ctx, telemetry2.ActionDBQuery)()
 	s.logger.DebugContext(ctx, "searching keywords", slog.Int("keyword_count", len(keywords)))
 
 	if len(keywords) == 0 {
@@ -80,7 +80,7 @@ func (s *SQLiteTermDictionarySearcher) SearchKeywords(ctx context.Context, keywo
 			s.logger.WarnContext(ctx, "dictionary_terms_fts table not found, falling back to exact search")
 			return nil, nil
 		}
-		s.logger.ErrorContext(ctx, "keyword search failed", telemetry.ErrorAttrs(err)...)
+		s.logger.ErrorContext(ctx, "keyword search failed", telemetry2.ErrorAttrs(err)...)
 		return nil, fmt.Errorf("keyword search query failed: %w", err)
 	}
 	defer rows.Close()
@@ -97,7 +97,7 @@ func (s *SQLiteTermDictionarySearcher) SearchKeywords(ctx context.Context, keywo
 
 // SearchNPCPartial searches for NPC names using partial matches.
 func (s *SQLiteTermDictionarySearcher) SearchNPCPartial(ctx context.Context, keywords []string, consumedKeywords []string, isNPC bool) ([]ReferenceTerm, error) {
-	defer telemetry.StartSpan(ctx, telemetry.ActionDBQuery)()
+	defer telemetry2.StartSpan(ctx, telemetry2.ActionDBQuery)()
 	s.logger.DebugContext(ctx, "searching NPC partial", slog.Int("keyword_count", len(keywords)))
 
 	if !isNPC || len(keywords) == 0 {
@@ -123,7 +123,7 @@ func (s *SQLiteTermDictionarySearcher) SearchNPCPartial(ctx context.Context, key
 		if strings.Contains(err.Error(), "no such table") {
 			return nil, nil
 		}
-		s.logger.ErrorContext(ctx, "npc partial search failed", telemetry.ErrorAttrs(err)...)
+		s.logger.ErrorContext(ctx, "npc partial search failed", telemetry2.ErrorAttrs(err)...)
 		return nil, fmt.Errorf("npc partial search query failed: %w", err)
 	}
 	defer rows.Close()
@@ -140,7 +140,7 @@ func (s *SQLiteTermDictionarySearcher) SearchNPCPartial(ctx context.Context, key
 
 // SearchBatch executes batched searches for efficiency, returning a map of terms.
 func (s *SQLiteTermDictionarySearcher) SearchBatch(ctx context.Context, texts []string) (map[string][]ReferenceTerm, error) {
-	defer telemetry.StartSpan(ctx, telemetry.ActionDBQuery)()
+	defer telemetry2.StartSpan(ctx, telemetry2.ActionDBQuery)()
 	s.logger.DebugContext(ctx, "executing batch search", slog.Int("text_count", len(texts)))
 
 	if len(texts) == 0 {

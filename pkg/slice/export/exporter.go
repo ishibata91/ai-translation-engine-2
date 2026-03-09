@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/telemetry"
+	telemetry2 "github.com/ishibata91/ai-translation-engine-2/pkg/runtime/telemetry"
 )
 
 type exporter struct {
@@ -25,19 +25,19 @@ func NewExporter() Exporter {
 }
 
 func (e *exporter) ExportToXML(ctx context.Context, jsonPath string, xmlOutputPath string) error {
-	defer telemetry.StartSpan(ctx, telemetry.ActionExport)()
+	defer telemetry2.StartSpan(ctx, telemetry2.ActionExport)()
 	e.logger.DebugContext(ctx, "starting XML export", slog.String("json_path", jsonPath), slog.String("xml_output", xmlOutputPath))
 
 	// 1. Read JSON
 	content, err := os.ReadFile(jsonPath)
 	if err != nil {
-		e.logger.ErrorContext(ctx, "failed to read JSON file for export", telemetry.ErrorAttrs(err)...)
+		e.logger.ErrorContext(ctx, "failed to read JSON file for export", telemetry2.ErrorAttrs(err)...)
 		return fmt.Errorf("failed to read JSON file: %w", err)
 	}
 
 	var results []TranslationResult
 	if err := json.Unmarshal(content, &results); err != nil {
-		e.logger.ErrorContext(ctx, "failed to parse JSON for export", telemetry.ErrorAttrs(err)...)
+		e.logger.ErrorContext(ctx, "failed to parse JSON for export", telemetry2.ErrorAttrs(err)...)
 		return fmt.Errorf("failed to parse JSON: %w", err)
 	}
 
@@ -89,7 +89,7 @@ func (e *exporter) ExportToXML(ctx context.Context, jsonPath string, xmlOutputPa
 	// 3. Generate XML
 	output, err := xml.MarshalIndent(xmlRoot, "", "  ")
 	if err != nil {
-		e.logger.ErrorContext(ctx, "failed to marshal XML", telemetry.ErrorAttrs(err)...)
+		e.logger.ErrorContext(ctx, "failed to marshal XML", telemetry2.ErrorAttrs(err)...)
 		return fmt.Errorf("failed to marshal XML: %w", err)
 	}
 
@@ -98,12 +98,12 @@ func (e *exporter) ExportToXML(ctx context.Context, jsonPath string, xmlOutputPa
 
 	// Ensure directory exists
 	if err := os.MkdirAll(filepath.Dir(xmlOutputPath), 0755); err != nil {
-		e.logger.ErrorContext(ctx, "failed to create export directory", telemetry.ErrorAttrs(err)...)
+		e.logger.ErrorContext(ctx, "failed to create export directory", telemetry2.ErrorAttrs(err)...)
 		return fmt.Errorf("failed to create output directory: %w", err)
 	}
 
 	if err := os.WriteFile(xmlOutputPath, finalOutput, 0600); err != nil {
-		e.logger.ErrorContext(ctx, "failed to write XML file", telemetry.ErrorAttrs(err)...)
+		e.logger.ErrorContext(ctx, "failed to write XML file", telemetry2.ErrorAttrs(err)...)
 		return fmt.Errorf("failed to write XML file: %w", err)
 	}
 

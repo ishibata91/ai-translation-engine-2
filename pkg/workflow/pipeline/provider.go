@@ -5,7 +5,7 @@ import (
 	"log/slog"
 
 	"github.com/google/wire"
-	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/queue"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/runtime/queue"
 )
 
 // ProviderSet represents the dependencies for pipeline.

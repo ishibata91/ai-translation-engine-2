@@ -9,7 +9,7 @@ import (
 
 	gatewayconfig "github.com/ishibata91/ai-translation-engine-2/pkg/gateway/config"
 	gatewayllm "github.com/ishibata91/ai-translation-engine-2/pkg/gateway/llm"
-	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/telemetry"
+	telemetry2 "github.com/ishibata91/ai-translation-engine-2/pkg/runtime/telemetry"
 )
 
 // DefaultPersonaGenerator implements the NPCPersonaGenerator interface.
@@ -48,7 +48,7 @@ func (g *DefaultPersonaGenerator) PreparePrompts(
 	ctx context.Context,
 	input any,
 ) ([]gatewayllm.Request, error) {
-	defer telemetry.StartSpan(ctx, telemetry.ActionProcessTranslation)() // Persona generation is part of translation process
+	defer telemetry2.StartSpan(ctx, telemetry2.ActionProcessTranslation)() // Persona generation is part of translation process
 	data, ok := input.(PersonaGenInput)
 	if !ok {
 		return nil, fmt.Errorf("invalid input type for Persona slice: %T", input)
@@ -68,13 +68,13 @@ func (g *DefaultPersonaGenerator) PreparePrompts(
 	promptCfg, promptErr := loadPromptConfig(ctx, g.Config)
 	if promptErr != nil {
 		slog.WarnContext(ctx, "failed to load master persona prompt config, using defaults",
-			telemetry.ErrorAttrs(promptErr)...,
+			telemetry2.ErrorAttrs(promptErr)...,
 		)
 	}
 
 	groupedData, err := g.Collector.CollectByNPC(ctx, data)
 	if err != nil {
-		slog.ErrorContext(ctx, "failed to collect NPC dialogues", telemetry.ErrorAttrs(err)...)
+		slog.ErrorContext(ctx, "failed to collect NPC dialogues", telemetry2.ErrorAttrs(err)...)
 		return nil, fmt.Errorf("failed to collect NPC dialogues: %w", err)
 	}
 
@@ -184,7 +184,7 @@ func (g *DefaultPersonaGenerator) SaveResultsWithSummary(
 	ctx context.Context,
 	results []gatewayllm.Response,
 ) (SaveResultsSummary, error) {
-	defer telemetry.StartSpan(ctx, telemetry.ActionProcessTranslation)()
+	defer telemetry2.StartSpan(ctx, telemetry2.ActionProcessTranslation)()
 	slog.DebugContext(ctx, "saving persona results",
 		slog.Int("response_count", len(results)),
 	)
@@ -251,7 +251,7 @@ func (g *DefaultPersonaGenerator) SaveResultsWithSummary(
 
 		if err := g.Store.SavePersona(ctx, result, overwriteExisting); err != nil {
 			slog.ErrorContext(ctx, "failed to save persona to store",
-				append(telemetry.ErrorAttrs(err), slog.String("speaker_id", speakerID))...)
+				append(telemetry2.ErrorAttrs(err), slog.String("speaker_id", speakerID))...)
 			failCount++
 			continue
 		}

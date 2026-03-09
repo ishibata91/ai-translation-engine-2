@@ -3,7 +3,7 @@ package pipeline
 import (
 	"context"
 
-	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/llm"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/gateway/llm"
 )
 
 // Slice represents a vertical slice that can be orchestrated by the Pipeline.

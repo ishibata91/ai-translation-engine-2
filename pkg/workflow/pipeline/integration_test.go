@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/llm"
-	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/progress"
-	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/queue"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/gateway/llm"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/runtime/progress"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/runtime/queue"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/workflow/config"
 )
 

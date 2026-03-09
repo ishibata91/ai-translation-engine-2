@@ -11,10 +11,10 @@ import (
 	"strings"
 
 	gatewayllm "github.com/ishibata91/ai-translation-engine-2/pkg/gateway/llm"
-	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/telemetry"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/persona"
 	runtimeprogress "github.com/ishibata91/ai-translation-engine-2/pkg/runtime/progress"
 	runtimequeue "github.com/ishibata91/ai-translation-engine-2/pkg/runtime/queue"
+	telemetry2 "github.com/ishibata91/ai-translation-engine-2/pkg/runtime/telemetry"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/slice/parser"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/workflow/pipeline"
 	task2 "github.com/ishibata91/ai-translation-engine-2/pkg/workflow/task"
@@ -146,7 +146,7 @@ func (s *MasterPersonaService) ResumeMasterPersonaTask(ctx context.Context, task
 func (s *MasterPersonaService) CancelTask(ctx context.Context, taskID string) {
 	if err := s.CancelMasterPersona(ctx, taskID); err != nil {
 		s.logger.WarnContext(ctx, "persona.task.cancel_failed",
-			append(telemetry.ErrorAttrs(err), slog.String("task_id", taskID))...)
+			append(telemetry2.ErrorAttrs(err), slog.String("task_id", taskID))...)
 	}
 }
 
@@ -235,7 +235,7 @@ func (s *MasterPersonaService) runPersonaExecution(ctx context.Context, currentT
 }
 
 func (s *MasterPersonaService) executeRequestPreparation(ctx context.Context, taskID string, input StartMasterPersonaInput, update func(phase string, progress float64)) error {
-	runCtx := telemetry.WithTraceID(ctx)
+	runCtx := telemetry2.WithTraceID(ctx)
 	s.reportProgress(runCtx, taskID, 0, runtimeprogress.StatusInProgress, "マスターペルソナ生成タスクを開始")
 	update("loading_json", 10)
 	s.reportProgress(runCtx, taskID, 10, runtimeprogress.StatusInProgress, "JSONを読み込み中")
@@ -297,7 +297,7 @@ func (s *MasterPersonaService) executeRequestPreparation(ctx context.Context, ta
 	if err := s.manager.Store().SaveMetadata(runCtx, taskID, taskMetadata); err != nil {
 		wrappedErr := fmt.Errorf("save persona task metadata task_id=%s: %w", taskID, err)
 		s.logger.WarnContext(runCtx, "persona.requests.metadata_persist_failed",
-			append(telemetry.ErrorAttrs(wrappedErr), slog.String("task_id", taskID))...)
+			append(telemetry2.ErrorAttrs(wrappedErr), slog.String("task_id", taskID))...)
 	}
 
 	update("REQUEST_GENERATED", 100)
@@ -372,7 +372,7 @@ func (s *MasterPersonaService) processQueuedRequests(
 			if cancelErr := s.queue.MarkTaskRequestsCanceled(ctx, currentTask.ID); cancelErr != nil {
 				wrappedErr := fmt.Errorf("mark task requests canceled task_id=%s: %w", currentTask.ID, cancelErr)
 				s.logger.WarnContext(ctx, "persona.requests.cancel_mark_failed",
-					append(telemetry.ErrorAttrs(wrappedErr), slog.String("task_id", currentTask.ID))...)
+					append(telemetry2.ErrorAttrs(wrappedErr), slog.String("task_id", currentTask.ID))...)
 			}
 		}
 		s.reportTaskPhaseProgress(ctx, currentTask.ID, currentTask.Type, "REQUEST_DISPATCHING", state.Completed, state.Total, runtimeprogress.StatusFailed, err.Error())
@@ -402,7 +402,7 @@ func (s *MasterPersonaService) finalizePersonaExecution(ctx context.Context, cur
 	if err := s.manager.Store().SaveMetadata(ctx, currentTask.ID, metadata); err != nil {
 		wrappedErr := fmt.Errorf("save completed metadata task_id=%s: %w", currentTask.ID, err)
 		s.logger.WarnContext(ctx, "persona.responses.metadata_persist_failed",
-			append(telemetry.ErrorAttrs(wrappedErr), slog.String("task_id", currentTask.ID))...)
+			append(telemetry2.ErrorAttrs(wrappedErr), slog.String("task_id", currentTask.ID))...)
 	}
 
 	s.manager.EmitPhaseCompleted(currentTask.ID, "REQUEST_COMPLETED", map[string]int{
@@ -448,7 +448,7 @@ func (s *MasterPersonaService) persistPersonaResponses(ctx context.Context, curr
 		out.Attempted++
 		if parseErr != nil {
 			s.logger.WarnContext(ctx, "persona.responses.decode_failed",
-				append(telemetry.ErrorAttrs(parseErr),
+				append(telemetry2.ErrorAttrs(parseErr),
 					slog.String("task_id", currentTask.ID),
 					slog.String("request_id", job.ID),
 				)...,

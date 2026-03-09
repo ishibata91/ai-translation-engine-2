@@ -3,7 +3,7 @@ package summary
 import (
 	"context"
 
-	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/llm"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/gateway/llm"
 )
 
 // Summary is the main entry point for dialogue and quest summary generation.

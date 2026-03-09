@@ -8,9 +8,9 @@ import (
 	"sync"
 
 	"github.com/google/uuid"
-	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/llm"
-	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/queue"
-	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/telemetry"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/gateway/llm"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/runtime/queue"
+	telemetry2 "github.com/ishibata91/ai-translation-engine-2/pkg/runtime/telemetry"
 )
 
 // Manager coordinates vertical slices and infrastructure.
@@ -55,7 +55,7 @@ func (m *Manager) getSlice(id string) Slice {
 
 // ExecuteSlice initiates the orchestration of a slice.
 func (m *Manager) ExecuteSlice(ctx context.Context, sliceID string, input any, inputFile string) (string, error) {
-	defer telemetry.StartSpan(ctx, telemetry.ActionPipelineExecute)()
+	defer telemetry2.StartSpan(ctx, telemetry2.ActionPipelineExecute)()
 	m.logger.InfoContext(ctx, "pipeline.execute.started",
 		slog.String("slice", sliceID),
 		slog.String("input_file", inputFile),
@@ -90,15 +90,15 @@ func (m *Manager) ExecuteSlice(ctx context.Context, sliceID string, input any, i
 }
 
 func (m *Manager) handleCompletion(ctx context.Context, processID string, workerErr error) {
-	defer telemetry.StartSpan(ctx, telemetry.ActionPipelineExecute)()
+	defer telemetry2.StartSpan(ctx, telemetry2.ActionPipelineExecute)()
 	m.logger.DebugContext(ctx, "pipeline.completion.started", slog.String("process_id", processID))
 
 	if workerErr != nil {
 		m.logger.ErrorContext(ctx, "pipeline.worker.failed",
-			append(telemetry.ErrorAttrs(workerErr), slog.String("process_id", processID))...)
+			append(telemetry2.ErrorAttrs(workerErr), slog.String("process_id", processID))...)
 		if err := m.updatePhase(ctx, processID, PhaseFailed); err != nil {
 			m.logger.WarnContext(ctx, "pipeline.phase_update_failed",
-				append(telemetry.ErrorAttrs(err), slog.String("process_id", processID))...)
+				append(telemetry2.ErrorAttrs(err), slog.String("process_id", processID))...)
 		}
 		return
 	}
@@ -106,7 +106,7 @@ func (m *Manager) handleCompletion(ctx context.Context, processID string, worker
 	state, err := m.store.GetState(ctx, processID)
 	if err != nil {
 		m.logger.ErrorContext(ctx, "pipeline.state_load_failed",
-			append(telemetry.ErrorAttrs(err), slog.String("process_id", processID))...)
+			append(telemetry2.ErrorAttrs(err), slog.String("process_id", processID))...)
 		return
 	}
 	if state == nil {
@@ -126,7 +126,7 @@ func (m *Manager) handleCompletion(ctx context.Context, processID string, worker
 	jobRequests, err := m.jobQueue.GetResults(ctx, processID)
 	if err != nil {
 		m.logger.ErrorContext(ctx, "pipeline.results_load_failed",
-			append(telemetry.ErrorAttrs(fmt.Errorf("get job results process_id=%s: %w", processID, err)),
+			append(telemetry2.ErrorAttrs(fmt.Errorf("get job results process_id=%s: %w", processID, err)),
 				slog.String("process_id", processID),
 			)...,
 		)
@@ -137,14 +137,14 @@ func (m *Manager) handleCompletion(ctx context.Context, processID string, worker
 	if err := registeredSlice.SaveResults(ctx, responses); err != nil {
 		saveErr := fmt.Errorf("save slice results process_id=%s slice=%s: %w", processID, state.TargetSlice, err)
 		m.logger.ErrorContext(ctx, "pipeline.results_save_failed",
-			append(telemetry.ErrorAttrs(saveErr),
+			append(telemetry2.ErrorAttrs(saveErr),
 				slog.String("process_id", processID),
 				slog.String("slice", state.TargetSlice),
 			)...,
 		)
 		if err := m.updatePhase(ctx, processID, PhaseFailed); err != nil {
 			m.logger.WarnContext(ctx, "pipeline.phase_update_failed",
-				append(telemetry.ErrorAttrs(err), slog.String("process_id", processID))...)
+				append(telemetry2.ErrorAttrs(err), slog.String("process_id", processID))...)
 		}
 		return
 	}
@@ -202,7 +202,7 @@ func (m *Manager) resolveSlice(ctx context.Context, sliceID string) (Slice, erro
 	registeredSlice := m.getSlice(sliceID)
 	if registeredSlice == nil {
 		err := fmt.Errorf("slice not registered: %s", sliceID)
-		m.logger.ErrorContext(ctx, "pipeline.execute.failed", telemetry.ErrorAttrs(err)...)
+		m.logger.ErrorContext(ctx, "pipeline.execute.failed", telemetry2.ErrorAttrs(err)...)
 		return nil, err
 	}
 	return registeredSlice, nil
@@ -213,7 +213,7 @@ func (m *Manager) prepareRequests(ctx context.Context, registeredSlice Slice, sl
 	if err != nil {
 		wrappedErr := fmt.Errorf("prepare prompts for slice=%s: %w", sliceID, err)
 		m.logger.ErrorContext(ctx, "pipeline.prepare_prompts_failed",
-			append(telemetry.ErrorAttrs(wrappedErr), slog.String("slice", sliceID))...)
+			append(telemetry2.ErrorAttrs(wrappedErr), slog.String("slice", sliceID))...)
 		return nil, wrappedErr
 	}
 	return requests, nil
@@ -229,7 +229,7 @@ func (m *Manager) persistDispatchedState(ctx context.Context, processID, sliceID
 	if err := m.store.SaveState(ctx, state); err != nil {
 		wrappedErr := fmt.Errorf("save process state process_id=%s: %w", processID, err)
 		m.logger.ErrorContext(ctx, "pipeline.state_save_failed",
-			append(telemetry.ErrorAttrs(wrappedErr), slog.String("process_id", processID))...)
+			append(telemetry2.ErrorAttrs(wrappedErr), slog.String("process_id", processID))...)
 		return wrappedErr
 	}
 	return nil
@@ -244,16 +244,16 @@ func (m *Manager) submitJobs(ctx context.Context, processID string, requests []l
 	if err := m.jobQueue.SubmitJobs(ctx, processID, anyRequests); err != nil {
 		wrappedErr := fmt.Errorf("submit jobs process_id=%s: %w", processID, err)
 		m.logger.ErrorContext(ctx, "pipeline.job_submit_failed",
-			append(telemetry.ErrorAttrs(wrappedErr), slog.String("process_id", processID))...)
+			append(telemetry2.ErrorAttrs(wrappedErr), slog.String("process_id", processID))...)
 		return wrappedErr
 	}
 	return nil
 }
 
 func (m *Manager) runProcessInBackground(ctx context.Context, processID string) {
-	bgCtx := telemetry.WithTraceID(context.WithoutCancel(ctx))
-	bgCtx = telemetry.WithAction(bgCtx, telemetry.ActionPipelineExecute, telemetry.ResourceTask, processID)
-	defer telemetry.StartSpan(bgCtx, telemetry.ActionPipelineExecute)()
+	bgCtx := telemetry2.WithTraceID(context.WithoutCancel(ctx))
+	bgCtx = telemetry2.WithAction(bgCtx, telemetry2.ActionPipelineExecute, telemetry2.ResourceTask, processID)
+	defer telemetry2.StartSpan(bgCtx, telemetry2.ActionPipelineExecute)()
 
 	m.logger.InfoContext(bgCtx, "pipeline.worker.started", slog.String("process_id", processID))
 	err := m.worker.ProcessProcessID(bgCtx, processID)
@@ -266,7 +266,7 @@ func (m *Manager) buildResponses(ctx context.Context, jobRequests []queue.JobReq
 		if jobRequest.ResponseJSON != nil {
 			if err := json.Unmarshal([]byte(*jobRequest.ResponseJSON), &responses[i]); err != nil {
 				m.logger.WarnContext(ctx, "pipeline.response_decode_failed",
-					append(telemetry.ErrorAttrs(fmt.Errorf("decode job response job_id=%s: %w", jobRequest.ID, err)),
+					append(telemetry2.ErrorAttrs(fmt.Errorf("decode job response job_id=%s: %w", jobRequest.ID, err)),
 						slog.String("job_id", jobRequest.ID),
 					)...,
 				)
@@ -287,11 +287,11 @@ func (m *Manager) cleanupProcess(ctx context.Context, processID string) {
 	if err := m.jobQueue.DeleteJobs(ctx, processID); err != nil {
 		wrappedErr := fmt.Errorf("delete jobs process_id=%s: %w", processID, err)
 		m.logger.WarnContext(ctx, "pipeline.cleanup.jobs_delete_failed",
-			append(telemetry.ErrorAttrs(wrappedErr), slog.String("process_id", processID))...)
+			append(telemetry2.ErrorAttrs(wrappedErr), slog.String("process_id", processID))...)
 	}
 	if err := m.store.DeleteState(ctx, processID); err != nil {
 		wrappedErr := fmt.Errorf("delete process state process_id=%s: %w", processID, err)
 		m.logger.WarnContext(ctx, "pipeline.cleanup.state_delete_failed",
-			append(telemetry.ErrorAttrs(wrappedErr), slog.String("process_id", processID))...)
+			append(telemetry2.ErrorAttrs(wrappedErr), slog.String("process_id", processID))...)
 	}
 }

@@ -1,81 +1,35 @@
 package llm
 
-import (
-	"context"
+import "context"
 
-	base "github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/llm"
-)
-
-// Request aliases the existing LLM request DTO at the gateway boundary.
-type Request = base.Request
-
-// Response aliases the existing LLM response DTO at the gateway boundary.
-type Response = base.Response
-
-// StreamResponse aliases the existing streaming response contract at the gateway boundary.
-type StreamResponse = base.StreamResponse
-
-// ModelInfo aliases model metadata exposed by LLM providers.
-type ModelInfo = base.ModelInfo
-
-// LLMConfig aliases the existing LLM client configuration DTO.
-type LLMConfig = base.LLMConfig
-
-// BulkStrategy aliases the LLM bulk strategy discriminator.
-type BulkStrategy = base.BulkStrategy
-
-// BatchClient aliases asynchronous batch execution support.
-type BatchClient = base.BatchClient
-
-// BatchJobID aliases the batch job identifier DTO.
-type BatchJobID = base.BatchJobID
-
-// BatchStatus aliases the batch status DTO.
-type BatchStatus = base.BatchStatus
-
-// ModelLifecycleClient aliases optional model lifecycle hooks.
-type ModelLifecycleClient = base.ModelLifecycleClient
-
-// LLMClient exposes request execution against an external LLM gateway.
-type LLMClient = base.LLMClient
-
-// LLMManager exposes gateway resolution for LLM clients.
-type LLMManager = base.LLMManager
-
-const (
-	// LLMConfigNamespace is the default namespace for LLM configuration.
-	LLMConfigNamespace = base.LLMConfigNamespace
-	// LLMDefaultProviderKey stores the selected default provider.
-	LLMDefaultProviderKey = base.LLMDefaultProviderKey
-	// LLMBulkStrategyKey stores the bulk execution strategy.
-	LLMBulkStrategyKey = base.LLMBulkStrategyKey
-	// LLMSyncConcurrencyKeySuffix stores sync concurrency settings.
-	LLMSyncConcurrencyKeySuffix = base.LLMSyncConcurrencyKeySuffix
-	// LLMModelIDKeySuffix stores model identifiers.
-	LLMModelIDKeySuffix = base.LLMModelIDKeySuffix
-)
-
-var (
-	// ErrModelRequired reports that the selected model is missing.
-	ErrModelRequired = base.ErrModelRequired
-)
-
-const (
-	// BulkStrategySync executes requests synchronously.
-	BulkStrategySync = base.BulkStrategySync
-)
-
-// NormalizeProvider normalizes provider identifiers for gateway consumers.
-func NormalizeProvider(provider string) string {
-	return base.NormalizeProvider(provider)
+// LLMClient defines the core interface for LLM request execution.
+// All LLM providers (Gemini, OpenAI, Local/GGUF, etc.) implement this interface.
+type LLMClient interface {
+	ListModels(ctx context.Context) ([]ModelInfo, error)
+	Complete(ctx context.Context, req Request) (Response, error)
+	GenerateStructured(ctx context.Context, req Request) (Response, error)
+	StreamComplete(ctx context.Context, req Request) (StreamResponse, error)
+	GetEmbedding(ctx context.Context, text string) ([]float32, error)
+	HealthCheck(ctx context.Context) error
 }
 
-// DefaultConcurrency returns the default sync concurrency for one provider.
-func DefaultConcurrency(provider string) int {
-	return base.DefaultConcurrency(provider)
+// LLMManager manages available LLM providers and creates client instances
+// based on the current configuration (provider selection, API key, endpoint, etc.).
+type LLMManager interface {
+	GetClient(ctx context.Context, config LLMConfig) (LLMClient, error)
+	GetBatchClient(ctx context.Context, config LLMConfig) (BatchClient, error)
+	ResolveBulkStrategy(ctx context.Context, strategy BulkStrategy, provider string) BulkStrategy
 }
 
-// ExecuteBulkSync executes sync requests through an LLM gateway.
-func ExecuteBulkSync(ctx context.Context, client LLMClient, reqs []Request, concurrency int) ([]Response, error) {
-	return base.ExecuteBulkSync(ctx, client, reqs, concurrency)
+// BatchClient abstracts asynchronous batch API job management and result retrieval.
+type BatchClient interface {
+	SubmitBatch(ctx context.Context, reqs []Request) (BatchJobID, error)
+	GetBatchStatus(ctx context.Context, id BatchJobID) (BatchStatus, error)
+	GetBatchResults(ctx context.Context, id BatchJobID) ([]Response, error)
+}
+
+// StreamResponse provides an iterator interface for streaming LLM responses.
+type StreamResponse interface {
+	Next() (Response, bool)
+	Close() error
 }

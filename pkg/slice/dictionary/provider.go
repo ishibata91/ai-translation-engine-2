@@ -4,7 +4,7 @@ import (
 	"log/slog"
 
 	"github.com/google/wire"
-	"github.com/ishibata91/ai-translation-engine-2/pkg/infrastructure/progress"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/runtime/progress"
 )
 
 // ProviderSet は辞書パッケージの Wire プロバイダセット。
