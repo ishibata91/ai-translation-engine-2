@@ -6,17 +6,19 @@ import (
 	"log"
 
 	"github.com/ishibata91/ai-translation-engine-2/pkg/controller"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/foundation/progress"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/foundation/telemetry"
+	gatewayconfig "github.com/ishibata91/ai-translation-engine-2/pkg/gateway/config"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/gateway/configstore"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/gateway/datastore"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/gateway/llm"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/runtime/modelcatalog"
-	"github.com/ishibata91/ai-translation-engine-2/pkg/foundation/progress"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/runtime/queue"
-	"github.com/ishibata91/ai-translation-engine-2/pkg/foundation/telemetry"
 	dictionary2 "github.com/ishibata91/ai-translation-engine-2/pkg/slice/dictionary"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/slice/parser"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/slice/persona"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/workflow"
-	config2 "github.com/ishibata91/ai-translation-engine-2/pkg/workflow/config"
+	configlegacy "github.com/ishibata91/ai-translation-engine-2/pkg/workflow/config"
 	task2 "github.com/ishibata91/ai-translation-engine-2/pkg/workflow/task"
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -42,7 +44,7 @@ func main() {
 	defer taskDBCleanup()
 
 	// 2. Run Migrations
-	if err := config2.Migrate(context.Background(), db); err != nil {
+	if err := configstore.Migrate(context.Background(), db); err != nil {
 		log.Fatalf("failed to run database migrations: %v", err)
 	}
 
@@ -76,9 +78,13 @@ func main() {
 	dictService := dictionary2.NewDictionaryService(dictStore, dictImporter, logger)
 
 	// 5. Setup Config Controller (UIStateStore Wails binding)
-	configStore, err := config2.NewSQLiteStore(context.Background(), db, logger)
+	configStore, err := configstore.NewSQLiteStore(context.Background(), db, logger)
 	if err != nil {
 		log.Fatalf("failed to initialize config store: %v", err)
+	}
+	gatewayConfigStore, err := gatewayconfig.NewSQLiteStore(context.Background(), db, logger)
+	if err != nil {
+		log.Fatalf("failed to initialize gateway config store: %v", err)
 	}
 	configController := controller.NewConfigController(configStore, logger)
 	llmManager := llm.NewLLMManager(logger)
@@ -86,7 +92,11 @@ func main() {
 	modelCatalogController := controller.NewModelCatalogController(modelCatalogService)
 
 	// 6. Setup Persona + Parser dependencies for task bridge.
-	parserLoader := parser.ProvideParser(configStore)
+	parserConfigStore, err := configlegacy.NewSQLiteStore(context.Background(), db, logger)
+	if err != nil {
+		log.Fatalf("failed to initialize parser config store: %v", err)
+	}
+	parserLoader := parser.ProvideParser(parserConfigStore)
 	llmQueue, err := queue.NewQueue(context.Background(), "llm_queue.db", logger)
 	if err != nil {
 		log.Fatalf("failed to initialize llm queue: %v", err)
@@ -95,7 +105,7 @@ func main() {
 		_ = llmQueue.Close()
 	}()
 
-	queueWorker := queue.NewWorker(llmQueue, llmManager, configStore, configStore, personaProgressNotifier, logger)
+	queueWorker := queue.NewWorker(llmQueue, llmManager, gatewayConfigStore, gatewayConfigStore, personaProgressNotifier, logger)
 	if err := queueWorker.Recover(context.Background()); err != nil {
 		log.Printf("failed to recover llm queue worker state: %v", err)
 	}
@@ -115,8 +125,8 @@ func main() {
 		persona.NewDefaultDialogueCollector(),
 		persona.NewDefaultContextEvaluator(persona.NewDefaultScorer(), persona.NewSimpleTokenEstimator()),
 		personaStore,
-		configStore,
-		configStore,
+		gatewayConfigStore,
+		gatewayConfigStore,
 	)
 	personaService := persona.NewService(personaStore, logger)
 	personaController := controller.NewPersonaController(personaService)

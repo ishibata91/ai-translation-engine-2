@@ -6,29 +6,32 @@ import (
 	"log/slog"
 	"strings"
 
+	"github.com/ishibata91/ai-translation-engine-2/pkg/gateway/configstore"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/gateway/llm"
-	"github.com/ishibata91/ai-translation-engine-2/pkg/workflow/config"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/runtime/configaccess"
 )
 
 // ModelCatalogService bridges UI model listing with config and llm infrastructure.
 type ModelCatalogService struct {
-	configStore config.Config
-	secretStore config.SecretStore
-	llmManager  llm.LLMManager
-	logger      *slog.Logger
+	configStore    configstore.Config
+	secretStore    configstore.SecretStore
+	configAccessor *configaccess.TypedAccessor
+	llmManager     llm.LLMManager
+	logger         *slog.Logger
 }
 
 func NewModelCatalogService(
-	configStore config.Config,
-	secretStore config.SecretStore,
+	configStore configstore.Config,
+	secretStore configstore.SecretStore,
 	llmManager llm.LLMManager,
 	logger *slog.Logger,
 ) *ModelCatalogService {
 	return &ModelCatalogService{
-		configStore: configStore,
-		secretStore: secretStore,
-		llmManager:  llmManager,
-		logger:      logger.With("component", "model_catalog_service"),
+		configStore:    configStore,
+		secretStore:    secretStore,
+		configAccessor: configaccess.NewTypedAccessor(configStore),
+		llmManager:     llmManager,
+		logger:         logger.With("component", "model_catalog_service"),
 	}
 }
 
@@ -101,11 +104,10 @@ func (s *ModelCatalogService) resolveProvider(ctx context.Context, namespace str
 }
 
 func (s *ModelCatalogService) getConfig(ctx context.Context, namespace, key string) string {
-	val, err := s.configStore.Get(ctx, namespace, key)
-	if err != nil {
+	if s.configAccessor == nil {
 		return ""
 	}
-	return strings.TrimSpace(val)
+	return s.configAccessor.GetString(ctx, namespace, key, "")
 }
 
 func (s *ModelCatalogService) getSecret(ctx context.Context, namespace, key string) string {

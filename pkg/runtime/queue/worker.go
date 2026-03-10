@@ -11,17 +11,26 @@ import (
 	"sync/atomic"
 	"time"
 
-	gatewayconfig "github.com/ishibata91/ai-translation-engine-2/pkg/gateway/config"
-	gatewayllm "github.com/ishibata91/ai-translation-engine-2/pkg/gateway/llm"
 	runtimeprogress "github.com/ishibata91/ai-translation-engine-2/pkg/foundation/progress"
+	gatewayllm "github.com/ishibata91/ai-translation-engine-2/pkg/gateway/llm"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/runtime/configaccess"
 )
+
+type configReader interface {
+	Get(ctx context.Context, namespace string, key string) (string, error)
+}
+
+type secretReader interface {
+	GetSecret(ctx context.Context, namespace string, key string) (string, error)
+}
 
 // Worker coordinates processing of queued jobs.
 type Worker struct {
 	queue           *Queue
 	llmManager      gatewayllm.LLMManager
-	configStore     gatewayconfig.Config
-	secretStore     gatewayconfig.SecretStore
+	configStore     configReader
+	secretStore     secretReader
+	configAccessor  *configaccess.TypedAccessor
 	notifier        runtimeprogress.ProgressNotifier
 	logger          *slog.Logger
 	pollingInterval time.Duration
@@ -54,8 +63,8 @@ type ConfigReadOptions struct {
 func NewWorker(
 	queue *Queue,
 	llmManager gatewayllm.LLMManager,
-	configStore gatewayconfig.Config,
-	secretStore gatewayconfig.SecretStore,
+	configStore configReader,
+	secretStore secretReader,
 	notifier runtimeprogress.ProgressNotifier,
 	logger *slog.Logger,
 ) *Worker {
@@ -64,6 +73,7 @@ func NewWorker(
 		llmManager:      llmManager,
 		configStore:     configStore,
 		secretStore:     secretStore,
+		configAccessor:  configaccess.NewTypedAccessor(configStore),
 		notifier:        notifier,
 		logger:          logger.With("slice", "JobQueue"),
 		pollingInterval: 30 * time.Second, // Default
@@ -659,11 +669,10 @@ func (w *Worker) resolveResumeProviderModel(ctx context.Context, jobs []JobReque
 }
 
 func (w *Worker) getConfigString(ctx context.Context, ns, key, defaultVal string) string {
-	val, err := w.configStore.Get(ctx, ns, key)
-	if err != nil || val == "" {
+	if w.configAccessor == nil {
 		return defaultVal
 	}
-	return val
+	return w.configAccessor.GetString(ctx, ns, key, defaultVal)
 }
 
 func resolveConfigNamespace(opts ProcessOptions) string {

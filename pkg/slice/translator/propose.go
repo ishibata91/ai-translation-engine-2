@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/ishibata91/ai-translation-engine-2/pkg/gateway/llm"
 	telemetry2 "github.com/ishibata91/ai-translation-engine-2/pkg/foundation/telemetry"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/gateway/llm"
 )
 
 type translatorSlice struct {

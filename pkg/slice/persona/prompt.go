@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-
-	config2 "github.com/ishibata91/ai-translation-engine-2/pkg/workflow/config"
 )
 
 type promptConfig struct {
@@ -13,27 +11,67 @@ type promptConfig struct {
 	SystemPrompt string
 }
 
+const (
+	masterPersonaPromptNamespace = "master_persona.prompt"
+	masterPersonaUserPromptKey   = "user_prompt"
+	masterPersonaSystemPromptKey = "system_prompt"
+)
+
+const (
+	defaultMasterPersonaUserPrompt   = ` このNPCを他言語へ翻訳する際の「翻訳ガイドライン」を作成せよ。特に、一人称・二人称の選択、文末のニュアンス（敬語の度合い）、および特徴的な語彙（口癖や専門用語）を特定し、翻訳者が一貫性を保てるように分析すること`
+	defaultMasterPersonaSystemPrompt = `You are a character persona analyzer for RPG dialogue.
+The user message will contain:
+- User Request: the editable analysis focus from the operator
+- NPC Profile: basic metadata for one NPC
+- Dialogue History: representative dialogue lines for that NPC
+
+Use the User Request as the variable instruction, then analyze the NPC Profile and Dialogue History.
+Generate a concise persona summary.
+Your response MUST be formatted strictly as: TL: |...|
+Inside the pipes, include these sections in plain text:
+- Personality Traits: ...
+- Speaking Habits: ...
+- Background: ...
+
+Keep the total response under 150 words and do not add extra conversational filler.`
+)
+
+type promptConfigReader interface {
+	GetAll(ctx context.Context, namespace string) (map[string]string, error)
+}
+
 func defaultPromptConfig() promptConfig {
 	return promptConfig{
-		UserPrompt:   config2.DefaultMasterPersonaUserPrompt,
-		SystemPrompt: config2.DefaultMasterPersonaSystemPrompt,
+		UserPrompt:   defaultMasterPersonaUserPrompt,
+		SystemPrompt: defaultMasterPersonaSystemPrompt,
 	}
 }
 
-func loadPromptConfig(ctx context.Context, store config2.Config) (promptConfig, error) {
+func mergePromptDefaults(values map[string]string) map[string]string {
+	merged := map[string]string{
+		masterPersonaUserPromptKey:   defaultMasterPersonaUserPrompt,
+		masterPersonaSystemPromptKey: defaultMasterPersonaSystemPrompt,
+	}
+	for key, value := range values {
+		merged[key] = value
+	}
+	return merged
+}
+
+func loadPromptConfig(ctx context.Context, store promptConfigReader) (promptConfig, error) {
 	defaults := defaultPromptConfig()
 	if store == nil {
 		return defaults, nil
 	}
 
-	values, err := store.GetAll(ctx, config2.MasterPersonaPromptNamespace)
+	values, err := store.GetAll(ctx, masterPersonaPromptNamespace)
 	if err != nil {
 		return defaults, err
 	}
-	merged := config2.MergeMasterPersonaPromptDefaults(values)
+	merged := mergePromptDefaults(values)
 	return promptConfig{
-		UserPrompt:   strings.TrimSpace(merged[config2.MasterPersonaUserPromptKey]),
-		SystemPrompt: strings.TrimSpace(merged[config2.MasterPersonaSystemPromptKey]),
+		UserPrompt:   strings.TrimSpace(merged[masterPersonaUserPromptKey]),
+		SystemPrompt: strings.TrimSpace(merged[masterPersonaSystemPromptKey]),
 	}, nil
 }
 

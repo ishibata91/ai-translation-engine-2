@@ -5,8 +5,8 @@ import (
 	"log/slog"
 	"testing"
 
+	"github.com/ishibata91/ai-translation-engine-2/pkg/gateway/configstore"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/gateway/llm"
-	"github.com/ishibata91/ai-translation-engine-2/pkg/workflow/config"
 )
 
 type mockConfigStore struct {
@@ -24,7 +24,7 @@ func (m *mockConfigStore) Delete(ctx context.Context, namespace, key string) err
 func (m *mockConfigStore) GetAll(ctx context.Context, namespace string) (map[string]string, error) {
 	return nil, nil
 }
-func (m *mockConfigStore) Watch(namespace, key string, callback config.ChangeCallback) config.UnsubscribeFunc {
+func (m *mockConfigStore) Watch(namespace, key string, callback configstore.ChangeCallback) configstore.UnsubscribeFunc {
 	return func() {}
 }
 

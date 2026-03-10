@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ishibata91/ai-translation-engine-2/pkg/gateway/llm"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/foundation/progress"
-	"github.com/ishibata91/ai-translation-engine-2/pkg/workflow/config"
+	gatewayconfig "github.com/ishibata91/ai-translation-engine-2/pkg/gateway/config"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/gateway/llm"
 )
 
 // mockLLMClient simulates LLM completion
@@ -118,7 +118,7 @@ func (m *mockConfigStore) Delete(ctx context.Context, ns, key string) error   { 
 func (m *mockConfigStore) GetAll(ctx context.Context, ns string) (map[string]string, error) {
 	return nil, nil
 }
-func (m *mockConfigStore) Watch(ns, key string, cb config.ChangeCallback) config.UnsubscribeFunc {
+func (m *mockConfigStore) Watch(ns, key string, cb gatewayconfig.ChangeCallback) gatewayconfig.UnsubscribeFunc {
 	return func() {}
 }
 
@@ -148,7 +148,7 @@ func (m *mapConfigStore) Delete(ctx context.Context, ns, key string) error   { r
 func (m *mapConfigStore) GetAll(ctx context.Context, ns string) (map[string]string, error) {
 	return nil, nil
 }
-func (m *mapConfigStore) Watch(ns, key string, cb config.ChangeCallback) config.UnsubscribeFunc {
+func (m *mapConfigStore) Watch(ns, key string, cb gatewayconfig.ChangeCallback) gatewayconfig.UnsubscribeFunc {
 	return func() {}
 }
 

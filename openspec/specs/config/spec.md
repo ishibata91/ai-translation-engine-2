@@ -144,6 +144,25 @@ Provider別設定を採用する機能は、ベース名前空間の `selected_p
 - **WHEN** `master_persona.prompt` namespace に保存値が存在しない
 - **THEN** `config` は空値エラーを返さず、MasterPersona が表示可能な既定の `user_prompt` と `system_prompt` を返さなければならない
 
+### Requirement: config は保存技術と workflow 解釈を混在させてはならない
+システムは、設定値の保存・migration と workflow 固有の default / 解釈を同一 package に混在させてはならない。設定保存は gateway 側の adapter から提供され、workflow 固有 default は workflow 側で解釈されなければならない。
+
+#### Scenario: gateway が workflow config を再エクスポートしない
+- **WHEN** 開発者が gateway 境界で config store を公開する
+- **THEN** gateway は workflow 側 package を単純再エクスポートしてはならない
+- **AND** gateway 自身の contract / implementation として store を公開しなければならない
+
+#### Scenario: runtime が実行時設定を読み取る
+- **WHEN** runtime が provider や model、endpoint、concurrency のような設定値を利用する
+- **THEN** runtime は専用の読取補助を通じて設定を読み取れなければならない
+- **AND** workflow 固有 default へ直接依存してはならない
+
+#### Scenario: LLM 周辺の config 責務を分離する
+- **WHEN** 開発者が LLM 周辺の設定読み書き実装を整理する
+- **THEN** store contract と SQLite 実装は gateway 側に置かれなければならない
+- **AND** TypedAccessor のような実行時読取補助は runtime 側に置かれなければならない
+- **AND** prompt default のような workflow 固有解釈は workflow 側に置かれなければならない
+
 ### `ui_state` テーブル（UIステート）
 | 名前空間 | 用途 | キー例 | 値の例 |
 | :--- | :--- | :--- | :--- |

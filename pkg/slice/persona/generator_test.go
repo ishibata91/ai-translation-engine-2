@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	gatewayconfig "github.com/ishibata91/ai-translation-engine-2/pkg/gateway/config"
 	gatewayllm "github.com/ishibata91/ai-translation-engine-2/pkg/gateway/llm"
 	config2 "github.com/ishibata91/ai-translation-engine-2/pkg/workflow/config"
 	_ "modernc.org/sqlite"
@@ -44,7 +45,7 @@ func (m *mockConfigStore) GetAll(ctx context.Context, namespace string) (map[str
 	}
 	return nil, nil
 }
-func (m *mockConfigStore) Watch(namespace string, key string, callback config2.ChangeCallback) config2.UnsubscribeFunc {
+func (m *mockConfigStore) Watch(namespace string, key string, callback gatewayconfig.ChangeCallback) gatewayconfig.UnsubscribeFunc {
 	return func() {}
 }
 

@@ -8,6 +8,7 @@
 - この change で主に確認したい領域: LLM 周辺の config 境界分離
 - 影響を強く受ける package / feature: `workflow/config`、`gateway/config`、LLM manager、model catalog、queue worker、persona prompt
 - 特に見落としやすい境界: `configstore` / `configaccess` / `workflow/persona` の責務混線
+- 実装対象は LLM 周辺 (`main`、`controller/config_controller`、`runtime/modelcatalog`、`runtime/queue`、`gateway/config*`) に限定し、他 slice 全体の config 再配置は後続 change で扱う
 
 ## 2. Backend-Specific Checks
 
@@ -42,3 +43,4 @@
 - 重点的に見るべきファイル: `workflow/config` 分解先、LLM 周辺 import、Wire provider
 - 重点的に見るべきテスト: model catalog、queue worker、persona prompt、config store 関連
 - verify 時の補足メモ: 他ユースケースの config 移行を混ぜていないことを確認する
+- `npm run lint:backend` は repository 全体の既存 `slice_boundary` 違反で失敗するが、今回の変更範囲では `gateway -> workflow/config` の依存は解消されていることを確認する

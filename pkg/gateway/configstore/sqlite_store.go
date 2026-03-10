@@ -1,0 +1,339 @@
+package configstore
+
+import (
+	"context"
+	"database/sql"
+	"encoding/json"
+	"fmt"
+	"log/slog"
+	"sync"
+	"time"
+
+	telemetry2 "github.com/ishibata91/ai-translation-engine-2/pkg/foundation/telemetry"
+)
+
+// SQLiteStore implements Config, UIStateStore, and SecretStore using SQLite.
+type SQLiteStore struct {
+	db        *sql.DB
+	logger    *slog.Logger
+	mu        sync.RWMutex
+	watchers  map[string]map[int]ChangeCallback
+	nextWatch int
+}
+
+// --- Config Implementation ---
+
+func (s *SQLiteStore) Get(ctx context.Context, namespace string, key string) (string, error) {
+	defer telemetry2.StartSpan(ctx, telemetry2.ActionDBQuery)()
+	s.logger.DebugContext(ctx, "config.get", slog.String("namespace", namespace), slog.String("key", key))
+
+	return s.queryConfigValue(ctx, namespace, key)
+}
+
+func (s *SQLiteStore) Set(ctx context.Context, namespace string, key string, value string) error {
+	defer telemetry2.StartSpan(ctx, telemetry2.ActionConfigOperation)()
+	s.logger.InfoContext(ctx, "config.set", slog.String("namespace", namespace), slog.String("key", key))
+
+	oldValue, err := s.Get(ctx, namespace, key)
+	if err != nil {
+		return fmt.Errorf("load previous config value namespace=%s key=%s: %w", namespace, key, err)
+	}
+
+	if err := s.upsertConfig(ctx, namespace, key, value); err != nil {
+		s.logger.ErrorContext(ctx, "config.set_failed",
+			append(telemetry2.ErrorAttrs(err), slog.String("namespace", namespace), slog.String("key", key))...)
+		return fmt.Errorf("set config namespace=%s key=%s: %w", namespace, key, err)
+	}
+
+	s.detectAndNotifyChange(namespace, key, oldValue, value)
+	return nil
+}
+
+func (s *SQLiteStore) Delete(ctx context.Context, namespace string, key string) error {
+	defer telemetry2.StartSpan(ctx, telemetry2.ActionConfigOperation)()
+	s.logger.InfoContext(ctx, "config.delete", slog.String("namespace", namespace), slog.String("key", key))
+
+	oldValue, err := s.Get(ctx, namespace, key)
+	if err != nil {
+		return fmt.Errorf("load previous config value for delete namespace=%s key=%s: %w", namespace, key, err)
+	}
+
+	if err := s.deleteConfigRow(ctx, namespace, key); err != nil {
+		s.logger.ErrorContext(ctx, "config.delete_failed",
+			append(telemetry2.ErrorAttrs(err), slog.String("namespace", namespace), slog.String("key", key))...)
+		return fmt.Errorf("delete config namespace=%s key=%s: %w", namespace, key, err)
+	}
+
+	s.detectAndNotifyChange(namespace, key, oldValue, "")
+	return nil
+}
+
+func (s *SQLiteStore) GetAll(ctx context.Context, namespace string) (map[string]string, error) {
+	defer telemetry2.StartSpan(ctx, telemetry2.ActionDBQuery)()
+	s.logger.DebugContext(ctx, "config.list", slog.String("namespace", namespace))
+
+	rows, err := s.queryAllByNamespace(ctx, "config", namespace)
+	if err != nil {
+		s.logger.ErrorContext(ctx, "config.list_failed",
+			append(telemetry2.ErrorAttrs(err), slog.String("namespace", namespace))...)
+		return nil, fmt.Errorf("failed to get all config: %w", err)
+	}
+	defer rows.Close()
+
+	return s.scanKeyValueRows(rows)
+}
+
+func (s *SQLiteStore) Watch(namespace string, key string, callback ChangeCallback) UnsubscribeFunc {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	watchKey := fmt.Sprintf("%s/%s", namespace, key)
+	if _, ok := s.watchers[watchKey]; !ok {
+		s.watchers[watchKey] = make(map[int]ChangeCallback)
+	}
+	watchID := s.nextWatch
+	s.nextWatch++
+	s.watchers[watchKey][watchID] = callback
+
+	return func() {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+
+		callbacks, ok := s.watchers[watchKey]
+		if !ok {
+			return
+		}
+		delete(callbacks, watchID)
+		if len(callbacks) == 0 {
+			delete(s.watchers, watchKey)
+		}
+	}
+}
+
+// --- UIStateStore Implementation ---
+
+func (s *SQLiteStore) SetJSON(ctx context.Context, namespace string, key string, value any) error {
+	s.logger.DebugContext(ctx, "config.ui_state.set", slog.String("namespace", namespace), slog.String("key", key))
+
+	data, err := s.marshalToJSON(value)
+	if err != nil {
+		return fmt.Errorf("marshal ui state namespace=%s key=%s: %w", namespace, key, err)
+	}
+
+	return s.upsertUIState(ctx, namespace, key, data)
+}
+
+func (s *SQLiteStore) GetJSON(ctx context.Context, namespace string, key string, target any) error {
+	s.logger.DebugContext(ctx, "config.ui_state.get_json", slog.String("namespace", namespace), slog.String("key", key))
+
+	value, err := s.queryUIStateValue(ctx, namespace, key)
+	if err != nil {
+		return fmt.Errorf("query ui state namespace=%s key=%s: %w", namespace, key, err)
+	}
+	if value == "" {
+		return nil
+	}
+
+	return s.unmarshalFromJSON(value, target)
+}
+
+// --- SecretStore Implementation ---
+
+func (s *SQLiteStore) GetSecret(ctx context.Context, namespace string, key string) (string, error) {
+	s.logger.DebugContext(ctx, "config.secret.get", slog.String("namespace", namespace), slog.String("key", key))
+
+	var value string
+	err := s.db.QueryRowContext(ctx, "SELECT value FROM secrets WHERE namespace = ? AND key = ?", namespace, key).Scan(&value)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("failed to get secret: %w", err)
+	}
+	return value, nil
+}
+
+func (s *SQLiteStore) SetSecret(ctx context.Context, namespace string, key string, value string) error {
+	s.logger.DebugContext(ctx, "config.secret.set", slog.String("namespace", namespace), slog.String("key", key))
+
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO secrets (namespace, key, value, updated_at)
+		VALUES (?, ?, ?, ?)
+		ON CONFLICT(namespace, key) DO UPDATE SET
+			value = excluded.value,
+			updated_at = excluded.updated_at
+	`, namespace, key, value, time.Now())
+
+	if err != nil {
+		return fmt.Errorf("failed to set secret: %w", err)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) DeleteSecret(ctx context.Context, namespace string, key string) error {
+	s.logger.DebugContext(ctx, "config.secret.delete", slog.String("namespace", namespace), slog.String("key", key))
+
+	_, err := s.db.ExecContext(ctx, "DELETE FROM secrets WHERE namespace = ? AND key = ?", namespace, key)
+	if err != nil {
+		return fmt.Errorf("failed to delete secret: %w", err)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) ListSecretKeys(ctx context.Context, namespace string) ([]string, error) {
+	s.logger.DebugContext(ctx, "config.secret.list", slog.String("namespace", namespace))
+
+	rows, err := s.db.QueryContext(ctx, "SELECT key FROM secrets WHERE namespace = ?", namespace)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list secret keys: %w", err)
+	}
+	defer rows.Close()
+
+	return s.scanStringColumn(rows)
+}
+
+// --- Private Helper Methods ---
+
+func (s *SQLiteStore) queryConfigValue(ctx context.Context, namespace, key string) (string, error) {
+	var value string
+	err := s.db.QueryRowContext(ctx, "SELECT value FROM config WHERE namespace = ? AND key = ?", namespace, key).Scan(&value)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("failed to get config: %w", err)
+	}
+	return value, nil
+}
+
+func (s *SQLiteStore) upsertConfig(ctx context.Context, namespace, key, value string) error {
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO config (namespace, key, value, updated_at)
+		VALUES (?, ?, ?, ?)
+		ON CONFLICT(namespace, key) DO UPDATE SET
+			value = excluded.value,
+			updated_at = excluded.updated_at
+	`, namespace, key, value, time.Now())
+
+	if err != nil {
+		return fmt.Errorf("failed to set config: %w", err)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) deleteConfigRow(ctx context.Context, namespace, key string) error {
+	_, err := s.db.ExecContext(ctx, "DELETE FROM config WHERE namespace = ? AND key = ?", namespace, key)
+	if err != nil {
+		return fmt.Errorf("failed to delete config: %w", err)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) detectAndNotifyChange(namespace, key, oldValue, newValue string) {
+	if oldValue != newValue {
+		s.notifyWatchers(namespace, key, oldValue, newValue)
+	}
+}
+
+func (s *SQLiteStore) notifyWatchers(namespace, key, oldValue, newValue string) {
+	s.mu.RLock()
+	watchKey := fmt.Sprintf("%s/%s", namespace, key)
+	callbacks, ok := s.watchers[watchKey]
+	if !ok {
+		s.mu.RUnlock()
+		return
+	}
+
+	copied := make([]ChangeCallback, 0, len(callbacks))
+	for _, callback := range callbacks {
+		copied = append(copied, callback)
+	}
+	s.mu.RUnlock()
+
+	event := ChangeEvent{
+		Namespace: namespace,
+		Key:       key,
+		OldValue:  oldValue,
+		NewValue:  newValue,
+	}
+	for _, callback := range copied {
+		go callback(event)
+	}
+}
+
+func (s *SQLiteStore) queryAllByNamespace(ctx context.Context, table, namespace string) (*sql.Rows, error) {
+	query := fmt.Sprintf("SELECT key, value FROM %s WHERE namespace = ?", table)
+	return s.db.QueryContext(ctx, query, namespace)
+}
+
+func (s *SQLiteStore) scanKeyValueRows(rows *sql.Rows) (map[string]string, error) {
+	result := make(map[string]string)
+	for rows.Next() {
+		var key, value string
+		if err := rows.Scan(&key, &value); err != nil {
+			return nil, fmt.Errorf("failed to scan row: %w", err)
+		}
+		result[key] = value
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate key value rows: %w", err)
+	}
+	return result, nil
+}
+
+func (s *SQLiteStore) scanStringColumn(rows *sql.Rows) ([]string, error) {
+	var results []string
+	for rows.Next() {
+		var val string
+		if err := rows.Scan(&val); err != nil {
+			return nil, fmt.Errorf("failed to scan row: %w", err)
+		}
+		results = append(results, val)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate string rows: %w", err)
+	}
+	return results, nil
+}
+
+func (s *SQLiteStore) marshalToJSON(value any) (string, error) {
+	data, err := json.Marshal(value)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal JSON: %w", err)
+	}
+	return string(data), nil
+}
+
+func (s *SQLiteStore) upsertUIState(ctx context.Context, namespace, key, jsonData string) error {
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO ui_state (namespace, key, value, updated_at)
+		VALUES (?, ?, ?, ?)
+		ON CONFLICT(namespace, key) DO UPDATE SET
+			value = excluded.value,
+			updated_at = excluded.updated_at
+	`, namespace, key, jsonData, time.Now())
+
+	if err != nil {
+		return fmt.Errorf("failed to set ui_state: %w", err)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) queryUIStateValue(ctx context.Context, namespace, key string) (string, error) {
+	var value string
+	err := s.db.QueryRowContext(ctx, "SELECT value FROM ui_state WHERE namespace = ? AND key = ?", namespace, key).Scan(&value)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("failed to get ui_state: %w", err)
+	}
+	return value, nil
+}
+
+func (s *SQLiteStore) unmarshalFromJSON(jsonStr string, target any) error {
+	if err := json.Unmarshal([]byte(jsonStr), target); err != nil {
+		return fmt.Errorf("failed to unmarshal JSON: %w", err)
+	}
+	return nil
+}

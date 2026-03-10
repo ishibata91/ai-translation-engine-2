@@ -8,8 +8,8 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/ishibata91/ai-translation-engine-2/pkg/gateway/datastore"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/foundation/progress"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/gateway/datastore"
 	dictionary2 "github.com/ishibata91/ai-translation-engine-2/pkg/slice/dictionary"
 	_ "github.com/mattn/go-sqlite3"
 )
