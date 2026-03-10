@@ -51,8 +51,8 @@ func globalAttrsFromEnv() GlobalAttrs {
 // ProvideLogger returns a *slog.Logger configured with broadcast handler.
 // グローバル属性（env, app_version, service_name, host_name）がすべての
 // ログに自動付与される。
-// 戻り値の *wailsHandler は app.startup() 後に SetContext を呼んで Wails context を注入すること。
-func ProvideLogger() (*slog.Logger, *wailsHandler) {
+// 戻り値の *WailsHandler は app.startup() 後に SetContext を呼んで Wails context を注入すること。
+func ProvideLogger() (*slog.Logger, *WailsHandler) {
 	ga := globalAttrsFromEnv()
 
 	globalSlogAttrs := []slog.Attr{
@@ -83,8 +83,14 @@ func ProvideLogger() (*slog.Logger, *wailsHandler) {
 	return logger, wH
 }
 
+// provideWireLogger exposes only the logger for Wire provider signatures.
+func provideWireLogger() *slog.Logger {
+	logger, _ := ProvideLogger()
+	return logger
+}
+
 // ProviderSet provides the logger for dependency injection.
-var ProviderSet = wire.NewSet(ProvideLogger)
+var ProviderSet = wire.NewSet(provideWireLogger)
 
 type otelHandler struct {
 	next slog.Handler

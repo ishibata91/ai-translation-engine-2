@@ -16,9 +16,9 @@ type sqlitePersistence struct {
 	mu      sync.Mutex
 }
 
-// NewSqlitePersistence creates a new instance that implements both ResultWriter and ResumeLoader.
+// newSqlitePersistence creates a new instance that implements both ResultWriter and ResumeLoader.
 // baseDir is the root directory where {PluginName}_translations.db files are stored.
-func NewSqlitePersistence(baseDir string) *sqlitePersistence {
+func newSqlitePersistence(baseDir string) *sqlitePersistence {
 	return &sqlitePersistence{
 		baseDir: baseDir,
 		dbs:     make(map[string]*sql.DB),

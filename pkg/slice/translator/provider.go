@@ -11,7 +11,7 @@ var ProviderSet = wire.NewSet(
 	NewBookChunker,
 	NewContextEngine,
 	NewTranslatorSlice,
-	NewPersistenceProvider,
+	newPersistenceProvider,
 	NewDefaultToneResolver,
 	NewPersonaLookupAdapter,
 	NewSummaryLookupAdapter,
@@ -20,8 +20,8 @@ var ProviderSet = wire.NewSet(
 	wire.Bind(new(ResumeLoader), new(*sqlitePersistence)),
 )
 
-// NewPersistenceProvider is a helper to inject persistence with a default or configured path.
-func NewPersistenceProvider() *sqlitePersistence {
+// newPersistenceProvider is a helper to inject persistence with a default or configured path.
+func newPersistenceProvider() *sqlitePersistence {
 	// In a real app, this might come from global config
-	return NewSqlitePersistence("output/translations")
+	return newSqlitePersistence("output/translations")
 }

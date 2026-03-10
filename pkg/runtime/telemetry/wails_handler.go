@@ -38,6 +38,9 @@ type wailsHandler struct {
 	preAttrs  []slog.Attr
 }
 
+// WailsHandler is the exported alias used by composition root and generated DI code.
+type WailsHandler = wailsHandler
+
 // newWailsHandler は新しい wailsHandler を生成する。
 func newWailsHandler(next slog.Handler) *wailsHandler {
 	return &wailsHandler{

@@ -33,8 +33,7 @@ func NewModelCatalogService(
 }
 
 // ListModels returns model options based on namespace config + optional UI overrides.
-func (s *ModelCatalogService) ListModels(input ListModelsInput) ([]ModelOption, error) {
-	ctx := context.Background()
+func (s *ModelCatalogService) ListModels(ctx context.Context, input ListModelsInput) ([]ModelOption, error) {
 	ns := strings.TrimSpace(input.Namespace)
 	if ns == "" {
 		return nil, fmt.Errorf("namespace is required")

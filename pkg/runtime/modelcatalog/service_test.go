@@ -102,7 +102,7 @@ func TestModelCatalogService_ListModels_UsesNamespaceConfig(t *testing.T) {
 		slog.Default(),
 	)
 
-	got, err := service.ListModels(ListModelsInput{Namespace: "master_persona.llm"})
+	got, err := service.ListModels(context.Background(), ListModelsInput{Namespace: "master_persona.llm"})
 	if err != nil {
 		t.Fatalf("ListModels failed: %v", err)
 	}
@@ -125,7 +125,7 @@ func TestModelCatalogService_ListModels_OverrideWins(t *testing.T) {
 		slog.Default(),
 	)
 
-	_, err := service.ListModels(ListModelsInput{
+	_, err := service.ListModels(context.Background(), ListModelsInput{
 		Namespace: "master_persona.llm",
 		Provider:  "xai",
 		Endpoint:  "https://example.test",

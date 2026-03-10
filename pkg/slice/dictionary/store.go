@@ -239,6 +239,7 @@ func (s *sqliteDictionaryStore) GetEntriesBySourceIDPaginated(ctx context.Contex
 		return nil, fmt.Errorf("failed to count entries: %w", err)
 	}
 
+	//nolint:gosec // buildMapSearchWhere only emits fixed column fragments and placeholder predicates.
 	queryStr := `
 		SELECT id, source_id, edid, record_type, source_text, dest_text
 		FROM dlc_dictionary_entries

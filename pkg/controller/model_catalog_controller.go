@@ -31,5 +31,5 @@ func (c *ModelCatalogController) SetContext(ctx context.Context) {
 
 // ListModels returns selectable models for the given UI input.
 func (c *ModelCatalogController) ListModels(input modelcatalog2.ListModelsInput) ([]modelcatalog2.ModelOption, error) {
-	return c.service.ListModels(input)
+	return c.service.ListModels(c.ctx, input)
 }
