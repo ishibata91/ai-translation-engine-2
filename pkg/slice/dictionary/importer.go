@@ -7,7 +7,7 @@ import (
 	"io"
 	"log/slog"
 
-	"github.com/ishibata91/ai-translation-engine-2/pkg/runtime/progress"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/foundation/progress"
 )
 
 type xmlImporter struct {

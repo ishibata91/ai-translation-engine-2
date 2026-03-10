@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	telemetry2 "github.com/ishibata91/ai-translation-engine-2/pkg/runtime/telemetry"
+	telemetry2 "github.com/ishibata91/ai-translation-engine-2/pkg/foundation/telemetry"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/ishibata91/ai-translation-engine-2/pkg/gateway/llm"

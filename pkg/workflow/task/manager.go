@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	telemetry2 "github.com/ishibata91/ai-translation-engine-2/pkg/runtime/telemetry"
+	telemetry2 "github.com/ishibata91/ai-translation-engine-2/pkg/foundation/telemetry"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 

@@ -154,6 +154,35 @@ linters-settings:
             desc: gateway must not import artifact
           - pkg: github.com/ishibata91/ai-translation-engine-2/pkg/artifact/
             desc: gateway must not import artifact
+      foundation_boundary:
+        files:
+          - "**/pkg/foundation/**/*.go"
+        list-mode: lax
+        deny:
+          - pkg: github.com/ishibata91/ai-translation-engine-2/pkg/controller$
+            desc: foundation must not import controller
+          - pkg: github.com/ishibata91/ai-translation-engine-2/pkg/controller/
+            desc: foundation must not import controller
+          - pkg: github.com/ishibata91/ai-translation-engine-2/pkg/workflow$
+            desc: foundation must not import workflow
+          - pkg: github.com/ishibata91/ai-translation-engine-2/pkg/workflow/
+            desc: foundation must not import workflow
+          - pkg: github.com/ishibata91/ai-translation-engine-2/pkg/runtime$
+            desc: foundation must not import runtime
+          - pkg: github.com/ishibata91/ai-translation-engine-2/pkg/runtime/
+            desc: foundation must not import runtime
+          - pkg: github.com/ishibata91/ai-translation-engine-2/pkg/slice$
+            desc: foundation must not import slice
+          - pkg: github.com/ishibata91/ai-translation-engine-2/pkg/slice/
+            desc: foundation must not import slice
+          - pkg: github.com/ishibata91/ai-translation-engine-2/pkg/artifact$
+            desc: foundation must not import artifact
+          - pkg: github.com/ishibata91/ai-translation-engine-2/pkg/artifact/
+            desc: foundation must not import artifact
+          - pkg: github.com/ishibata91/ai-translation-engine-2/pkg/gateway$
+            desc: foundation must not import gateway
+          - pkg: github.com/ishibata91/ai-translation-engine-2/pkg/gateway/
+            desc: foundation must not import gateway
   revive:
     rules:
       - name: context-as-argument

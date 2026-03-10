@@ -13,7 +13,7 @@ import (
 	"github.com/ishibata91/ai-translation-engine-2/pkg/controller"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/gateway/llm"
 	gatewayllm "github.com/ishibata91/ai-translation-engine-2/pkg/gateway/llm"
-	"github.com/ishibata91/ai-translation-engine-2/pkg/runtime/progress"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/foundation/progress"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/runtime/queue"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/slice/parser"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/slice/persona"

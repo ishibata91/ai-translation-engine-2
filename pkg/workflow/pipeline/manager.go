@@ -10,7 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/gateway/llm"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/runtime/queue"
-	telemetry2 "github.com/ishibata91/ai-translation-engine-2/pkg/runtime/telemetry"
+	telemetry2 "github.com/ishibata91/ai-translation-engine-2/pkg/foundation/telemetry"
 )
 
 // Manager coordinates vertical slices and infrastructure.

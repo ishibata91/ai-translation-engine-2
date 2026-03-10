@@ -8,7 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
-	telemetry2 "github.com/ishibata91/ai-translation-engine-2/pkg/runtime/telemetry"
+	telemetry2 "github.com/ishibata91/ai-translation-engine-2/pkg/foundation/telemetry"
 
 	"github.com/google/wire"
 	_ "modernc.org/sqlite"

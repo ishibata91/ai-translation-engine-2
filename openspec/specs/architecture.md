@@ -82,7 +82,7 @@
 
 ## 3. システムの責務区分
 
-このプロジェクトは、厳密な直列レイヤーではなく、責務を 6 区分に分ける。
+このプロジェクトは、厳密な直列レイヤーではなく、責務を 7 区分に分ける。
 
 1. `pkg/controller`
 2. `pkg/workflow`
@@ -90,6 +90,7 @@
 4. `pkg/runtime`
 5. `pkg/artifact`
 6. `pkg/gateway`
+7. `pkg/foundation`
 
 ```mermaid
 graph TD
@@ -99,27 +100,38 @@ graph TD
     classDef runtime fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#18361a;
     classDef artifact fill:#fff8e1,stroke:#f9a825,stroke-width:2px,color:#3c2d00;
     classDef gateway fill:#fbe9e7,stroke:#d84315,stroke-width:2px,color:#3b1d14;
+    classDef foundation fill:#e0e0e0,stroke:#424242,stroke-width:2px,color:#000000;
 
     C["pkg/controller"]:::controller
     W["pkg/workflow"]:::workflow
     S1["pkg/slice/persona"]:::slice
     S2["pkg/slice/translator"]:::slice
     R1["pkg/runtime/executor"]:::runtime
-    R2["pkg/runtime/progress"]:::runtime
     A1["pkg/artifact/persona"]:::artifact
     A2["pkg/artifact/translation"]:::artifact
     G1["pkg/gateway/file"]:::gateway
     G2["pkg/gateway/llm"]:::gateway
+    F1["pkg/foundation/telemetry"]:::foundation
+    F2["pkg/foundation/progress"]:::foundation
 
     C --> W
     W --> R1
-    W --> R2
     W --> S1
     W --> S2
     S1 --> A1
     S2 --> A2
     R1 --> G1
     R1 --> G2
+
+    C --> F1
+    C --> F2
+    W --> F1
+    W --> F2
+    S1 --> F1
+    S2 --> F1
+    R1 --> F1
+    R1 --> F2
+    G2 --> F1
 ```
 
 ### 3.1 `pkg/controller`
@@ -218,6 +230,27 @@ graph TD
 - 特定 workflow の状態解釈
 - slice への直接公開
 
+### 3.7 `pkg/foundation`
+
+役割:
+
+- telemetry、progress など複数責務区分から横断的に利用される基盤
+- logger provider、context 補助、span 補助、Wails bridge、progress notifier といった観測・通知 transport の提供
+- `controller`、`workflow`、`slice`、`runtime`、`gateway` から直接参照できる共通基盤
+
+持ってはいけない責務:
+
+- 業務進行の意味づけ (phase の解釈、進行率の業務的判定)
+- 特定 workflow や slice 固有のロジック
+- ユースケース進行の決定
+- UI 状態の解釈
+
+補足:
+
+- foundation は transport / observability だけを提供する
+- 何を何%として通知するか、phase がどの段階にあるかの意味解釈は workflow が保持する
+- foundation から上位区分 (controller、workflow、slice、runtime、artifact、gateway) への逆依存は禁止する
+
 ---
 
 ## 4. 依存方向ルール
@@ -229,6 +262,12 @@ graph TD
 - `workflow -> runtime`
 - `usecase slice -> artifact`
 - `runtime -> gateway`
+- `controller -> foundation`
+- `workflow -> foundation`
+- `usecase slice -> foundation`
+- `runtime -> foundation`
+- `artifact -> foundation`
+- `gateway -> foundation`
 
 禁止する依存:
 
@@ -253,6 +292,12 @@ graph TD
 - `gateway -> usecase slice`
 - `gateway -> artifact`
 - `usecase slice -> usecase slice` の具象依存
+- `foundation -> controller`
+- `foundation -> workflow`
+- `foundation -> usecase slice`
+- `foundation -> runtime`
+- `foundation -> artifact`
+- `foundation -> gateway`
 
 補足:
 
@@ -261,6 +306,7 @@ graph TD
 - slice 間受け渡しは artifact を通し、workflow は artifact 識別子や検索条件だけを束ねる
 - `runtime -> gateway` を許可しても、runtime が slice 固有の保存処理や業務判断を持ってはならない
 - 共通化は技術的関心事に限定し、業務ロジックの安易な shared kernel 化を避ける
+- foundation は横断基盤専用区分であり、全区分から参照できるが foundation から上位区分への逆依存は禁止する
 
 ---
 
@@ -324,6 +370,7 @@ composition root の責務外:
 4. これは実行制御基盤か
 5. これは slice 間で受け渡す成果物や共有状態か
 6. これは外部資源への依頼口か
+7. これは複数区分から横断的に利用される観測・通知基盤か
 
 対応先:
 
@@ -333,6 +380,7 @@ composition root の責務外:
 - 4 は `runtime`
 - 5 は `artifact`
 - 6 は `gateway`
+- 7 は `foundation`
 
 曖昧な場合の原則:
 
@@ -342,6 +390,7 @@ composition root の責務外:
 - 実行制御なら runtime
 - 工程間で受け渡す保存物なら artifact
 - 外部資源への依頼なら gateway
+- 複数区分から利用される観測・通知 transport なら foundation
 
 ---
 

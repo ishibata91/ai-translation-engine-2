@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 
 	"github.com/google/uuid"
-	telemetry2 "github.com/ishibata91/ai-translation-engine-2/pkg/runtime/telemetry"
+	telemetry2 "github.com/ishibata91/ai-translation-engine-2/pkg/foundation/telemetry"
 )
 
 // DictionaryService は UI レベルのアクションをオーケストレートする Wails 向けサービス。

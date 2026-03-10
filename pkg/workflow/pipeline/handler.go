@@ -7,7 +7,7 @@ import (
 	"net/http"
 
 	"github.com/gorilla/websocket"
-	"github.com/ishibata91/ai-translation-engine-2/pkg/runtime/progress"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/foundation/progress"
 )
 
 var upgrader = websocket.Upgrader{

@@ -13,7 +13,7 @@ import (
 
 	gatewayconfig "github.com/ishibata91/ai-translation-engine-2/pkg/gateway/config"
 	gatewayllm "github.com/ishibata91/ai-translation-engine-2/pkg/gateway/llm"
-	runtimeprogress "github.com/ishibata91/ai-translation-engine-2/pkg/runtime/progress"
+	runtimeprogress "github.com/ishibata91/ai-translation-engine-2/pkg/foundation/progress"
 )
 
 // Worker coordinates processing of queued jobs.

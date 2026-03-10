@@ -10,7 +10,7 @@ import (
 	"net/http"
 	"time"
 
-	telemetry2 "github.com/ishibata91/ai-translation-engine-2/pkg/runtime/telemetry"
+	telemetry2 "github.com/ishibata91/ai-translation-engine-2/pkg/foundation/telemetry"
 )
 
 const (
