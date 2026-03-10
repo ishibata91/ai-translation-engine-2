@@ -10,6 +10,12 @@
 - [ ] 2.2 gateway 返却値を provider 横断の最小中立 DTO へ揃え、workflow が mapper で最終 DTO へ変換する責務分担を整理する
 - [ ] 2.3 gateway を純技術接続実装へ寄せるため、provider ごとの helper と contract の境界を確定する
 
+### 設計メモ
+
+- `pkg/gateway/configstore`: SQLite 実装、migration、store contract を置く
+- `pkg/runtime/configaccess`: TypedAccessor や実行時読取補助を置く
+- `pkg/workflow/promptsettings` または `pkg/workflow/personasettings`: workflow 固有の default / 解釈を置く
+
 ## 3. 実装修正
 
 - [ ] 3.1 gateway 本番コードの workflow / runtime / slice / artifact 直接依存を、純技術接続実装へ置き換える
