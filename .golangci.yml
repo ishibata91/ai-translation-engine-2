@@ -20,15 +20,49 @@ formatters:
 linters-settings:
   depguard:
     rules:
-      slice_boundary:
+      controller_boundary:
         files:
-          - pkg/slice/**/*.go
+          - "**/pkg/controller/**/*.go"
         list-mode: lax
         deny:
+          - pkg: github.com/ishibata91/ai-translation-engine-2/pkg/slice$
+            desc: controller must not import slice
+          - pkg: github.com/ishibata91/ai-translation-engine-2/pkg/slice/
+            desc: controller must not import slice
+          - pkg: github.com/ishibata91/ai-translation-engine-2/pkg/runtime$
+            desc: controller must not import runtime
+          - pkg: github.com/ishibata91/ai-translation-engine-2/pkg/runtime/
+            desc: controller must not import runtime
+          - pkg: github.com/ishibata91/ai-translation-engine-2/pkg/artifact$
+            desc: controller must not import artifact
+          - pkg: github.com/ishibata91/ai-translation-engine-2/pkg/artifact/
+            desc: controller must not import artifact
           - pkg: github.com/ishibata91/ai-translation-engine-2/pkg/gateway$
-            desc: slice must not import gateway directly
+            desc: controller must not import gateway
           - pkg: github.com/ishibata91/ai-translation-engine-2/pkg/gateway/
-            desc: slice must not import gateway directly
+            desc: controller must not import gateway
+      workflow_boundary:
+        files:
+          - "**/pkg/workflow/**/*.go"
+        list-mode: lax
+        deny:
+          - pkg: github.com/ishibata91/ai-translation-engine-2/pkg/controller$
+            desc: workflow must not import controller
+          - pkg: github.com/ishibata91/ai-translation-engine-2/pkg/controller/
+            desc: workflow must not import controller
+          - pkg: github.com/ishibata91/ai-translation-engine-2/pkg/artifact$
+            desc: workflow must not import artifact
+          - pkg: github.com/ishibata91/ai-translation-engine-2/pkg/artifact/
+            desc: workflow must not import artifact
+          - pkg: github.com/ishibata91/ai-translation-engine-2/pkg/gateway$
+            desc: workflow must not import gateway
+          - pkg: github.com/ishibata91/ai-translation-engine-2/pkg/gateway/
+            desc: workflow must not import gateway
+      slice_boundary:
+        files:
+          - "**/pkg/slice/**/*.go"
+        list-mode: lax
+        deny:
           - pkg: github.com/ishibata91/ai-translation-engine-2/pkg/controller$
             desc: slice must not import controller
           - pkg: github.com/ishibata91/ai-translation-engine-2/pkg/controller/
@@ -41,9 +75,17 @@ linters-settings:
             desc: slice must not import runtime
           - pkg: github.com/ishibata91/ai-translation-engine-2/pkg/runtime/
             desc: slice must not import runtime
+          - pkg: github.com/ishibata91/ai-translation-engine-2/pkg/gateway$
+            desc: slice must not import gateway directly
+          - pkg: github.com/ishibata91/ai-translation-engine-2/pkg/gateway/
+            desc: slice must not import gateway directly
+          - pkg: github.com/ishibata91/ai-translation-engine-2/pkg/slice$
+            desc: slice must not import another slice directly
+          - pkg: github.com/ishibata91/ai-translation-engine-2/pkg/slice/
+            desc: slice must not import another slice directly
       runtime_boundary:
         files:
-          - pkg/runtime/**/*.go
+          - "**/pkg/runtime/**/*.go"
         list-mode: lax
         deny:
           - pkg: github.com/ishibata91/ai-translation-engine-2/pkg/controller$
@@ -58,6 +100,60 @@ linters-settings:
             desc: runtime must not import slice
           - pkg: github.com/ishibata91/ai-translation-engine-2/pkg/slice/
             desc: runtime must not import slice
+          - pkg: github.com/ishibata91/ai-translation-engine-2/pkg/artifact$
+            desc: runtime must not import artifact
+          - pkg: github.com/ishibata91/ai-translation-engine-2/pkg/artifact/
+            desc: runtime must not import artifact
+      artifact_boundary:
+        files:
+          - "**/pkg/artifact/**/*.go"
+        list-mode: lax
+        deny:
+          - pkg: github.com/ishibata91/ai-translation-engine-2/pkg/controller$
+            desc: artifact must not import controller
+          - pkg: github.com/ishibata91/ai-translation-engine-2/pkg/controller/
+            desc: artifact must not import controller
+          - pkg: github.com/ishibata91/ai-translation-engine-2/pkg/workflow$
+            desc: artifact must not import workflow
+          - pkg: github.com/ishibata91/ai-translation-engine-2/pkg/workflow/
+            desc: artifact must not import workflow
+          - pkg: github.com/ishibata91/ai-translation-engine-2/pkg/runtime$
+            desc: artifact must not import runtime
+          - pkg: github.com/ishibata91/ai-translation-engine-2/pkg/runtime/
+            desc: artifact must not import runtime
+          - pkg: github.com/ishibata91/ai-translation-engine-2/pkg/slice$
+            desc: artifact must not import slice
+          - pkg: github.com/ishibata91/ai-translation-engine-2/pkg/slice/
+            desc: artifact must not import slice
+          - pkg: github.com/ishibata91/ai-translation-engine-2/pkg/gateway$
+            desc: artifact must not import gateway
+          - pkg: github.com/ishibata91/ai-translation-engine-2/pkg/gateway/
+            desc: artifact must not import gateway
+      gateway_boundary:
+        files:
+          - "**/pkg/gateway/**/*.go"
+        list-mode: lax
+        deny:
+          - pkg: github.com/ishibata91/ai-translation-engine-2/pkg/controller$
+            desc: gateway must not import controller
+          - pkg: github.com/ishibata91/ai-translation-engine-2/pkg/controller/
+            desc: gateway must not import controller
+          - pkg: github.com/ishibata91/ai-translation-engine-2/pkg/workflow$
+            desc: gateway must not import workflow
+          - pkg: github.com/ishibata91/ai-translation-engine-2/pkg/workflow/
+            desc: gateway must not import workflow
+          - pkg: github.com/ishibata91/ai-translation-engine-2/pkg/runtime$
+            desc: gateway must not import runtime
+          - pkg: github.com/ishibata91/ai-translation-engine-2/pkg/runtime/
+            desc: gateway must not import runtime
+          - pkg: github.com/ishibata91/ai-translation-engine-2/pkg/slice$
+            desc: gateway must not import slice
+          - pkg: github.com/ishibata91/ai-translation-engine-2/pkg/slice/
+            desc: gateway must not import slice
+          - pkg: github.com/ishibata91/ai-translation-engine-2/pkg/artifact$
+            desc: gateway must not import artifact
+          - pkg: github.com/ishibata91/ai-translation-engine-2/pkg/artifact/
+            desc: gateway must not import artifact
   revive:
     rules:
       - name: context-as-argument
