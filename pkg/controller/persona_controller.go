@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/ishibata91/ai-translation-engine-2/pkg/persona"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/slice/persona"
 )
 
 // PersonaController exposes Wails-facing persona read operations.

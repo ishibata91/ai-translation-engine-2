@@ -11,11 +11,11 @@ import (
 	"strings"
 
 	gatewayllm "github.com/ishibata91/ai-translation-engine-2/pkg/gateway/llm"
-	"github.com/ishibata91/ai-translation-engine-2/pkg/persona"
 	runtimeprogress "github.com/ishibata91/ai-translation-engine-2/pkg/runtime/progress"
 	runtimequeue "github.com/ishibata91/ai-translation-engine-2/pkg/runtime/queue"
 	telemetry2 "github.com/ishibata91/ai-translation-engine-2/pkg/runtime/telemetry"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/slice/parser"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/slice/persona"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/workflow/pipeline"
 	task2 "github.com/ishibata91/ai-translation-engine-2/pkg/workflow/task"
 )

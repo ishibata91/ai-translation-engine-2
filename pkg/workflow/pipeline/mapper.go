@@ -1,10 +1,10 @@
 package pipeline
 
 import (
-	"github.com/ishibata91/ai-translation-engine-2/pkg/persona"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/slice/parser"
-	translator2 "github.com/ishibata91/ai-translation-engine-2/pkg/slice/translator/translator"
-	"github.com/ishibata91/ai-translation-engine-2/pkg/terminology"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/slice/persona"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/slice/terminology"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/slice/translator"
 )
 
 // ToTermTranslatorInput maps ParserOutput to TerminologyInput.
@@ -111,15 +111,15 @@ func derefString(v *string) string {
 }
 
 // ToTranslatorInput maps ParserOutput to TranslatorInput.
-func ToTranslatorInput(out *parser.ParserOutput) translator2.TranslatorInput {
-	input := translator2.TranslatorInput{
-		GameData: translator2.ContextEngineInput{
-			NPCs: make(map[string]translator2.ContextNPC),
+func ToTranslatorInput(out *parser.ParserOutput) translator.TranslatorInput {
+	input := translator.TranslatorInput{
+		GameData: translator.ContextEngineInput{
+			NPCs: make(map[string]translator.ContextNPC),
 		},
 	}
 
 	for id, npc := range out.NPCs {
-		input.GameData.NPCs[id] = translator2.ContextNPC{
+		input.GameData.NPCs[id] = translator.ContextNPC{
 			ID:       npc.ID,
 			EditorID: npc.EditorID,
 			Type:     npc.Type,
@@ -129,7 +129,7 @@ func ToTranslatorInput(out *parser.ParserOutput) translator2.TranslatorInput {
 
 	for _, group := range out.DialogueGroups {
 		for _, resp := range group.Responses {
-			input.GameData.Dialogues = append(input.GameData.Dialogues, translator2.ContextDialogue{
+			input.GameData.Dialogues = append(input.GameData.Dialogues, translator.ContextDialogue{
 				ID:               resp.ID,
 				EditorID:         resp.EditorID,
 				Type:             resp.Type,
@@ -143,7 +143,7 @@ func ToTranslatorInput(out *parser.ParserOutput) translator2.TranslatorInput {
 	}
 
 	for _, q := range out.Quests {
-		cq := translator2.ContextQuest{
+		cq := translator.ContextQuest{
 			ID:       q.ID,
 			EditorID: q.EditorID,
 			Type:     q.Type,
@@ -151,7 +151,7 @@ func ToTranslatorInput(out *parser.ParserOutput) translator2.TranslatorInput {
 		}
 
 		for _, s := range q.Stages {
-			cq.Stages = append(cq.Stages, translator2.ContextQuestStage{
+			cq.Stages = append(cq.Stages, translator.ContextQuestStage{
 				StageIndex:     s.StageIndex,
 				LogIndex:       s.LogIndex,
 				Type:           s.Type,
@@ -162,7 +162,7 @@ func ToTranslatorInput(out *parser.ParserOutput) translator2.TranslatorInput {
 		}
 
 		for _, o := range q.Objectives {
-			cq.Objectives = append(cq.Objectives, translator2.ContextQuestObjective{
+			cq.Objectives = append(cq.Objectives, translator.ContextQuestObjective{
 				Index:          o.Index,
 				Type:           o.Type,
 				Text:           o.Text,
@@ -174,7 +174,7 @@ func ToTranslatorInput(out *parser.ParserOutput) translator2.TranslatorInput {
 	}
 
 	for _, item := range out.Items {
-		input.GameData.Items = append(input.GameData.Items, translator2.ContextItem{
+		input.GameData.Items = append(input.GameData.Items, translator.ContextItem{
 			ID:       item.ID,
 			EditorID: item.EditorID,
 			Type:     item.Type,
@@ -184,7 +184,7 @@ func ToTranslatorInput(out *parser.ParserOutput) translator2.TranslatorInput {
 	}
 
 	for _, magic := range out.Magic {
-		input.GameData.Magic = append(input.GameData.Magic, translator2.ContextMagic{
+		input.GameData.Magic = append(input.GameData.Magic, translator.ContextMagic{
 			ID:       magic.ID,
 			EditorID: magic.EditorID,
 			Type:     magic.Type,
@@ -193,7 +193,7 @@ func ToTranslatorInput(out *parser.ParserOutput) translator2.TranslatorInput {
 	}
 
 	for _, loc := range out.Locations {
-		input.GameData.Locations = append(input.GameData.Locations, translator2.ContextLocation{
+		input.GameData.Locations = append(input.GameData.Locations, translator.ContextLocation{
 			ID:       loc.ID,
 			EditorID: loc.EditorID,
 			Type:     loc.Type,

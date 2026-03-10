@@ -1,4 +1,4 @@
-package persona_test
+package persona
 
 import (
 	"context"
@@ -9,7 +9,6 @@ import (
 	"time"
 
 	gatewayllm "github.com/ishibata91/ai-translation-engine-2/pkg/gateway/llm"
-	persona "github.com/ishibata91/ai-translation-engine-2/pkg/persona"
 	config2 "github.com/ishibata91/ai-translation-engine-2/pkg/workflow/config"
 	_ "modernc.org/sqlite"
 )
@@ -89,24 +88,24 @@ func TestPersonaGenSlice_TableDriven(t *testing.T) {
 
 	tests := []struct {
 		name                 string
-		input                persona.PersonaGenInput
-		config               persona.PersonaConfig
+		input                PersonaGenInput
+		config               PersonaConfig
 		mockLLMOutput        []string
 		expectedRequestCount int
 		expectedDBCount      int
 	}{
 		{
 			name: "Phase 1 & 2: Normal flow",
-			input: persona.PersonaGenInput{
-				NPCs: map[string]persona.PersonaNPC{
+			input: PersonaGenInput{
+				NPCs: map[string]PersonaNPC{
 					"NPC001": {ID: "NPC001", Name: "Aela", Type: "Nord"},
 				},
-				Dialogues: []persona.PersonaDialogue{
+				Dialogues: []PersonaDialogue{
 					{ID: "D1", SpeakerID: strPtr("NPC001"), Text: strPtr("Dialogue 1"), Order: 1},
 					{ID: "D2", SpeakerID: strPtr("NPC001"), Text: strPtr("Dialogue 2"), Order: 2},
 				},
 			},
-			config: persona.PersonaConfig{
+			config: PersonaConfig{
 				MinDialogueThreshold: 1,
 				ContextWindowLimit:   4000,
 				MaxOutputTokens:      500,
@@ -119,11 +118,11 @@ func TestPersonaGenSlice_TableDriven(t *testing.T) {
 		},
 		{
 			name: "Phase 2: Fallback parsing - simple TL: prefix",
-			input: persona.PersonaGenInput{
-				NPCs: map[string]persona.PersonaNPC{
+			input: PersonaGenInput{
+				NPCs: map[string]PersonaNPC{
 					"NPC002": {ID: "NPC002", Name: "Farkas", Type: "Nord"},
 				},
-				Dialogues: []persona.PersonaDialogue{
+				Dialogues: []PersonaDialogue{
 					{ID: "D3", SpeakerID: strPtr("NPC002"), Text: strPtr("I am strong."), Order: 1},
 				},
 			},
@@ -135,11 +134,11 @@ func TestPersonaGenSlice_TableDriven(t *testing.T) {
 		},
 		{
 			name: "Phase 2: Fallback parsing - just pipes",
-			input: persona.PersonaGenInput{
-				NPCs: map[string]persona.PersonaNPC{
+			input: PersonaGenInput{
+				NPCs: map[string]PersonaNPC{
 					"NPC003": {ID: "NPC003", Name: "Vilkas", Type: "Nord"},
 				},
-				Dialogues: []persona.PersonaDialogue{
+				Dialogues: []PersonaDialogue{
 					{ID: "D4", SpeakerID: strPtr("NPC003"), Text: strPtr("I am smart."), Order: 1},
 				},
 			},
@@ -151,11 +150,11 @@ func TestPersonaGenSlice_TableDriven(t *testing.T) {
 		},
 		{
 			name: "Phase 2: Failure - content too short",
-			input: persona.PersonaGenInput{
-				NPCs: map[string]persona.PersonaNPC{
+			input: PersonaGenInput{
+				NPCs: map[string]PersonaNPC{
 					"NPC004": {ID: "NPC004", Name: "Kodlak", Type: "Nord"},
 				},
-				Dialogues: []persona.PersonaDialogue{
+				Dialogues: []PersonaDialogue{
 					{ID: "D5", SpeakerID: strPtr("NPC004"), Text: strPtr("Old age."), Order: 1},
 				},
 			},
@@ -172,20 +171,20 @@ func TestPersonaGenSlice_TableDriven(t *testing.T) {
 			db, cleanup := setupTestDB(t)
 			defer cleanup()
 
-			store := persona.NewPersonaStore(db)
+			store := NewPersonaStore(db)
 			if err := store.InitSchema(ctx); err != nil {
 				t.Fatalf("Failed to init schema: %v", err)
 			}
 
-			collector := persona.NewDefaultDialogueCollector()
-			scorer := persona.NewDefaultScorer()
-			estimator := persona.NewSimpleTokenEstimator()
-			evaluator := persona.NewDefaultContextEvaluator(scorer, estimator)
+			collector := NewDefaultDialogueCollector()
+			scorer := NewDefaultScorer()
+			estimator := NewSimpleTokenEstimator()
+			evaluator := NewDefaultContextEvaluator(scorer, estimator)
 
 			configStore := &mockConfigStore{}
 			secretStore := &mockSecretStore{}
 
-			generator := persona.NewPersonaGenerator(collector, evaluator, store, configStore, secretStore)
+			generator := NewPersonaGenerator(collector, evaluator, store, configStore, secretStore)
 
 			// Phase 1
 			requests, err := generator.PreparePrompts(ctx, tc.input)
@@ -237,15 +236,15 @@ func TestPersonaGenSlice_UsesConfiguredPromptSplit(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	store := persona.NewPersonaStore(db)
+	store := NewPersonaStore(db)
 	if err := store.InitSchema(ctx); err != nil {
 		t.Fatalf("Failed to init schema: %v", err)
 	}
 
-	collector := persona.NewDefaultDialogueCollector()
-	scorer := persona.NewDefaultScorer()
-	estimator := persona.NewSimpleTokenEstimator()
-	evaluator := persona.NewDefaultContextEvaluator(scorer, estimator)
+	collector := NewDefaultDialogueCollector()
+	scorer := NewDefaultScorer()
+	estimator := NewSimpleTokenEstimator()
+	evaluator := NewDefaultContextEvaluator(scorer, estimator)
 
 	configStore := &mockConfigStore{
 		values: map[string]map[string]string{
@@ -256,13 +255,13 @@ func TestPersonaGenSlice_UsesConfiguredPromptSplit(t *testing.T) {
 		},
 	}
 	secretStore := &mockSecretStore{}
-	generator := persona.NewPersonaGenerator(collector, evaluator, store, configStore, secretStore)
+	generator := NewPersonaGenerator(collector, evaluator, store, configStore, secretStore)
 
-	requests, err := generator.PreparePrompts(ctx, persona.PersonaGenInput{
-		NPCs: map[string]persona.PersonaNPC{
+	requests, err := generator.PreparePrompts(ctx, PersonaGenInput{
+		NPCs: map[string]PersonaNPC{
 			"NPC001": {ID: "NPC001", Name: "Aela", Race: "Nord", VoiceType: "FemaleYoungEager"},
 		},
-		Dialogues: []persona.PersonaDialogue{
+		Dialogues: []PersonaDialogue{
 			{ID: "D1", SpeakerID: strPtr("NPC001"), Text: strPtr("We hunt as one."), Order: 1},
 		},
 	})

@@ -1,10 +1,8 @@
-package persona_test
+package persona
 
 import (
 	"context"
 	"testing"
-
-	persona "github.com/ishibata91/ai-translation-engine-2/pkg/persona"
 )
 
 func TestPersonaStore_UpsertAndDialogues(t *testing.T) {
@@ -50,7 +48,7 @@ func TestPersonaStore_UpsertAndDialogues(t *testing.T) {
 			db, cleanup := setupTestDB(t)
 			defer cleanup()
 
-			store := persona.NewPersonaStore(db)
+			store := NewPersonaStore(db)
 			if err := store.InitSchema(ctx); err != nil {
 				t.Fatalf("InitSchema failed: %v", err)
 			}
@@ -60,7 +58,7 @@ func TestPersonaStore_UpsertAndDialogues(t *testing.T) {
 				effectivePlugin = "Skyrim.esm"
 			}
 
-			saveState, err := store.SavePersonaBase(ctx, persona.NPCDialogueData{
+			saveState, err := store.SavePersonaBase(ctx, NPCDialogueData{
 				SpeakerID:    "npc-001",
 				EditorID:     "AelaEditor",
 				NPCName:      "Aela",
@@ -69,14 +67,14 @@ func TestPersonaStore_UpsertAndDialogues(t *testing.T) {
 				VoiceType:    "FemaleNord",
 				SourcePlugin: tc.sourcePlugin,
 				SourceHint:   tc.sourceHint,
-				Dialogues: []persona.DialogueEntry{
+				Dialogues: []DialogueEntry{
 					{Text: "first line", EnglishText: "first line", Order: 1},
 				},
 			}, true)
 			if err != nil {
 				t.Fatalf("SavePersonaBase(first) failed: %v", err)
 			}
-			if err := store.ReplaceDialogues(ctx, saveState.PersonaID, tc.sourcePlugin, "npc-001", []persona.DialogueEntry{
+			if err := store.ReplaceDialogues(ctx, saveState.PersonaID, tc.sourcePlugin, "npc-001", []DialogueEntry{
 				{Text: "first line", EnglishText: "first line", Order: 1},
 			}); err != nil {
 				t.Fatalf("ReplaceDialogues(first) failed: %v", err)
@@ -94,7 +92,7 @@ func TestPersonaStore_UpsertAndDialogues(t *testing.T) {
 			if rows[0].Status != "draft" {
 				t.Fatalf("expected draft status after request generation, got=%q", rows[0].Status)
 			}
-			if err := store.SavePersona(ctx, persona.PersonaResult{
+			if err := store.SavePersona(ctx, PersonaResult{
 				SpeakerID:    "npc-001",
 				NPCName:      "Aela",
 				PersonaText:  "base persona",
@@ -103,7 +101,7 @@ func TestPersonaStore_UpsertAndDialogues(t *testing.T) {
 				t.Fatalf("SavePersona(first) failed: %v", err)
 			}
 
-			saveState, err = store.SavePersonaBase(ctx, persona.NPCDialogueData{
+			saveState, err = store.SavePersonaBase(ctx, NPCDialogueData{
 				SpeakerID:    "npc-001",
 				EditorID:     "AelaEditor2",
 				NPCName:      "Aela Updated",
@@ -112,7 +110,7 @@ func TestPersonaStore_UpsertAndDialogues(t *testing.T) {
 				VoiceType:    "FemaleNord",
 				SourcePlugin: tc.sourcePlugin,
 				SourceHint:   tc.sourceHint,
-				Dialogues: []persona.DialogueEntry{
+				Dialogues: []DialogueEntry{
 					{Text: "second line", EnglishText: "second line", Order: 1},
 				},
 			}, tc.overwriteExisting)
@@ -120,7 +118,7 @@ func TestPersonaStore_UpsertAndDialogues(t *testing.T) {
 				t.Fatalf("SavePersonaBase(second) failed: %v", err)
 			}
 			if tc.overwriteExisting || saveState.PersonaText == "" {
-				if err := store.ReplaceDialogues(ctx, saveState.PersonaID, tc.sourcePlugin, "npc-001", []persona.DialogueEntry{
+				if err := store.ReplaceDialogues(ctx, saveState.PersonaID, tc.sourcePlugin, "npc-001", []DialogueEntry{
 					{Text: "second line", EnglishText: "second line", Order: 1},
 				}); err != nil {
 					t.Fatalf("ReplaceDialogues(second) failed: %v", err)
@@ -129,7 +127,7 @@ func TestPersonaStore_UpsertAndDialogues(t *testing.T) {
 					t.Fatalf("SaveGenerationRequest(second) failed: %v", err)
 				}
 			}
-			if err := store.SavePersona(ctx, persona.PersonaResult{
+			if err := store.SavePersona(ctx, PersonaResult{
 				SpeakerID:    "npc-001",
 				NPCName:      "Aela Updated",
 				PersonaText:  tc.secondPersonaText,
@@ -188,25 +186,25 @@ func TestPersonaStore_AllowsSameSpeakerAcrossPlugins(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	store := persona.NewPersonaStore(db)
+	store := NewPersonaStore(db)
 	if err := store.InitSchema(ctx); err != nil {
 		t.Fatalf("InitSchema failed: %v", err)
 	}
 
 	plugins := []string{"Skyrim.esm", "Update.esm"}
 	for _, plugin := range plugins {
-		saveState, err := store.SavePersonaBase(ctx, persona.NPCDialogueData{
+		saveState, err := store.SavePersonaBase(ctx, NPCDialogueData{
 			SpeakerID:    "shared-speaker",
 			NPCName:      plugin,
 			SourcePlugin: plugin,
-			Dialogues: []persona.DialogueEntry{
+			Dialogues: []DialogueEntry{
 				{Text: plugin, EnglishText: plugin, Order: 1},
 			},
 		}, true)
 		if err != nil {
 			t.Fatalf("SavePersonaBase failed: %v", err)
 		}
-		if err := store.ReplaceDialogues(ctx, saveState.PersonaID, plugin, "shared-speaker", []persona.DialogueEntry{
+		if err := store.ReplaceDialogues(ctx, saveState.PersonaID, plugin, "shared-speaker", []DialogueEntry{
 			{Text: plugin, EnglishText: plugin, Order: 1},
 		}); err != nil {
 			t.Fatalf("ReplaceDialogues failed: %v", err)

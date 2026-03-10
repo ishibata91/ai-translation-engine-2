@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/ishibata91/ai-translation-engine-2/pkg/persona"
-	"github.com/ishibata91/ai-translation-engine-2/pkg/summary"
-	"github.com/ishibata91/ai-translation-engine-2/pkg/terminology"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/slice/persona"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/slice/summary"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/slice/terminology"
 )
 
 // personaLookupAdapter adapts persona.PersonaStore to PersonaLookup interface.
