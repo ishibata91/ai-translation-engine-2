@@ -5,9 +5,9 @@
 
 ## 1. Scope
 
-- この change で主に確認したい領域:
-- 影響を強く受ける package / feature:
-- 特に見落としやすい境界:
+- この change で主に確認したい領域: foundation 追加、depguard 更新、LLM 周辺の telemetry / progress 移設
+- 影響を強く受ける package / feature: `pkg/gateway/llm/**`、LLM 向け runtime / workflow / controller、`.golangci.yml`、`architecture.md`
+- 特に見落としやすい境界: foundation が shared 化しないこと、progress の意味づけが workflow に残っていること
 
 ## 2. Backend-Specific Checks
 
@@ -33,12 +33,12 @@
 
 ## 4. Change-Specific Risks
 
-- [ ] この change で特有の退行リスク 1:
-- [ ] この change で特有の退行リスク 2:
+- [ ] foundation に責務が流入しすぎていないか:
+- [ ] LLM 周辺限定というスコープが崩れていないか:
 - [ ] データ互換性 / 移行 / 再実行時のリスク:
 
 ## 5. Verification Notes
 
-- 重点的に見るべきファイル:
-- 重点的に見るべきテスト:
-- verify 時の補足メモ:
+- 重点的に見るべきファイル: `architecture.md`、`.golangci.yml`、foundation へ移した telemetry / progress、LLM 周辺 import
+- 重点的に見るべきテスト: LLM gateway / queue / model catalog / progress notifier 関連
+- verify 時の補足メモ: repository 全体移行ではなく LLM 周辺だけであることを確認する
