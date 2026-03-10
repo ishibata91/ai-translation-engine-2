@@ -1,0 +1,18 @@
+package progress
+
+import base "github.com/ishibata91/ai-translation-engine-2/pkg/runtime/progress"
+
+const (
+	// StatusInProgress signals active runtime work.
+	StatusInProgress = base.StatusInProgress
+	// StatusCompleted signals successful runtime completion.
+	StatusCompleted = base.StatusCompleted
+	// StatusFailed signals failed runtime completion.
+	StatusFailed = base.StatusFailed
+)
+
+// ProgressEvent aliases the existing runtime progress DTO.
+type ProgressEvent = base.ProgressEvent
+
+// ProgressNotifier exposes runtime progress delivery.
+type ProgressNotifier = base.ProgressNotifier
