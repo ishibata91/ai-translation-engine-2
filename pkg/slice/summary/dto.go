@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ishibata91/ai-translation-engine-2/pkg/gateway/llm"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/foundation/llmio"
 )
 
 // Record types
@@ -61,7 +61,7 @@ type QuestStage struct {
 
 // ProposeOutput contains the results of ProposeJobs.
 type ProposeOutput struct {
-	Jobs                 []llm.Request   `json:"jobs"`
+	Jobs                 []llmio.Request `json:"jobs"`
 	PreCalculatedResults []SummaryResult `json:"pre_calculated_results"`
 }
 

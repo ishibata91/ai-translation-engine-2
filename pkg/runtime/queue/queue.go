@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/foundation/llmio"
 	telemetry2 "github.com/ishibata91/ai-translation-engine-2/pkg/foundation/telemetry"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/gateway/llm"
 	_ "github.com/mattn/go-sqlite3"
@@ -286,6 +287,15 @@ func (q *Queue) SubmitJobs(ctx context.Context, processID string, reqs []any) er
 
 // SubmitTaskRequests saves incoming task requests with task metadata for resume/state queries.
 func (q *Queue) SubmitTaskRequests(ctx context.Context, taskID string, taskType string, reqs []llm.Request) error {
+	requests := make([]any, 0, len(reqs))
+	for _, req := range reqs {
+		requests = append(requests, req)
+	}
+	return q.submitJobsInternal(ctx, taskID, taskID, taskType, requests)
+}
+
+// SubmitTaskSharedRequests saves llmio task requests with task metadata for resume/state queries.
+func (q *Queue) SubmitTaskSharedRequests(ctx context.Context, taskID string, taskType string, reqs []llmio.Request) error {
 	requests := make([]any, 0, len(reqs))
 	for _, req := range reqs {
 		requests = append(requests, req)
@@ -679,7 +689,15 @@ func hashRequest(raw string) string {
 }
 
 func extractSchemaVersion(req any) string {
-	if typed, ok := req.(llm.Request); ok {
+	switch typed := req.(type) {
+	case llm.Request:
+		if len(typed.ResponseSchema) == 0 {
+			return "none"
+		}
+		if v, ok := typed.Metadata["structured_output_schema_version"].(string); ok && strings.TrimSpace(v) != "" {
+			return v
+		}
+	case llmio.Request:
 		if len(typed.ResponseSchema) == 0 {
 			return "none"
 		}

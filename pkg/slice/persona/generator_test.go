@@ -8,9 +8,7 @@ import (
 	"testing"
 	"time"
 
-	gatewayconfig "github.com/ishibata91/ai-translation-engine-2/pkg/gateway/config"
-	gatewayllm "github.com/ishibata91/ai-translation-engine-2/pkg/gateway/llm"
-	config2 "github.com/ishibata91/ai-translation-engine-2/pkg/workflow/config"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/foundation/llmio"
 	_ "modernc.org/sqlite"
 )
 
@@ -44,9 +42,6 @@ func (m *mockConfigStore) GetAll(ctx context.Context, namespace string) (map[str
 		return out, nil
 	}
 	return nil, nil
-}
-func (m *mockConfigStore) Watch(namespace string, key string, callback gatewayconfig.ChangeCallback) gatewayconfig.UnsubscribeFunc {
-	return func() {}
 }
 
 // mockSecretStore implements config.SecretStore for testing.
@@ -197,12 +192,12 @@ func TestPersonaGenSlice_TableDriven(t *testing.T) {
 			}
 
 			// Simulate JobQueue/Pipeline calling LLM
-			llmResponses := make([]gatewayllm.Response, 0, len(requests))
+			llmResponses := make([]llmio.Response, 0, len(requests))
 			for i, content := range tc.mockLLMOutput {
 				if i >= len(requests) {
 					break
 				}
-				llmResponses = append(llmResponses, gatewayllm.Response{
+				llmResponses = append(llmResponses, llmio.Response{
 					Content:  content,
 					Success:  true,
 					Metadata: requests[i].Metadata,
@@ -249,9 +244,9 @@ func TestPersonaGenSlice_UsesConfiguredPromptSplit(t *testing.T) {
 
 	configStore := &mockConfigStore{
 		values: map[string]map[string]string{
-			config2.MasterPersonaPromptNamespace: {
-				config2.MasterPersonaUserPromptKey:   "会話から口調と性格を抽出してください。",
-				config2.MasterPersonaSystemPromptKey: "SYSTEM RULES",
+			masterPersonaPromptNamespace: {
+				masterPersonaUserPromptKey:   "会話から口調と性格を抽出してください。",
+				masterPersonaSystemPromptKey: "SYSTEM RULES",
 			},
 		},
 	}

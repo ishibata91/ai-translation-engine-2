@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/ishibata91/ai-translation-engine-2/pkg/foundation/llmio"
 	telemetry2 "github.com/ishibata91/ai-translation-engine-2/pkg/foundation/telemetry"
-	"github.com/ishibata91/ai-translation-engine-2/pkg/gateway/llm"
 )
 
 type translatorSlice struct {
@@ -40,7 +40,7 @@ func (s *translatorSlice) ID() string {
 	return "Translator"
 }
 
-func (s *translatorSlice) PreparePrompts(ctx context.Context, input any) ([]llm.Request, error) {
+func (s *translatorSlice) PreparePrompts(ctx context.Context, input any) ([]llmio.Request, error) {
 	typedInput, ok := input.(TranslatorInput)
 	if !ok {
 		return nil, fmt.Errorf("invalid input type for Translator slice: %T", input)
@@ -48,7 +48,7 @@ func (s *translatorSlice) PreparePrompts(ctx context.Context, input any) ([]llm.
 	return s.ProposeJobs(ctx, typedInput)
 }
 
-func (s *translatorSlice) ProposeJobs(ctx context.Context, input TranslatorInput) ([]llm.Request, error) {
+func (s *translatorSlice) ProposeJobs(ctx context.Context, input TranslatorInput) ([]llmio.Request, error) {
 	defer telemetry2.StartSpan(ctx, telemetry2.ActionProcessTranslation)()
 	slog.DebugContext(ctx, "starting job proposal",
 		slog.String("plugin", input.OutputConfig.PluginName),
@@ -62,7 +62,7 @@ func (s *translatorSlice) ProposeJobs(ctx context.Context, input TranslatorInput
 		return nil, fmt.Errorf("failed to load cached results: %w", err)
 	}
 
-	var requests []llm.Request
+	var requests []llmio.Request
 	completedCount := 0
 	forcedCount := 0
 
@@ -142,7 +142,7 @@ func (s *translatorSlice) ProposeJobs(ctx context.Context, input TranslatorInput
 				continue
 			}
 
-			requests = append(requests, llm.Request{
+			requests = append(requests, llmio.Request{
 				SystemPrompt: systemPrompt,
 				UserPrompt:   userPrompt,
 				Metadata: map[string]interface{}{

@@ -7,6 +7,24 @@ Interface-First AIDD v2アーキテクチャおよびVertical Slice Architecture
 - すべてのSQLite DBは **プロセスのカレントディレクトリ（ワークスペースルート）配下の `db/`** に配置する。
 - 例: ワークスペースが `F:\ai translation engine 2` の場合、DBは `F:\ai translation engine 2\db\*.db`。
 - VSA原則に従い、スライスごとにDBファイルを分離する（例: `config.db`, `dictionary.db`, `task.db`）。
+- 複数 slice から参照する shared data / handoff data は `artifact` 専用ストアへ配置し、slice ローカル DB から直接参照させない。
+
+## artifact (slice間共有成果物)
+
+slice 間受け渡しで使う共有データ、中間成果物、resume 用状態を保存するコンテキストです。
+**データベース名:** `artifact.db` (shared artifact 専用)
+
+```mermaid
+erDiagram
+    artifact_records {
+        TEXT ref_id PK "artifact識別子 (sliceと1:1で束ねる単位)"
+        TEXT slice_id "生成元slice識別子"
+        TEXT payload_json "共有成果物本体 (JSON)"
+        TEXT attributes_json "検索属性 (JSON, nullable)"
+        DATETIME created_at "作成日時"
+        DATETIME updated_at "更新日時"
+    }
+```
 
 ## config (設定・レイアウト保存)
 

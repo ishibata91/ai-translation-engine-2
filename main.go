@@ -18,7 +18,6 @@ import (
 	"github.com/ishibata91/ai-translation-engine-2/pkg/slice/parser"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/slice/persona"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/workflow"
-	configlegacy "github.com/ishibata91/ai-translation-engine-2/pkg/workflow/config"
 	task2 "github.com/ishibata91/ai-translation-engine-2/pkg/workflow/task"
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -92,11 +91,7 @@ func main() {
 	modelCatalogController := controller.NewModelCatalogController(modelCatalogService)
 
 	// 6. Setup Persona + Parser dependencies for task bridge.
-	parserConfigStore, err := configlegacy.NewSQLiteStore(context.Background(), db, logger)
-	if err != nil {
-		log.Fatalf("failed to initialize parser config store: %v", err)
-	}
-	parserLoader := parser.ProvideParser(parserConfigStore)
+	parserLoader := parser.ProvideParser()
 	llmQueue, err := queue.NewQueue(context.Background(), "llm_queue.db", logger)
 	if err != nil {
 		log.Fatalf("failed to initialize llm queue: %v", err)

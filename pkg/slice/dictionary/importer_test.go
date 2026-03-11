@@ -1,4 +1,4 @@
-package dictionary_test
+package dictionary
 
 import (
 	"context"
@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/ishibata91/ai-translation-engine-2/pkg/foundation/progress"
-	dictionary2 "github.com/ishibata91/ai-translation-engine-2/pkg/slice/dictionary"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -56,19 +55,19 @@ func TestImporter_ImportXML(t *testing.T) {
 	defer db.Close()
 
 	// Initialize new schema
-	store, err := dictionary2.NewDictionaryStore(db)
+	store, err := NewDictionaryStore(db)
 	require.NoError(t, err)
 
-	config := dictionary2.DefaultConfig()
+	config := DefaultConfig()
 	notifier := progress.NewNoopNotifier()
-	importer := dictionary2.NewImporter(config, store, notifier, slog.Default())
+	importer := NewImporter(config, store, notifier, slog.Default())
 
 	ctx := context.Background()
 	// Use strings.NewReader directly instead of a temp file
 	file := strings.NewReader(dummyXML)
 
 	// Create a dummy source first
-	src := &dictionary2.DictSource{
+	src := &DictSource{
 		FileName: "Skyrim.esm",
 		Format:   "xml",
 		FilePath: "dummy.xml",
@@ -94,9 +93,9 @@ func TestImporter_ImportXML(t *testing.T) {
 	require.NoError(t, err)
 	defer rows.Close()
 
-	var entries []dictionary2.DictTerm
+	var entries []DictTerm
 	for rows.Next() {
-		var e dictionary2.DictTerm
+		var e DictTerm
 		err := rows.Scan(&e.EDID, &e.RecordType, &e.Source, &e.Dest)
 		require.NoError(t, err)
 		entries = append(entries, e)

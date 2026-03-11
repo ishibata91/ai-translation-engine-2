@@ -3,7 +3,7 @@ package persona
 import (
 	"context"
 
-	gatewayllm "github.com/ishibata91/ai-translation-engine-2/pkg/gateway/llm"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/foundation/llmio"
 )
 
 // PersonaGenInput is the input data required for persona generation.
@@ -43,16 +43,32 @@ type PersonaSaveState struct {
 	PersonaText string
 }
 
+// ConfigStore provides configuration access required by this slice.
+type ConfigStore interface {
+	Get(ctx context.Context, namespace string, key string) (string, error)
+	Set(ctx context.Context, namespace string, key string, value string) error
+	Delete(ctx context.Context, namespace string, key string) error
+	GetAll(ctx context.Context, namespace string) (map[string]string, error)
+}
+
+// SecretStore provides secret access required by this slice.
+type SecretStore interface {
+	GetSecret(ctx context.Context, namespace string, key string) (string, error)
+	SetSecret(ctx context.Context, namespace string, key string, value string) error
+	DeleteSecret(ctx context.Context, namespace string, key string) error
+	ListSecretKeys(ctx context.Context, namespace string) ([]string, error)
+}
+
 // NPCPersonaGenerator is the main entry point for NPC persona generation.
 type NPCPersonaGenerator interface {
 	// ID returns the unique identifier of the slice.
 	ID() string
 
 	// PreparePrompts (Phase 1) generates LLM requests.
-	PreparePrompts(ctx context.Context, input any) ([]gatewayllm.Request, error)
+	PreparePrompts(ctx context.Context, input any) ([]llmio.Request, error)
 
 	// SaveResults (Phase 2) persists LLM responses.
-	SaveResults(ctx context.Context, responses []gatewayllm.Response) error
+	SaveResults(ctx context.Context, responses []llmio.Response) error
 }
 
 // SaveResultsSummary reports phase-2 persistence outcomes.
@@ -63,7 +79,7 @@ type SaveResultsSummary struct {
 
 // SaveResultsReporter optionally exposes detailed save summary for orchestration.
 type SaveResultsReporter interface {
-	SaveResultsWithSummary(ctx context.Context, responses []gatewayllm.Response) (SaveResultsSummary, error)
+	SaveResultsWithSummary(ctx context.Context, responses []llmio.Response) (SaveResultsSummary, error)
 }
 
 // DialogueCollector collects per-NPC dialogue data from PersonaGenInput,

@@ -11,9 +11,9 @@ import (
 	"time"
 
 	"github.com/ishibata91/ai-translation-engine-2/pkg/controller"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/foundation/llmio"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/foundation/progress"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/gateway/llm"
-	gatewayllm "github.com/ishibata91/ai-translation-engine-2/pkg/gateway/llm"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/runtime/queue"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/slice/parser"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/slice/persona"
@@ -36,7 +36,7 @@ func (m *mockParser) LoadExtractedJSON(ctx context.Context, path string) (*parse
 }
 
 type mockPersonaGenerator struct {
-	reqs          []gatewayllm.Request
+	reqs          []llmio.Request
 	err           error
 	mu            sync.Mutex
 	saveCalls     int
@@ -44,13 +44,13 @@ type mockPersonaGenerator struct {
 }
 
 func (m *mockPersonaGenerator) ID() string { return "PersonaMock" }
-func (m *mockPersonaGenerator) PreparePrompts(ctx context.Context, input any) ([]gatewayllm.Request, error) {
+func (m *mockPersonaGenerator) PreparePrompts(ctx context.Context, input any) ([]llmio.Request, error) {
 	if m.err != nil {
 		return nil, m.err
 	}
 	return m.reqs, nil
 }
-func (m *mockPersonaGenerator) SaveResults(ctx context.Context, responses []gatewayllm.Response) error {
+func (m *mockPersonaGenerator) SaveResults(ctx context.Context, responses []llmio.Response) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.saveCalls += len(responses)
@@ -65,7 +65,7 @@ func (m *mockPersonaGenerator) SaveResults(ctx context.Context, responses []gate
 	return nil
 }
 
-func (m *mockPersonaGenerator) SaveResultsWithSummary(ctx context.Context, responses []gatewayllm.Response) (persona.SaveResultsSummary, error) {
+func (m *mockPersonaGenerator) SaveResultsWithSummary(ctx context.Context, responses []llmio.Response) (persona.SaveResultsSummary, error) {
 	if err := m.SaveResults(ctx, responses); err != nil {
 		return persona.SaveResultsSummary{}, err
 	}
@@ -304,7 +304,7 @@ func TestBridge_StartMasterPersonTask_SuccessStatusAndInfoLog(t *testing.T) {
 			},
 		},
 		&mockPersonaGenerator{
-			reqs: []gatewayllm.Request{
+			reqs: []llmio.Request{
 				{
 					Metadata: map[string]interface{}{
 						"speaker_id": "npc-1",
@@ -411,7 +411,7 @@ func TestBridge_ResumeMasterPersonaTask_CleansQueueAfterCompletion(t *testing.T)
 
 	manager := NewManager(nil, logger, NewStore(db)) //nolint:staticcheck // Wails context is intentionally absent in unit tests.
 	personaGen := &mockPersonaGenerator{
-		reqs: []gatewayllm.Request{
+		reqs: []llmio.Request{
 			{Metadata: map[string]interface{}{"speaker_id": "npc-1", "npc_name": "Aela"}},
 			{Metadata: map[string]interface{}{"speaker_id": "npc-2", "npc_name": "Farkas"}},
 		},
@@ -499,7 +499,7 @@ func TestBridge_CancelledMasterPersonaTask_KeepsQueuedRequests(t *testing.T) {
 
 	manager := NewManager(nil, logger, NewStore(db)) //nolint:staticcheck // Wails context is intentionally absent in unit tests.
 	personaGen := &mockPersonaGenerator{
-		reqs: []gatewayllm.Request{
+		reqs: []llmio.Request{
 			{Metadata: map[string]interface{}{"speaker_id": "npc-1", "npc_name": "Aela"}},
 			{Metadata: map[string]interface{}{"speaker_id": "npc-2", "npc_name": "Farkas"}},
 		},

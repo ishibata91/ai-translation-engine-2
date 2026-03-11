@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/ishibata91/ai-translation-engine-2/pkg/slice/parser"
-	"github.com/ishibata91/ai-translation-engine-2/pkg/workflow/config"
 	_ "modernc.org/sqlite"
 )
 
@@ -39,23 +38,15 @@ func TestLoader_LoadExtractedJSON_UTF8(t *testing.T) {
 		t.Fatalf("failed to create temp file: %v", err)
 	}
 
-	// 2. Initialize Parser with a dummy Config for testing
-	// In a real scenario, we might use a mock or an in-memory SQLiteStore.
-	// For this test, we can pass a simple mock if needed, but for now we'll
-	// just use a nil or minimal implementation if ProvideParser allows it,
-	// or we can instantiate a real in-memory store. Let's use an in-memory store.
+	// 2. Initialize Parser
 	db, err := sql.Open("sqlite", ":memory:")
 	if err != nil {
 		t.Fatalf("failed to open in-memory db: %v", err)
 	}
 	defer db.Close()
 
-	store, err := config.NewSQLiteStore(context.Background(), db, slog.Default())
-	if err != nil {
-		t.Fatalf("failed to create store: %v", err)
-	}
-
-	l := parser.ProvideParser(store)
+	_ = slog.Default() // keep logger import for parity with existing test setup
+	l := parser.ProvideParser()
 
 	// 3. Load Data
 	data, err := l.LoadExtractedJSON(context.Background(), filePath)

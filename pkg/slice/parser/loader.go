@@ -6,17 +6,14 @@ import (
 	"log/slog"
 
 	telemetry2 "github.com/ishibata91/ai-translation-engine-2/pkg/foundation/telemetry"
-	"github.com/ishibata91/ai-translation-engine-2/pkg/workflow/config"
 )
 
 // jsonLoader implements contract.Parser interface.
-type jsonLoader struct {
-	config config.Config
-}
+type jsonLoader struct{}
 
 // newJSONLoader creates a new instance of jsonLoader.
-func newJSONLoader(config config.Config) Parser {
-	return &jsonLoader{config: config}
+func newJSONLoader() Parser {
+	return &jsonLoader{}
 }
 
 // LoadExtractedJSON loads extracted data from a JSON file.

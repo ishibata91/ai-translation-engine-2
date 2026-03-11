@@ -3,7 +3,7 @@ package summary
 import (
 	"context"
 
-	"github.com/ishibata91/ai-translation-engine-2/pkg/gateway/llm"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/foundation/llmio"
 )
 
 // Summary is the main entry point for dialogue and quest summary generation.
@@ -13,10 +13,10 @@ type Summary interface {
 	ID() string
 
 	// PreparePrompts (Phase 1) generates LLM requests.
-	PreparePrompts(ctx context.Context, input any) ([]llm.Request, error)
+	PreparePrompts(ctx context.Context, input any) ([]llmio.Request, error)
 
 	// SaveResults (Phase 2) persists LLM responses.
-	SaveResults(ctx context.Context, responses []llm.Response) error
+	SaveResults(ctx context.Context, responses []llmio.Response) error
 
 	// GetSummary retrieves a single summary by record ID. Used by Pass 2.
 	GetSummary(ctx context.Context, recordID string, summaryType string) (*SummaryResult, error)

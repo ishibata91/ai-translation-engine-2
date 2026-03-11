@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/ishibata91/ai-translation-engine-2/pkg/gateway/llm"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/foundation/llmio"
 )
 
 func TestTranslatorSlice_SaveResults(t *testing.T) {
@@ -18,7 +18,7 @@ func TestTranslatorSlice_SaveResults(t *testing.T) {
 		&mockBookChunker{},
 	)
 
-	responses := []llm.Response{
+	responses := []llmio.Response{
 		{
 			Content: "こんにちは",
 			Metadata: map[string]interface{}{

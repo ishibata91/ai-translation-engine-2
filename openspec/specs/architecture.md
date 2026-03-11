@@ -77,6 +77,7 @@
 - 他 slice が必要とするデータを、ある slice の内部保存物として直接参照してはならない
 - slice 間の受け渡しは、workflow が artifact 識別子や検索条件を束ねて実現する
 - artifact は保存・検索の責務だけを持ち、業務判断や進行決定を持たない
+- 永続化の配置詳細は `openspec/specs/database_erd.md` に従い、slice ローカル DB と shared artifact ストアを明示的に分離する
 
 ---
 
@@ -406,6 +407,8 @@ composition root の責務外:
   - テスト設計書の書式と原則
 - `log-guide.md`
   - ログ設計と AI デバッグ向け運用
+- `database_erd.md`
+  - slice ローカル DB と shared artifact ストアの保存境界
 - `spec-structure/spec.md`
   - OpenSpec 文書の責務境界と配置ルール
 - `frontend_architecture.md`

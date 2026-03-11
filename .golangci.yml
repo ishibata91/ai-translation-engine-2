@@ -43,7 +43,9 @@ linters-settings:
             desc: controller must not import gateway
       workflow_boundary:
         files:
+          - "**/pkg/workflow/*.go"
           - "**/pkg/workflow/**/*.go"
+          - "!**/*_test.go"
         list-mode: lax
         deny:
           - pkg: github.com/ishibata91/ai-translation-engine-2/pkg/controller$
@@ -60,7 +62,8 @@ linters-settings:
             desc: workflow must not import gateway
       slice_boundary:
         files:
-          - "**/pkg/slice/**/*.go"
+          - "**/pkg/slice/*/*.go"
+          - "!**/pkg/slice/*/test/*.go"
         list-mode: lax
         deny:
           - pkg: github.com/ishibata91/ai-translation-engine-2/pkg/controller$

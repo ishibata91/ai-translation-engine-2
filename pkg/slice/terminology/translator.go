@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/ishibata91/ai-translation-engine-2/pkg/gateway/llm"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/foundation/llmio"
 )
 
 // TermTranslatorImpl implements Terminology.
@@ -41,7 +41,7 @@ func (t *TermTranslatorImpl) ID() string {
 }
 
 // PreparePrompts implementation for Slice interface.
-func (t *TermTranslatorImpl) PreparePrompts(ctx context.Context, input any) ([]llm.Request, error) {
+func (t *TermTranslatorImpl) PreparePrompts(ctx context.Context, input any) ([]llmio.Request, error) {
 	typedInput, ok := input.(TerminologyInput)
 	if !ok {
 		return nil, fmt.Errorf("invalid input type for Terminology slice: %T", input)
@@ -50,7 +50,7 @@ func (t *TermTranslatorImpl) PreparePrompts(ctx context.Context, input any) ([]l
 }
 
 // preparePrompts builds LLM requests (Phase 1).
-func (t *TermTranslatorImpl) preparePrompts(ctx context.Context, data TerminologyInput) ([]llm.Request, error) {
+func (t *TermTranslatorImpl) preparePrompts(ctx context.Context, data TerminologyInput) ([]llmio.Request, error) {
 	t.logger.InfoContext(ctx, "ENTER TermTranslatorImpl.PreparePrompts")
 	defer t.logger.InfoContext(ctx, "EXIT TermTranslatorImpl.PreparePrompts")
 
@@ -64,7 +64,7 @@ func (t *TermTranslatorImpl) preparePrompts(ctx context.Context, data Terminolog
 		return nil, nil
 	}
 
-	llmRequests := make([]llm.Request, 0, len(requests))
+	llmRequests := make([]llmio.Request, 0, len(requests))
 	for _, req := range requests {
 		// Fetch reference terms for LLM context
 		t.fetchReferenceTerms(ctx, &req)
@@ -74,7 +74,7 @@ func (t *TermTranslatorImpl) preparePrompts(ctx context.Context, data Terminolog
 			return nil, fmt.Errorf("failed to build prompt for %s: %w", req.SourceText, err)
 		}
 
-		llmRequests = append(llmRequests, llm.Request{
+		llmRequests = append(llmRequests, llmio.Request{
 			SystemPrompt: prompt,
 			UserPrompt:   "Translate the provided term.",
 			Metadata: map[string]interface{}{
@@ -93,7 +93,7 @@ func (t *TermTranslatorImpl) preparePrompts(ctx context.Context, data Terminolog
 }
 
 // SaveResults implementation for Slice interface.
-func (t *TermTranslatorImpl) SaveResults(ctx context.Context, responses []llm.Response) error {
+func (t *TermTranslatorImpl) SaveResults(ctx context.Context, responses []llmio.Response) error {
 	t.logger.InfoContext(ctx, "ENTER TermTranslatorImpl.SaveResults")
 	defer t.logger.InfoContext(ctx, "EXIT TermTranslatorImpl.SaveResults")
 
@@ -164,7 +164,7 @@ func (t *TermTranslatorImpl) SaveResults(ctx context.Context, responses []llm.Re
 }
 
 // LegacySaveResults parses LLM responses and persists to the mod term database (Phase 2).
-func (t *TermTranslatorImpl) LegacySaveResults(ctx context.Context, data TerminologyInput, results []llm.Response) error {
+func (t *TermTranslatorImpl) LegacySaveResults(ctx context.Context, data TerminologyInput, results []llmio.Response) error {
 	t.logger.InfoContext(ctx, "ENTER TermTranslatorImpl.SaveResults")
 	defer t.logger.InfoContext(ctx, "EXIT TermTranslatorImpl.SaveResults")
 

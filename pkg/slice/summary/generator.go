@@ -13,7 +13,7 @@ import (
 	telemetry2 "github.com/ishibata91/ai-translation-engine-2/pkg/foundation/telemetry"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/ishibata91/ai-translation-engine-2/pkg/gateway/llm"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/foundation/llmio"
 )
 
 const (
@@ -43,7 +43,7 @@ func NewSummaryGenerator(store SummaryStore, config SummaryConfig) Summary {
 // dialogueCacheResult holds the outcome of a single parallel cache lookup.
 type dialogueCacheResult struct {
 	index  int // preserves original order
-	job    *llm.Request
+	job    *llmio.Request
 	result *SummaryResult
 }
 
@@ -51,7 +51,7 @@ func (g *summaryGenerator) ID() string {
 	return "Summary"
 }
 
-func (g *summaryGenerator) PreparePrompts(ctx context.Context, input any) ([]llm.Request, error) {
+func (g *summaryGenerator) PreparePrompts(ctx context.Context, input any) ([]llmio.Request, error) {
 	typedInput, ok := input.(SummaryInput)
 	if !ok {
 		return nil, fmt.Errorf("invalid input type for Summary slice: %T", input)
@@ -71,7 +71,7 @@ func (g *summaryGenerator) ProposeJobs(ctx context.Context, input SummaryInput) 
 	)
 
 	output := &ProposeOutput{
-		Jobs:                 []llm.Request{},
+		Jobs:                 []llmio.Request{},
 		PreCalculatedResults: []SummaryResult{},
 	}
 
@@ -137,7 +137,7 @@ func (g *summaryGenerator) proposeDialogueJobs(ctx context.Context, items []Dial
 				}
 			} else {
 				prompt := buildDialoguePrompt(item)
-				req := llm.Request{
+				req := llmio.Request{
 					SystemPrompt: DialogueSystemPrompt,
 					UserPrompt:   prompt,
 					Temperature:  0.3,
@@ -180,7 +180,7 @@ func (g *summaryGenerator) proposeQuestJobs(ctx context.Context, items []QuestIt
 	}
 
 	type questResult struct {
-		jobs    []llm.Request
+		jobs    []llmio.Request
 		results []SummaryResult
 	}
 
@@ -237,7 +237,7 @@ func (g *summaryGenerator) proposeQuestJobs(ctx context.Context, items []QuestIt
 				}
 
 				prompt := buildQuestPrompt(currentLines)
-				qr.jobs = append(qr.jobs, llm.Request{
+				qr.jobs = append(qr.jobs, llmio.Request{
 					SystemPrompt: QuestSystemPrompt,
 					UserPrompt:   prompt,
 					Temperature:  0.3,
@@ -268,7 +268,7 @@ func (g *summaryGenerator) proposeQuestJobs(ctx context.Context, items []QuestIt
 	return nil
 }
 
-func (g *summaryGenerator) SaveResults(ctx context.Context, responses []llm.Response) error {
+func (g *summaryGenerator) SaveResults(ctx context.Context, responses []llmio.Response) error {
 	start := time.Now()
 	slog.DebugContext(ctx, "ENTER Summary.SaveResults", slog.Int("responses", len(responses)))
 	defer func() {

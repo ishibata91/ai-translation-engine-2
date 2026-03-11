@@ -3,6 +3,7 @@ package config
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"log/slog"
 
 	"github.com/google/wire"
@@ -18,7 +19,7 @@ type SQLiteStore struct {
 func NewSQLiteStore(ctx context.Context, db *sql.DB, logger *slog.Logger) (*SQLiteStore, error) {
 	store, err := configstore.NewSQLiteStore(ctx, db, logger)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("create gateway config sqlite store: %w", err)
 	}
 	return &SQLiteStore{inner: store}, nil
 }

@@ -3,7 +3,7 @@ package translator
 import (
 	"context"
 
-	"github.com/ishibata91/ai-translation-engine-2/pkg/gateway/llm"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/foundation/llmio"
 )
 
 // TranslatorSlice is the main interface for the Pass 2 Translator vertical slice.
@@ -12,13 +12,13 @@ type TranslatorSlice interface {
 	ID() string
 
 	// PreparePrompts (Phase 1) generates LLM requests.
-	PreparePrompts(ctx context.Context, input any) ([]llm.Request, error)
+	PreparePrompts(ctx context.Context, input any) ([]llmio.Request, error)
 
 	// SaveResults (Phase 2) persists LLM responses.
-	SaveResults(ctx context.Context, responses []llm.Response) error
+	SaveResults(ctx context.Context, responses []llmio.Response) error
 
 	// ProposeJobs analyzes input game data and proposes LLM translation jobs.
-	ProposeJobs(ctx context.Context, input TranslatorInput) ([]llm.Request, error)
+	ProposeJobs(ctx context.Context, input TranslatorInput) ([]llmio.Request, error)
 }
 
 // Internal components

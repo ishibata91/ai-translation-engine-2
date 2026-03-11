@@ -296,7 +296,7 @@ Persona 詳細表示は、従来の `RAW response` ではなく、実際に LLM 
 ## 関連ドキュメント
 - [テスト設計](./npc_personaerator_test_spec.md)
 - [要件定義書](../requirements.md)
-- [Terminology Slice 仕様書](../terminology/spec.md)
+- [Terminology Slice 仕様書](../slice/terminology/spec.md)
 - [LLMクライアントインターフェース](../llm_client/llm_client_interface.md)
 - [Config 仕様書](../config/spec.md)
 

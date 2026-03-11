@@ -8,8 +8,8 @@ import (
 	"sync"
 
 	"github.com/google/uuid"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/foundation/llmio"
 	telemetry2 "github.com/ishibata91/ai-translation-engine-2/pkg/foundation/telemetry"
-	"github.com/ishibata91/ai-translation-engine-2/pkg/gateway/llm"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/runtime/queue"
 )
 
@@ -208,7 +208,7 @@ func (m *Manager) resolveSlice(ctx context.Context, sliceID string) (Slice, erro
 	return registeredSlice, nil
 }
 
-func (m *Manager) prepareRequests(ctx context.Context, registeredSlice Slice, sliceID string, input any) ([]llm.Request, error) {
+func (m *Manager) prepareRequests(ctx context.Context, registeredSlice Slice, sliceID string, input any) ([]llmio.Request, error) {
 	requests, err := registeredSlice.PreparePrompts(ctx, input)
 	if err != nil {
 		wrappedErr := fmt.Errorf("prepare prompts for slice=%s: %w", sliceID, err)
@@ -235,7 +235,7 @@ func (m *Manager) persistDispatchedState(ctx context.Context, processID, sliceID
 	return nil
 }
 
-func (m *Manager) submitJobs(ctx context.Context, processID string, requests []llm.Request) error {
+func (m *Manager) submitJobs(ctx context.Context, processID string, requests []llmio.Request) error {
 	anyRequests := make([]any, len(requests))
 	for i, req := range requests {
 		anyRequests[i] = req
@@ -260,8 +260,8 @@ func (m *Manager) runProcessInBackground(ctx context.Context, processID string) 
 	m.handleCompletion(bgCtx, processID, err)
 }
 
-func (m *Manager) buildResponses(ctx context.Context, jobRequests []queue.JobRequest) []llm.Response {
-	responses := make([]llm.Response, len(jobRequests))
+func (m *Manager) buildResponses(ctx context.Context, jobRequests []queue.JobRequest) []llmio.Response {
+	responses := make([]llmio.Response, len(jobRequests))
 	for i, jobRequest := range jobRequests {
 		if jobRequest.ResponseJSON != nil {
 			if err := json.Unmarshal([]byte(*jobRequest.ResponseJSON), &responses[i]); err != nil {

@@ -6,10 +6,10 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/ishibata91/ai-translation-engine-2/pkg/gateway/llm"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/foundation/llmio"
 )
 
-func (s *translatorSlice) SaveResults(ctx context.Context, responses []llm.Response) error {
+func (s *translatorSlice) SaveResults(ctx context.Context, responses []llmio.Response) error {
 	slog.DebugContext(ctx, "ENTER SaveResults",
 		slog.Int("responses_count", len(responses)),
 	)

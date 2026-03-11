@@ -116,13 +116,13 @@ type TranslationResult struct {
 
 ## 関連ドキュメント
 - [テスト設計](main_translator_test_spec.md) ✅
-- [要件定義書](../requirements.md)
+- [要件定義書](../../requirements.md)
 - [Lore Slice 仕様書](../lore/spec.md)
 - [Terminology Slice 仕様書](../terminology/spec.md)
-- [Persona Slice 仕様書](../persona/spec.md)
+- [Persona Slice 仕様書](../../persona/spec.md)
 - [Summary Slice 仕様書](../summary/spec.md)
-- [LLMクライアントインターフェース](../llm/llm_interface.md)
-- [Config 仕様書](../config/spec.md)
+- [LLMクライアントインターフェース](../../llm/llm_interface.md)
+- [Config 仕様書](../../config/spec.md)
 
 ---
 

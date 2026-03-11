@@ -3,7 +3,7 @@ package terminology
 import (
 	"context"
 
-	"github.com/ishibata91/ai-translation-engine-2/pkg/gateway/llm"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/foundation/llmio"
 )
 
 // TerminologyInput is the input data required for term translation.
@@ -49,10 +49,10 @@ type Terminology interface {
 	ID() string
 
 	// PreparePrompts (Phase 1) generates LLM requests.
-	PreparePrompts(ctx context.Context, input any) ([]llm.Request, error)
+	PreparePrompts(ctx context.Context, input any) ([]llmio.Request, error)
 
 	// SaveResults (Phase 2) persists LLM responses.
-	SaveResults(ctx context.Context, responses []llm.Response) error
+	SaveResults(ctx context.Context, responses []llmio.Response) error
 }
 
 // TermRequestBuilder extracts term translation targets from TerminologyInput

@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ishibata91/ai-translation-engine-2/pkg/foundation/llmio"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/foundation/progress"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/gateway/llm"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/runtime/queue"
@@ -18,15 +19,15 @@ type mockSlice struct {
 	id           string
 	prepareCalls int
 	saveCalls    int
-	results      []llm.Response
+	results      []llmio.Response
 }
 
 func (s *mockSlice) ID() string { return s.id }
-func (s *mockSlice) PreparePrompts(ctx context.Context, input any) ([]llm.Request, error) {
+func (s *mockSlice) PreparePrompts(ctx context.Context, input any) ([]llmio.Request, error) {
 	s.prepareCalls++
-	return []llm.Request{{UserPrompt: "test prompt"}}, nil
+	return []llmio.Request{{UserPrompt: "test prompt"}}, nil
 }
-func (s *mockSlice) SaveResults(ctx context.Context, results []llm.Response) error {
+func (s *mockSlice) SaveResults(ctx context.Context, results []llmio.Response) error {
 	s.saveCalls++
 	s.results = results
 	return nil
@@ -90,7 +91,7 @@ func TestProcessManager_Integration(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("SaveState failed: %v", err)
 	}
-	if err := q.SubmitJobs(ctx, recoverPID, []any{llm.Request{UserPrompt: "recover me"}}); err != nil {
+	if err := q.SubmitJobs(ctx, recoverPID, []any{llmio.Request{UserPrompt: "recover me"}}); err != nil {
 		t.Fatalf("SubmitJobs failed: %v", err)
 	}
 

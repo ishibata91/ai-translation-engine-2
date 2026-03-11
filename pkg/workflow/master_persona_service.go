@@ -10,9 +10,9 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/ishibata91/ai-translation-engine-2/pkg/foundation/llmio"
 	runtimeprogress "github.com/ishibata91/ai-translation-engine-2/pkg/foundation/progress"
 	telemetry2 "github.com/ishibata91/ai-translation-engine-2/pkg/foundation/telemetry"
-	gatewayllm "github.com/ishibata91/ai-translation-engine-2/pkg/gateway/llm"
 	runtimequeue "github.com/ishibata91/ai-translation-engine-2/pkg/runtime/queue"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/slice/parser"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/slice/persona"
@@ -282,7 +282,7 @@ func (s *MasterPersonaService) executeRequestPreparation(ctx context.Context, ta
 	if s.queue == nil {
 		return fmt.Errorf("request queue is not configured")
 	}
-	if err := s.queue.SubmitTaskRequests(runCtx, taskID, string(task2.TypePersonaExtraction), requests); err != nil {
+	if err := s.queue.SubmitTaskSharedRequests(runCtx, taskID, string(task2.TypePersonaExtraction), requests); err != nil {
 		wrappedErr := fmt.Errorf("submit task requests task_id=%s request_count=%d: %w", taskID, len(requests), err)
 		s.reportProgress(runCtx, taskID, 80, runtimeprogress.StatusFailed, "キュー保存に失敗")
 		s.logger.ErrorContext(runCtx, "persona.requests.queue_save_failed",
@@ -464,7 +464,7 @@ func (s *MasterPersonaService) persistPersonaResponses(ctx context.Context, curr
 		}
 
 		if hasReporter {
-			sum, saveErr := reporter.SaveResultsWithSummary(ctx, []gatewayllm.Response{resp})
+			sum, saveErr := reporter.SaveResultsWithSummary(ctx, []llmio.Response{resp})
 			if saveErr != nil {
 				return out, fmt.Errorf("save persona response with summary task_id=%s request_id=%s: %w", currentTask.ID, job.ID, saveErr)
 			}
@@ -476,7 +476,7 @@ func (s *MasterPersonaService) persistPersonaResponses(ctx context.Context, curr
 			continue
 		}
 
-		if err := s.personaGenerator.SaveResults(ctx, []gatewayllm.Response{resp}); err != nil {
+		if err := s.personaGenerator.SaveResults(ctx, []llmio.Response{resp}); err != nil {
 			return out, fmt.Errorf("save persona response task_id=%s request_id=%s: %w", currentTask.ID, job.ID, err)
 		}
 		out.Saved++
@@ -487,7 +487,7 @@ func (s *MasterPersonaService) persistPersonaResponses(ctx context.Context, curr
 	return out, nil
 }
 
-func buildRequestLogPayload(requests []gatewayllm.Request) []map[string]interface{} {
+func buildRequestLogPayload(requests []llmio.Request) []map[string]interface{} {
 	payload := make([]map[string]interface{}, 0, len(requests))
 	for _, req := range requests {
 		payload = append(payload, map[string]interface{}{
@@ -500,13 +500,13 @@ func buildRequestLogPayload(requests []gatewayllm.Request) []map[string]interfac
 	return payload
 }
 
-func buildPersonaResponseFromJob(job runtimequeue.JobRequest) (gatewayllm.Response, error) {
-	var resp gatewayllm.Response
+func buildPersonaResponseFromJob(job runtimequeue.JobRequest) (llmio.Response, error) {
+	var resp llmio.Response
 	if err := json.Unmarshal([]byte(*job.ResponseJSON), &resp); err != nil {
-		return gatewayllm.Response{}, fmt.Errorf("failed to decode response for job=%s: %w", job.ID, err)
+		return llmio.Response{}, fmt.Errorf("failed to decode response for job=%s: %w", job.ID, err)
 	}
 
-	var req gatewayllm.Request
+	var req llmio.Request
 	if err := json.Unmarshal([]byte(job.RequestJSON), &req); err == nil {
 		resp.Metadata = mergeMetadata(resp.Metadata, req.Metadata)
 	}
