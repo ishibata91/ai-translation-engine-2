@@ -1,4 +1,4 @@
-package pipeline
+package pipeline_test
 
 import (
 	"context"
@@ -12,6 +12,7 @@ import (
 	"github.com/ishibata91/ai-translation-engine-2/pkg/gateway/llm"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/runtime/queue"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/workflow/config"
+	workflowpipeline "github.com/ishibata91/ai-translation-engine-2/pkg/workflow/pipeline"
 )
 
 // mockSlice implements Slice interface for testing.
@@ -48,10 +49,10 @@ func TestProcessManager_Integration(t *testing.T) {
 	worker.SetPollingInterval(10 * time.Millisecond)
 
 	// Setup Store and Manager
-	store, _ := NewStore(ctx, ":memory:")
+	store, _ := workflowpipeline.NewStore(ctx, ":memory:")
 	defer store.Close()
 
-	manager := NewManager(store, q, worker, logger)
+	manager := workflowpipeline.NewManager(store, q, worker, logger)
 
 	// Register Slice
 	slice := &mockSlice{id: "TestSlice"}
@@ -83,11 +84,11 @@ func TestProcessManager_Integration(t *testing.T) {
 	// 4. Test Recovery
 	// Manually inject a state and a job
 	recoverPID := "recover-123"
-	if err := store.SaveState(ctx, ProcessState{
+	if err := store.SaveState(ctx, workflowpipeline.ProcessState{
 		ProcessID:    recoverPID,
 		TargetSlice:  "TestSlice",
 		InputFile:    "recover.json",
-		CurrentPhase: PhaseDispatched,
+		CurrentPhase: workflowpipeline.PhaseDispatched,
 	}); err != nil {
 		t.Fatalf("SaveState failed: %v", err)
 	}
@@ -120,10 +121,10 @@ func TestProcessManager_ExecuteSliceIgnoresRequestContextCancellation(t *testing
 	worker := queue.NewWorker(q, mockLLM, &mockCfgForPM{}, &mockSecForPM{}, &mockNotifierForPM{}, logger)
 	worker.SetPollingInterval(10 * time.Millisecond)
 
-	store, _ := NewStore(baseCtx, ":memory:")
+	store, _ := workflowpipeline.NewStore(baseCtx, ":memory:")
 	defer store.Close()
 
-	manager := NewManager(store, q, worker, logger)
+	manager := workflowpipeline.NewManager(store, q, worker, logger)
 	slice := &mockSlice{id: "TestSlice"}
 	manager.RegisterSlice(slice)
 

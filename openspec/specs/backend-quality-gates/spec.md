@@ -1,9 +1,7 @@
 # Purpose
 
 バックエンド品質ゲートの必須ツール、lint 標準、実行導線、任意検査の位置付けを OpenSpec capability として定義する。
-
 ## Requirements
-
 ### Requirement: 品質ゲートの必須ツール定義
 システムは、バックエンド品質ゲートの必須ツールとして `golangci-lint`、`goimports`、`goleak` を定義しなければならない。
 
@@ -32,18 +30,13 @@
 ### Requirement: 依存方向 lint を品質ゲートへ含めなければならない
 システムは `depguard` を用いて `architecture.md` が定義する責務区分の import 依存方向違反を検出し、バックエンド品質ゲートへ含めなければならない。
 
-- `foundation` は `controller`、`workflow`、`slice`、`runtime`、`gateway` のいずれにも逆依存してはならない。
-- `controller`、`workflow`、`slice`、`runtime`、`gateway` は foundation を直接 import できなければならない。
-- `depguard` は foundation を専用 files ルールで検査し、他区分向けルールを無差別適用してはならない。
-
-#### Scenario: foundation への依存は許可される
-- **WHEN** LLM gateway が foundation 配下の telemetry を利用する
-- **THEN** 品質ゲートは当該依存を許可しなければならない
-- **AND** gateway から runtime への依存は引き続き許可してはならない
-
-#### Scenario: foundation から上位区分への逆依存は検出される
-- **WHEN** foundation 配下の package が workflow や runtime の具象実装を import する
-- **THEN** `depguard` は foundation 境界違反として報告しなければならない
+- `controller` は `workflow` 以外の `slice`、`runtime`、`artifact`、`gateway` を直接 import してはならない。
+- `workflow` は `controller`、`artifact`、`gateway` を直接 import してはならない。
+- `usecase slice` は `artifact` 以外の `controller`、`workflow`、`runtime`、`gateway`、他 `slice` を直接 import してはならない。
+- `runtime` は `gateway` 以外の `controller`、`workflow`、`slice`、`artifact` を直接 import してはならない。
+- `artifact` は `controller`、`workflow`、`runtime`、`slice`、`gateway` を直接 import してはならない。
+- `gateway` は `controller`、`workflow`、`runtime`、`slice`、`artifact` を直接 import してはならない。
+- `depguard` は `pkg/**` の本番コードだけでなく、同じ責務区分配下のテストコードにも適用されなければならない。
 
 #### Scenario: 依存方向違反が検出される
 - **WHEN** controller が runtime 具象へ直接依存するなどの違反を追加する
@@ -53,6 +46,20 @@
 - **WHEN** queue worker が LLM gateway を利用する
 - **THEN** 品質ゲートは当該依存を許可しなければならない
 - **AND** runtime から slice 具象への依存は許可してはならない
+
+#### Scenario: workflowはgatewayとcontrollerへ直接依存しない
+- **WHEN** 開発者が workflow から gateway または controller への import を追加する
+- **THEN** `depguard` は workflow 境界違反として報告しなければならない
+- **AND** workflow から slice と runtime への依存だけを許可しなければならない
+
+#### Scenario: workflow配下のテストも同じ境界で検査される
+- **WHEN** 開発者が `pkg/workflow/**` 配下の test code で controller または gateway を import する
+- **THEN** `depguard` は本番コードと同じ workflow 境界違反として報告しなければならない
+
+#### Scenario: package区分ごとに対応するルールだけが適用される
+- **WHEN** 開発者が `pkg/controller/**`、`pkg/workflow/**`、`pkg/slice/**`、`pkg/runtime/**`、`pkg/artifact/**`、`pkg/gateway/**` のいずれかで lint を実行する
+- **THEN** `depguard` は当該 package 区分に対応する依存方向ルールだけを適用しなければならない
+- **AND** 他区分向けルールを全 package に無差別適用して誤検知を増やしてはならない
 
 ### Requirement: Wire 束縛整合性検査を品質ゲートへ含めなければならない
 システムは `google/wire` の `check` を用いて provider graph と interface 束縛の整合性を検証し、バックエンド品質ゲートへ含めなければならない。
@@ -185,3 +192,4 @@
 #### Scenario: MVPが成立すると判断される
 - **WHEN** 成立性評価で、検出対象を限定した MVP なら実運用可能と判断された
 - **THEN** システムは検出対象、除外境界、導入段階を定義した上で次 change に実装を進められなければならない
+

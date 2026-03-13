@@ -6,6 +6,7 @@
 .clinerules
 /node_modules
 build/
+.codex
 
 # Wails build artifacts
 build/bin/

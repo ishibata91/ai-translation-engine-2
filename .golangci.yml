@@ -45,7 +45,6 @@ linters-settings:
         files:
           - "**/pkg/workflow/*.go"
           - "**/pkg/workflow/**/*.go"
-          - "!**/*_test.go"
         list-mode: lax
         deny:
           - pkg: github.com/ishibata91/ai-translation-engine-2/pkg/controller$
