@@ -25,16 +25,6 @@ const (
 	xaiResultsPageSize   = 100
 )
 
-// XAIBatchSupportedModels は xAI Batch API がサポートするモデル一覧。
-var XAIBatchSupportedModels = map[string]bool{
-	"grok-3":                      true,
-	"grok-4-0709":                 true,
-	"grok-4-fast-non-reasoning":   true,
-	"grok-4-fast-reasoning":       true,
-	"grok-4-1-fast-non-reasoning": true,
-	"grok-4-1-fast-reasoning":     true,
-}
-
 // ─────────────────────────────────────────────
 // 同期クライアント（LLMClient 実装）
 // ─────────────────────────────────────────────
@@ -88,9 +78,10 @@ func (c *xaiClient) ListModels(ctx context.Context) ([]ModelInfo, error) {
 	models := make([]ModelInfo, 0, len(raw.Data))
 	for _, m := range raw.Data {
 		models = append(models, ModelInfo{
-			ID:            m.ID,
-			DisplayName:   m.ID,
-			SupportsBatch: XAIBatchSupportedModels[m.ID],
+			ID:          m.ID,
+			DisplayName: m.ID,
+			// xAI の models API からは batch 対応可否を判定できないため、暫定で true を返す。
+			SupportsBatch: true,
 		})
 	}
 	return models, nil
@@ -308,9 +299,7 @@ type xaiBatchClient struct {
 
 // NewXAIBatchClient は xAI BatchClient を返す。
 func NewXAIBatchClient(logger *slog.Logger, config LLMConfig) (BatchClient, error) {
-	if !XAIBatchSupportedModels[config.Model] {
-		return nil, fmt.Errorf("xai: model %q does not support Batch API (supported: grok-3, grok-4-*)", config.Model)
-	}
+	// xAI の models API からは batch 対応可否を判定できないため、暫定で全モデルを許可する。
 	return &xaiBatchClient{
 		config:     config,
 		httpClient: &http.Client{Timeout: xaiDefaultTimeout},
