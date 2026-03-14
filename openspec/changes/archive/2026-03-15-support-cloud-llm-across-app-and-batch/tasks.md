@@ -72,10 +72,10 @@
 
 ## 11. Backend Verification
 
-- [ ] 11.1 変更する Go ファイルごとに `npm run backend:lint:file -- <file...>` を実行する
-- [ ] 11.2 lint 指摘を反映した後、対象ファイルで `npm run backend:lint:file -- <file...>` を再実行する
-- [ ] 11.3 batch gateway / queue / workflow の必要な `go test ./pkg/...` を実行する
-- [ ] 11.4 最終確認として `npm run lint:backend` を実行する
+- [x] 11.1 変更する Go ファイルごとに `npm run backend:lint:file -- <file...>` を実行する
+- [x] 11.2 lint 指摘を反映した後、対象ファイルで `npm run backend:lint:file -- <file...>` を再実行する
+- [x] 11.3 batch gateway / queue / workflow の必要な `go test ./pkg/...` を実行する
+- [x] 11.4 最終確認として `npm run lint:backend` を実行する
 
 ## 12. Frontend Verification
 
