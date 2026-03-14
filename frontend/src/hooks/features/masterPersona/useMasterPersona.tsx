@@ -42,6 +42,25 @@ import {
 } from './helpers';
 
 const PERSONA_PAGE_SIZE = 100;
+const PHASE_BATCH_SUBMITTED = 'BATCH_SUBMITTED';
+const PHASE_BATCH_POLLING = 'BATCH_POLLING';
+const PHASE_REQUEST_SAVING = 'REQUEST_SAVING';
+
+const isRemoteFirstPhase = (phase: string): boolean =>
+    phase === PHASE_BATCH_SUBMITTED || phase === PHASE_BATCH_POLLING || phase === PHASE_REQUEST_SAVING;
+
+const progressHeadlineFromPhase = (phase: string): string => {
+    switch (phase) {
+        case PHASE_BATCH_SUBMITTED:
+            return 'Batch ジョブを送信しました';
+        case PHASE_BATCH_POLLING:
+            return 'クラウド側で処理中です';
+        case PHASE_REQUEST_SAVING:
+            return '結果を取り込んでいます';
+        default:
+            return '';
+    }
+};
 
 /**
  * マスターペルソナ画面の state と action を集約し、ページ描画を headless 化する。
@@ -67,6 +86,8 @@ export function useMasterPersona() {
     const [errorMessage, setErrorMessage] = useState<string>('');
     const [progressCounts, setProgressCounts] = useState<{ current: number; total: number }>({ current: 0, total: 0 });
     const [activeTaskStatus, setActiveTaskStatus] = useState<FrontendTask['status'] | null>(null);
+    const [activePhase, setActivePhase] = useState<string>('');
+    const [isProgressIndeterminate, setIsProgressIndeterminate] = useState<boolean>(false);
     const [llmConfig, setLLMConfig] = useState<MasterPersonaLLMConfig>(DEFAULT_MASTER_PERSONA_LLM_CONFIG);
     const [isLLMConfigHydrated, setIsLLMConfigHydrated] = useState<boolean>(false);
     const [promptConfig, setPromptConfig] = useState<MasterPersonaPromptConfig>(DEFAULT_MASTER_PERSONA_PROMPT_CONFIG);
@@ -216,6 +237,8 @@ export function useMasterPersona() {
         setProgressPercent(0);
         setProgressCounts({ current: 0, total: 0 });
         setStatusMessage('タスクを開始しています...');
+        setActivePhase('');
+        setIsProgressIndeterminate(false);
         resumeRequestedRef.current = false;
         setActiveTaskStatus('pending');
 
@@ -232,6 +255,7 @@ export function useMasterPersona() {
     const hydrateTaskView = (task: FrontendTask) => {
         setActiveTaskId(task.id);
         setActiveTaskStatus(task.status);
+        setActivePhase(task.phase ?? '');
         setProgressPercent(task.progress || 0);
         setStatusMessage(statusMessageFromTask(task));
         setErrorMessage(task.error_msg || '');
@@ -242,6 +266,11 @@ export function useMasterPersona() {
             current: Number.isFinite(resumeCursor) ? resumeCursor : 0,
             total: requestCount > 0 ? requestCount : 0,
         });
+        setIsProgressIndeterminate(
+            task.phase === PHASE_BATCH_POLLING &&
+            requestCount <= 0 &&
+            Number(task.progress || 0) <= 0,
+        );
         const sourceJSONPath = String(task.metadata?.source_json_path ?? '');
         if (sourceJSONPath) {
             setJsonPath(sourceJSONPath);
@@ -256,6 +285,7 @@ export function useMasterPersona() {
         resumeRequestedRef.current = false;
         setErrorMessage('');
         setStatusMessage('リクエストを実行しています...');
+        setIsProgressIndeterminate(false);
         setIsGenerating(true);
         try {
             await ResumeTask(activeTaskId);
@@ -625,6 +655,8 @@ export function useMasterPersona() {
         setIsGenerating(false);
         setActiveTaskStatus(null);
         setActiveTaskId(null);
+        setActivePhase('');
+        setIsProgressIndeterminate(false);
         setStatusMessage('待機中');
         resumeRequestedRef.current = false;
     };
@@ -710,9 +742,20 @@ export function useMasterPersona() {
                 return;
             }
 
-            if (event.Total > 0) {
-                setProgressCounts({ current: event.Completed, total: event.Total });
-                setProgressPercent(Math.min(100, Math.max(0, (event.Completed / event.Total) * 100)));
+            const phase = event.Phase ?? '';
+            if (phase !== '') {
+                setActivePhase(phase);
+            }
+
+            const eventCurrent = Number(event.Current ?? event.Completed ?? 0);
+            const eventTotal = Number(event.Total ?? 0);
+            const canUseDeterminate = Number.isFinite(eventCurrent) && Number.isFinite(eventTotal) && eventTotal > 0;
+            if (canUseDeterminate) {
+                setProgressCounts({ current: eventCurrent, total: eventTotal });
+                setProgressPercent(Math.min(100, Math.max(0, (eventCurrent / eventTotal) * 100)));
+                setIsProgressIndeterminate(false);
+            } else if (phase === PHASE_BATCH_POLLING) {
+                setIsProgressIndeterminate(true);
             }
             setStatusMessage(event.Message || '処理中');
 
@@ -747,6 +790,7 @@ export function useMasterPersona() {
                 return;
             }
             setActiveTaskStatus(task.status);
+            setActivePhase(task.phase ?? '');
             if (task.status === 'paused' || task.status === 'cancelled' || task.status === 'completed' || task.status === 'failed') {
                 void refreshProgressFromQueueState(task);
                 void refreshNPCDataFromService();
@@ -763,10 +807,13 @@ export function useMasterPersona() {
             if (task.status === 'paused' || task.status === 'cancelled') {
                 setIsGenerating(false);
                 setStatusMessage('一時停止中');
+                setIsProgressIndeterminate(false);
             }
             if (task.status === 'running') {
                 setIsGenerating(true);
                 setStatusMessage('リクエストを実行しています...');
+                const hasProgressPercent = Number.isFinite(task.progress) && task.progress > 0;
+                setIsProgressIndeterminate(task.phase === PHASE_BATCH_POLLING && !hasProgressPercent);
             }
             if (task.status === 'request_generated') {
                 setStatusMessage('リクエスト生成完了。実行を開始します...');
@@ -797,6 +844,29 @@ export function useMasterPersona() {
         };
     }, [activeTaskId, isGenerating, refreshNPCDataFromService]);
 
+    const progressMode = useMemo<'remote' | 'local'>(() => {
+        if (isRemoteFirstPhase(activePhase)) {
+            return 'remote';
+        }
+        return 'local';
+    }, [activePhase]);
+
+    const progressPrimaryMessage = useMemo(() => {
+        const phaseHeadline = progressHeadlineFromPhase(activePhase);
+        if (phaseHeadline !== '') {
+            return phaseHeadline;
+        }
+        return statusMessage;
+    }, [activePhase, statusMessage]);
+
+    const progressSecondaryMessage = useMemo(() => {
+        const phaseHeadline = progressHeadlineFromPhase(activePhase);
+        if (phaseHeadline !== '' && statusMessage !== '' && statusMessage !== phaseHeadline) {
+            return statusMessage;
+        }
+        return '';
+    }, [activePhase, statusMessage]);
+
 
     return {
         allNpcData,
@@ -824,6 +894,10 @@ export function useMasterPersona() {
         activeTaskId,
         progressPercent,
         statusMessage,
+        progressMode,
+        progressPrimaryMessage,
+        progressSecondaryMessage,
+        isProgressIndeterminate,
         errorMessage,
         progressCounts,
         activeTaskStatus,
@@ -849,4 +923,3 @@ export function useMasterPersona() {
         providerNamespace,
     };
 }
-

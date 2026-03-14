@@ -14,6 +14,11 @@ const CONTEXT_LENGTH_PRESETS: Array<{ label: string; value: number }> = [
     { label: '64k', value: 65536 },
 ];
 
+const EXECUTION_PROFILE_LABELS: Record<MasterPersonaLLMConfig['bulkStrategy'], string> = {
+    sync: '同期実行',
+    batch: 'クラウドBatch',
+};
+
 interface Props {
     title?: string;
     value: MasterPersonaLLMConfig;
@@ -46,10 +51,12 @@ const ModelSettings: React.FC<Props> = ({ title = 'モデル設定', value, onCh
 
     const isLMStudio = value.provider === 'lmstudio';
     const {
+        availableExecutionProfiles,
         catalogError,
         catalogLoading,
         handleProviderChange,
         selectableModelOptions,
+        selectedModelCapability,
         selectedModelValue,
     } = useModelSettings({ value, onChange, enabled, namespace });
 
@@ -106,7 +113,7 @@ const ModelSettings: React.FC<Props> = ({ title = 'モデル設定', value, onCh
             </summary>
             <div className="collapse-content pt-4">
                 <div className="flex flex-col gap-6">
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                         <div className="flex flex-col gap-1">
                             <label className="label pb-0">
                                 <span className="label-text font-bold">AIプロバイダ</span>
@@ -139,6 +146,48 @@ const ModelSettings: React.FC<Props> = ({ title = 'モデル設定', value, onCh
                                 {catalogLoading ? 'モデル一覧を取得中...' : catalogError || ''}
                             </span>
                         </div>
+
+                        <div className="flex flex-col gap-1">
+                            <label className="label pb-0">
+                                <span className="label-text font-bold">実行方式</span>
+                            </label>
+                            <select
+                                className="select select-bordered select-sm w-full"
+                                value={value.bulkStrategy}
+                                onChange={(e) => onChange({ ...value, bulkStrategy: e.target.value as MasterPersonaLLMConfig['bulkStrategy'] })}
+                                disabled={availableExecutionProfiles.length <= 1}
+                            >
+                                {availableExecutionProfiles.map((profile) => (
+                                    <option key={profile} value={profile}>{EXECUTION_PROFILE_LABELS[profile]}</option>
+                                ))}
+                            </select>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-4">
+                        <div className="flex flex-col gap-1">
+                            <div className="flex justify-between items-center">
+                                <label className="label-text font-bold text-sm">Temperature</label>
+                                <span className="badge badge-ghost badge-sm font-mono">{draftTemperature.toFixed(2)}</span>
+                            </div>
+                            <input
+                                type="range"
+                                min="0"
+                                max="2"
+                                step="0.01"
+                                className="range range-primary range-sm w-full"
+                                value={draftTemperature}
+                                onChange={(e) => setDraftTemperature(parseFloat(e.target.value))}
+                                onMouseUp={commitTemperature}
+                                onTouchEnd={commitTemperature}
+                                onKeyUp={commitTemperature}
+                            />
+                        </div>
+                        <span className={`text-xs ${selectedModelCapability.supportsBatch ? 'text-success' : 'text-base-content/70'}`}>
+                            {selectedModelCapability.supportsBatch
+                                ? 'このモデルは Batch API に対応しています'
+                                : 'このモデルは同期実行のみ対応です'}
+                        </span>
                     </div>
 
                     <div className={`grid gap-4 ${isLMStudio ? 'grid-cols-1' : 'grid-cols-2'}`}>
@@ -211,47 +260,31 @@ const ModelSettings: React.FC<Props> = ({ title = 'モデル設定', value, onCh
                         </div>
                     )}
 
-                    <div className="grid grid-cols-1 gap-4">
-                        <div className="flex flex-col gap-1">
-                            <div className="flex justify-between items-center">
-                                <label className="label-text font-bold text-sm">並列実行数</label>
-                                <span className="badge badge-ghost badge-sm font-mono">{draftSyncConcurrency}</span>
+                    {value.bulkStrategy === 'sync' && (
+                        <div className="grid grid-cols-1 gap-4">
+                            <div className="flex flex-col gap-1">
+                                <div className="flex justify-between items-center">
+                                    <label className="label-text font-bold text-sm">同期並列数</label>
+                                    <span className="badge badge-ghost badge-sm font-mono">{draftSyncConcurrency}</span>
+                                </div>
+                                <input
+                                    type="range"
+                                    min="1"
+                                    max="64"
+                                    step="1"
+                                    className="range range-primary range-sm w-full"
+                                    value={draftSyncConcurrency}
+                                    onChange={(e) => {
+                                        const parsed = Number.parseInt(e.target.value, 10);
+                                        const newValue = Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+                                        setDraftSyncConcurrency(newValue);
+                                        debouncedOnChange({ syncConcurrency: newValue });
+                                    }}
+                                />
+                                <span className="text-xs text-base-content/60">1〜64 で調整</span>
                             </div>
-                            <input
-                                type="range"
-                                min="1"
-                                max="64"
-                                step="1"
-                                className="range range-primary range-sm w-full"
-                                value={draftSyncConcurrency}
-                                onChange={(e) => {
-                                    const parsed = Number.parseInt(e.target.value, 10);
-                                    const newValue = Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
-                                    setDraftSyncConcurrency(newValue);
-                                    debouncedOnChange({ syncConcurrency: newValue });
-                                }}
-                            />
-                            <span className="text-xs text-base-content/60">1〜64 で調整</span>
                         </div>
-                        <div className="flex flex-col gap-1">
-                            <div className="flex justify-between items-center">
-                                <label className="label-text font-bold text-sm">Temperature</label>
-                                <span className="badge badge-ghost badge-sm font-mono">{draftTemperature.toFixed(2)}</span>
-                            </div>
-                            <input
-                                type="range"
-                                min="0"
-                                max="2"
-                                step="0.01"
-                                className="range range-primary range-sm w-full"
-                                value={draftTemperature}
-                                onChange={(e) => setDraftTemperature(parseFloat(e.target.value))}
-                                onMouseUp={commitTemperature}
-                                onTouchEnd={commitTemperature}
-                                onKeyUp={commitTemperature}
-                            />
-                        </div>
-                    </div>
+                    )}
                 </div>
             </div>
         </details>

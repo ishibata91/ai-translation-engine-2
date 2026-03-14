@@ -64,11 +64,11 @@
 
 ## 10. Frontend Presentation
 
-- [ ] 10.1 `ModelSettings.tsx` に `AIプロバイダ / モデル / 実行方式` を主入力として表示する UI を追加する
-- [ ] 10.2 capability DTO に従って `同期並列数` などの詳細項目を条件表示する
-- [ ] 10.3 モデルごとの `Batch API 対応` / `同期実行のみ対応` 補助文を表示する
-- [ ] 10.4 `MasterPersona.tsx` の進捗表示を remote progress 優先の文言へ更新する
-- [ ] 10.5 provider progress が取れない場合の不定 progress 表示を追加する
+- [x] 10.1 `ModelSettings.tsx` に `AIプロバイダ / モデル / 実行方式` を主入力として表示する UI を追加する
+- [x] 10.2 capability DTO に従って `同期並列数` などの詳細項目を条件表示する
+- [x] 10.3 モデルごとの `Batch API 対応` / `同期実行のみ対応` 補助文を表示する
+- [x] 10.4 `MasterPersona.tsx` の進捗表示を remote progress 優先の文言へ更新する
+- [x] 10.5 provider progress が取れない場合の不定 progress 表示を追加する
 
 ## 11. Backend Verification
 
@@ -79,8 +79,8 @@
 
 ## 12. Frontend Verification
 
-- [ ] 12.1 変更するフロントファイルごとに `npm run lint:file -- <file...>` を実行する
-- [ ] 12.2 lint 指摘を反映した後、対象ファイルで `npm run lint:file -- <file...>` を再実行する
-- [ ] 12.3 最終確認として `npm run typecheck` を実行する
-- [ ] 12.4 最終確認として `npm run lint:frontend` を実行する
-- [ ] 12.5 最終確認として Playwright E2E を実行する
+- [x] 12.1 変更するフロントファイルごとに `npm run lint:file -- <file...>` を実行する
+- [x] 12.2 lint 指摘を反映した後、対象ファイルで `npm run lint:file -- <file...>` を再実行する
+- [x] 12.3 最終確認として `npm run typecheck` を実行する
+- [x] 12.4 最終確認として `npm run lint:frontend` を実行する
+- [x] 12.5 最終確認として Playwright E2E を実行する

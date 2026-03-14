@@ -8,6 +8,10 @@ type PersonaProgressStatus = 'IN_PROGRESS' | 'COMPLETED' | 'FAILED';
  */
 export interface PersonaProgressEvent {
     CorrelationID: string;
+    TaskID?: string;
+    TaskType?: string;
+    Phase?: string;
+    Current?: number;
     Total: number;
     Completed: number;
     Failed: number;

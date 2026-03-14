@@ -1,11 +1,10 @@
-import type { ColumnDef } from '@tanstack/react-table';
+import type {ColumnDef} from '@tanstack/react-table';
 import ModelSettings from '../components/ModelSettings';
 import DataTable from '../components/DataTable';
 import PersonaDetail from '../components/PersonaDetail';
 import PromptSettingCard from '../components/masterPersona/PromptSettingCard';
-import { NPC_STATUS_LABEL, type NpcRow, type NpcStatus, STATUS_BADGE } from '../types/npc';
-import { useMasterPersona } from '../hooks/features/masterPersona/useMasterPersona';
-
+import {NPC_STATUS_LABEL, type NpcRow, type NpcStatus, STATUS_BADGE} from '../types/npc';
+import {useMasterPersona} from '../hooks/features/masterPersona/useMasterPersona';
 
 
 // ── 列定義 ───────────────────────────────────────────────
@@ -65,7 +64,10 @@ export default function MasterPersona() {
         setOverwriteExisting,
         activeTaskId,
         progressPercent,
-        statusMessage,
+        progressMode,
+        progressPrimaryMessage,
+        progressSecondaryMessage,
+        isProgressIndeterminate,
         errorMessage,
         progressCounts,
         activeTaskStatus,
@@ -126,14 +128,28 @@ export default function MasterPersona() {
                                 <span className="label-text">重複時に既存ペルソナを上書きする</span>
                             </label>
                             <div>
-                                <span className="mt-2 mb-1 block text-sm text-base-content/70 font-bold">全体進捗</span>
-                                <progress className="progress progress-primary w-full" value={progressPercent} max="100"></progress>
+                                <span className="mt-2 mb-1 block text-sm text-base-content/70 font-bold">
+                                    {progressMode === 'remote' ? 'クラウド実行進捗' : '全体進捗'}
+                                </span>
+                                {isProgressIndeterminate ? (
+                                    <progress className="progress progress-primary w-full"></progress>
+                                ) : (
+                                    <progress className="progress progress-primary w-full" value={progressPercent} max="100"></progress>
+                                )}
                                 {progressCounts.total > 0 && (
                                     <span className="text-xs text-base-content/70 mt-1 block">
                                         {progressCounts.current} / {progressCounts.total} 件
                                     </span>
                                 )}
-                                <span className="text-xs text-base-content/70 mt-1 block">{statusMessage}</span>
+                                <span className="text-xs text-base-content/70 mt-1 block">{progressPrimaryMessage}</span>
+                                {progressSecondaryMessage !== '' && (
+                                    <span className="text-xs text-base-content/60 mt-1 block">{progressSecondaryMessage}</span>
+                                )}
+                                {isProgressIndeterminate && (
+                                    <span className="text-xs text-base-content/60 mt-1 block">
+                                        provider progress が取得できないため、不定表示で更新中です。
+                                    </span>
+                                )}
                                 {errorMessage && <span className="text-xs text-error mt-1 block">{errorMessage}</span>}
                             </div>
                         </div>

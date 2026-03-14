@@ -101,7 +101,7 @@ export class MasterPersonaPO extends BasePO {
 
   async changeTemperature(value: string): Promise<void> {
     const modelSection = this.page.locator('details:has-text("ペルソナ生成モデル設定")');
-    const temperatureSlider = modelSection.locator('input[type="range"]').nth(1);
+    const temperatureSlider = modelSection.locator('input[type="range"]').first();
     await temperatureSlider.fill(value);
     await temperatureSlider.press('Enter');
     await this.expectNoRuntimeErrors();

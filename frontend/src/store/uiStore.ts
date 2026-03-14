@@ -1,4 +1,4 @@
-import { create } from 'zustand'
+import {create} from 'zustand'
 
 export type DetailPaneType = 'log' | 'job' | null;
 
@@ -23,7 +23,7 @@ interface UIState {
 
 export const useUIStore = create<UIState>((set) => ({
     // Default theme
-    theme: 'business',
+    theme: 'dark',
     // Sidebar is open by default
     isSidebarCollapsed: false,
     // Default width for the log viewer
