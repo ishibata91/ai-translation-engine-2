@@ -16,6 +16,7 @@ func TestPersonaStore_UpsertAndDialogues(t *testing.T) {
 		sourceHint           string
 		expectPersonaText    string
 		expectDialogueSource string
+		expectStoredPlugin   string
 	}{
 		{
 			name:                 "上書きOFFでは既存personaを保持する",
@@ -24,6 +25,7 @@ func TestPersonaStore_UpsertAndDialogues(t *testing.T) {
 			sourcePlugin:         "Skyrim.esm",
 			expectPersonaText:    "base persona",
 			expectDialogueSource: "first line",
+			expectStoredPlugin:   "Skyrim.esm",
 		},
 		{
 			name:                 "上書きONでは既存personaとdialogueを更新する",
@@ -32,6 +34,7 @@ func TestPersonaStore_UpsertAndDialogues(t *testing.T) {
 			sourcePlugin:         "Skyrim.esm",
 			expectPersonaText:    "updated persona",
 			expectDialogueSource: "second line",
+			expectStoredPlugin:   "Skyrim.esm",
 		},
 		{
 			name:                 "source_plugin欠損時は入力名から補完する",
@@ -40,6 +43,16 @@ func TestPersonaStore_UpsertAndDialogues(t *testing.T) {
 			sourceHint:           `C:\mods\Skyrim.esm.persona.json`,
 			expectPersonaText:    "updated persona",
 			expectDialogueSource: "second line",
+			expectStoredPlugin:   "Skyrim.esm",
+		},
+		{
+			name:                 "source_pluginの空白を含む名前を保持する",
+			overwriteExisting:    true,
+			secondPersonaText:    "updated persona",
+			sourcePlugin:         "My Cool Mod.esp",
+			expectPersonaText:    "updated persona",
+			expectDialogueSource: "second line",
+			expectStoredPlugin:   "My Cool Mod.esp",
 		},
 	}
 
@@ -55,7 +68,7 @@ func TestPersonaStore_UpsertAndDialogues(t *testing.T) {
 
 			effectivePlugin := tc.sourcePlugin
 			if effectivePlugin == "" {
-				effectivePlugin = "Skyrim.esm"
+				effectivePlugin = tc.expectStoredPlugin
 			}
 
 			saveState, err := store.SavePersonaBase(ctx, NPCDialogueData{
@@ -174,8 +187,15 @@ func TestPersonaStore_UpsertAndDialogues(t *testing.T) {
 			if dialogues[0].SourceText != tc.expectDialogueSource {
 				t.Fatalf("unexpected dialogue source: got=%q want=%q", dialogues[0].SourceText, tc.expectDialogueSource)
 			}
-			if rows[0].SourcePlugin == "" {
-				t.Fatalf("expected source_plugin to be populated")
+			if rows[0].SourcePlugin != tc.expectStoredPlugin {
+				t.Fatalf("unexpected source_plugin on npc row: got=%q want=%q", rows[0].SourcePlugin, tc.expectStoredPlugin)
+			}
+			expectedDialoguePlugin := tc.expectStoredPlugin
+			if tc.sourcePlugin == "" {
+				expectedDialoguePlugin = "UNKNOWN"
+			}
+			if dialogues[0].SourcePlugin != expectedDialoguePlugin {
+				t.Fatalf("unexpected source_plugin on dialogue row: got=%q want=%q", dialogues[0].SourcePlugin, expectedDialoguePlugin)
 			}
 		})
 	}

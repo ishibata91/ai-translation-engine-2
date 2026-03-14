@@ -148,7 +148,7 @@ export default function MasterPersona() {
                                 )}
                                 {isProgressIndeterminate && (
                                     <span className="text-xs text-base-content/60 mt-1 block">
-                                        provider progress が取得できないため、不定表示で更新中です。
+                                        進捗が取得できないため、不定表示で更新中です。
                                     </span>
                                 )}
                                 {errorMessage && <span className="text-xs text-error mt-1 block">{errorMessage}</span>}

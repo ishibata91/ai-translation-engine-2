@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-var pluginNamePattern = regexp.MustCompile(`(?i)[^\\/:*?"<>|\s]+\.(esm|esl|esp)`)
+var pluginNamePattern = regexp.MustCompile(`(?i)[^\\/:*?"<>|]+\.(esm|esl|esp)`)
 
 const (
 	personaStatusDraft     = "draft"
