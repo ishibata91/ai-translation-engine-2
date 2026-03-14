@@ -6,6 +6,7 @@ import (
 	"log"
 
 	"github.com/ishibata91/ai-translation-engine-2/pkg/controller"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/format/parser/skyrim"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/foundation/progress"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/foundation/telemetry"
 	gatewayconfig "github.com/ishibata91/ai-translation-engine-2/pkg/gateway/config"
@@ -15,7 +16,6 @@ import (
 	"github.com/ishibata91/ai-translation-engine-2/pkg/runtime/modelcatalog"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/runtime/queue"
 	dictionary2 "github.com/ishibata91/ai-translation-engine-2/pkg/slice/dictionary"
-	"github.com/ishibata91/ai-translation-engine-2/pkg/slice/parser"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/slice/persona"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/workflow"
 	task2 "github.com/ishibata91/ai-translation-engine-2/pkg/workflow/task"
@@ -91,7 +91,7 @@ func main() {
 	modelCatalogController := controller.NewModelCatalogController(modelCatalogService)
 
 	// 6. Setup Persona + Parser dependencies for task bridge.
-	parserLoader := parser.ProvideParser()
+	parserLoader := skyrim.ProvideParser()
 	llmQueue, err := queue.NewQueue(context.Background(), "llm_queue.db", logger)
 	if err != nil {
 		log.Fatalf("failed to initialize llm queue: %v", err)

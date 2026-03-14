@@ -10,11 +10,11 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/ishibata91/ai-translation-engine-2/pkg/format/parser/skyrim"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/foundation/llmio"
 	runtimeprogress "github.com/ishibata91/ai-translation-engine-2/pkg/foundation/progress"
 	telemetry2 "github.com/ishibata91/ai-translation-engine-2/pkg/foundation/telemetry"
 	runtimequeue "github.com/ishibata91/ai-translation-engine-2/pkg/runtime/queue"
-	"github.com/ishibata91/ai-translation-engine-2/pkg/slice/parser"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/slice/persona"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/workflow/pipeline"
 	task2 "github.com/ishibata91/ai-translation-engine-2/pkg/workflow/task"
@@ -24,7 +24,7 @@ import (
 type MasterPersonaService struct {
 	manager          *task2.Manager
 	logger           *slog.Logger
-	parser           parser.Parser
+	parser           skyrim.Parser
 	personaGenerator persona.NPCPersonaGenerator
 	notifier         runtimeprogress.ProgressNotifier
 	queue            *runtimequeue.Queue
@@ -43,7 +43,7 @@ type personaSaveSummary struct {
 func NewMasterPersonaService(
 	manager *task2.Manager,
 	logger *slog.Logger,
-	parser parser.Parser,
+	parser skyrim.Parser,
 	personaGenerator persona.NPCPersonaGenerator,
 	notifier runtimeprogress.ProgressNotifier,
 	requestQueue *runtimequeue.Queue,

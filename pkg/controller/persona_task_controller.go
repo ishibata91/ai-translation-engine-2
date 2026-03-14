@@ -10,15 +10,19 @@ import (
 	task2 "github.com/ishibata91/ai-translation-engine-2/pkg/workflow/task"
 )
 
+type personaTaskManager interface {
+	GetAllTasks(ctx context.Context) ([]task2.Task, error)
+}
+
 // PersonaTaskController exposes MasterPersona-specific Wails-facing task operations.
 type PersonaTaskController struct {
 	ctx                   context.Context
-	manager               *task2.Manager
+	manager               personaTaskManager
 	masterPersonaWorkflow workflow.MasterPersona
 }
 
 // NewPersonaTaskController constructs the MasterPersona controller adapter.
-func NewPersonaTaskController(manager *task2.Manager, masterPersonaWorkflow workflow.MasterPersona) *PersonaTaskController {
+func NewPersonaTaskController(manager personaTaskManager, masterPersonaWorkflow workflow.MasterPersona) *PersonaTaskController {
 	return &PersonaTaskController{
 		ctx:                   context.Background(),
 		manager:               manager,
@@ -37,7 +41,7 @@ func (c *PersonaTaskController) SetContext(ctx context.Context) {
 
 // GetAllTasks loads all persisted tasks so persona-specific tests and screens can hydrate state.
 func (c *PersonaTaskController) GetAllTasks() ([]task2.Task, error) {
-	return c.manager.Store().GetAllTasks(c.ctx)
+	return c.manager.GetAllTasks(c.ctx)
 }
 
 // StartMasterPersonTask starts the MasterPersona workflow while keeping the existing Wails API signature.

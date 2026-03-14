@@ -7,14 +7,19 @@ import (
 	"github.com/ishibata91/ai-translation-engine-2/pkg/slice/persona"
 )
 
+type personaReadService interface {
+	ListNPCs() ([]persona.PersonaNPCView, error)
+	ListDialoguesByPersonaID(personaID int64) ([]persona.PersonaDialogueView, error)
+}
+
 // PersonaController exposes Wails-facing persona read operations.
 type PersonaController struct {
 	ctx     context.Context
-	service *persona.Service
+	service personaReadService
 }
 
 // NewPersonaController constructs the persona controller adapter.
-func NewPersonaController(service *persona.Service) *PersonaController {
+func NewPersonaController(service personaReadService) *PersonaController {
 	return &PersonaController{
 		ctx:     context.Background(),
 		service: service,

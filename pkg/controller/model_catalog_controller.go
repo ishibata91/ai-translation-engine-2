@@ -9,11 +9,11 @@ import (
 // ModelCatalogController exposes Wails-facing model catalog operations.
 type ModelCatalogController struct {
 	ctx     context.Context
-	service *modelcatalog2.ModelCatalogService
+	service modelcatalog2.Service
 }
 
 // NewModelCatalogController constructs the model catalog controller adapter.
-func NewModelCatalogController(service *modelcatalog2.ModelCatalogService) *ModelCatalogController {
+func NewModelCatalogController(service modelcatalog2.Service) *ModelCatalogController {
 	return &ModelCatalogController{
 		ctx:     context.Background(),
 		service: service,

@@ -115,6 +115,10 @@ func (m *Manager) Store() *Store {
 	return m.store
 }
 
+func (m *Manager) GetAllTasks(ctx context.Context) ([]Task, error) {
+	return m.store.GetAllTasks(ctx)
+}
+
 func (m *Manager) Initialize(ctx context.Context) error {
 	m.logger.InfoContext(ctx, "task.manager.initialize.started")
 

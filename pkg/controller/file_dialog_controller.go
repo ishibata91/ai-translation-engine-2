@@ -7,14 +7,23 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
+type openFileDialogFunc func(ctx context.Context, options runtime.OpenDialogOptions) (string, error)
+type openMultipleFilesDialogFunc func(ctx context.Context, options runtime.OpenDialogOptions) ([]string, error)
+
 // FileDialogController exposes Wails-facing file selection dialogs.
 type FileDialogController struct {
-	ctx context.Context
+	ctx                     context.Context
+	openFileDialog          openFileDialogFunc
+	openMultipleFilesDialog openMultipleFilesDialogFunc
 }
 
 // NewFileDialogController constructs the file dialog controller adapter.
 func NewFileDialogController() *FileDialogController {
-	return &FileDialogController{ctx: context.Background()}
+	return &FileDialogController{
+		ctx:                     context.Background(),
+		openFileDialog:          runtime.OpenFileDialog,
+		openMultipleFilesDialog: runtime.OpenMultipleFilesDialog,
+	}
 }
 
 // SetContext injects the Wails application context for downstream propagation.
@@ -28,7 +37,7 @@ func (c *FileDialogController) SetContext(ctx context.Context) {
 
 // SelectFiles opens a multi-file dialog for dictionary import files.
 func (c *FileDialogController) SelectFiles() ([]string, error) {
-	files, err := runtime.OpenMultipleFilesDialog(c.context(), runtime.OpenDialogOptions{
+	files, err := c.openMultipleFilesDialog(c.context(), runtime.OpenDialogOptions{
 		Title: "インポートする辞書ファイルを選択",
 		Filters: []runtime.FileFilter{
 			{DisplayName: "XML Files (*.xml)", Pattern: "*.xml"},
@@ -43,7 +52,7 @@ func (c *FileDialogController) SelectFiles() ([]string, error) {
 
 // SelectJSONFile opens a single-file dialog for JSON input.
 func (c *FileDialogController) SelectJSONFile() (string, error) {
-	path, err := runtime.OpenFileDialog(c.context(), runtime.OpenDialogOptions{
+	path, err := c.openFileDialog(c.context(), runtime.OpenDialogOptions{
 		Title: "JSONファイルを選択",
 		Filters: []runtime.FileFilter{
 			{DisplayName: "JSON Files (*.json)", Pattern: "*.json"},

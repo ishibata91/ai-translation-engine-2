@@ -1,14 +1,14 @@
 package pipeline
 
 import (
-	"github.com/ishibata91/ai-translation-engine-2/pkg/slice/parser"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/format/parser/skyrim"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/slice/persona"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/slice/terminology"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/slice/translator"
 )
 
 // ToTermTranslatorInput maps ParserOutput to TerminologyInput.
-func ToTermTranslatorInput(out *parser.ParserOutput) terminology.TerminologyInput {
+func ToTermTranslatorInput(out *skyrim.ParserOutput) terminology.TerminologyInput {
 	input := terminology.TerminologyInput{
 		NPCs:      make(map[string]terminology.TermNPC),
 		Items:     make([]terminology.TermItem, len(out.Items)),
@@ -57,7 +57,7 @@ func ToTermTranslatorInput(out *parser.ParserOutput) terminology.TerminologyInpu
 }
 
 // ToPersonaGenInput maps ParserOutput to PersonaGenInput.
-func ToPersonaGenInput(out *parser.ParserOutput) persona.PersonaGenInput {
+func ToPersonaGenInput(out *skyrim.ParserOutput) persona.PersonaGenInput {
 	input := persona.PersonaGenInput{
 		NPCs: make(map[string]persona.PersonaNPC),
 	}
@@ -111,7 +111,7 @@ func derefString(v *string) string {
 }
 
 // ToTranslatorInput maps ParserOutput to TranslatorInput.
-func ToTranslatorInput(out *parser.ParserOutput) translator.TranslatorInput {
+func ToTranslatorInput(out *skyrim.ParserOutput) translator.TranslatorInput {
 	input := translator.TranslatorInput{
 		GameData: translator.ContextEngineInput{
 			NPCs: make(map[string]translator.ContextNPC),

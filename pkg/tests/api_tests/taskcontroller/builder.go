@@ -1,0 +1,75 @@
+package taskcontroller
+
+import (
+	"context"
+	"fmt"
+	"testing"
+
+	"github.com/ishibata91/ai-translation-engine-2/pkg/tests/api_tests/testenv"
+	task "github.com/ishibata91/ai-translation-engine-2/pkg/workflow/task"
+)
+
+// Env bundles task controller test dependencies.
+type Env struct {
+	Manager *FakeManager
+	Store   *FakeStore
+	TestEnv *testenv.Env
+}
+
+// FakeStore stubs task store behavior.
+type FakeStore struct {
+	LastCtx context.Context
+	Tasks   []task.Task
+	Err     error
+}
+
+func (s *FakeStore) GetAllTasks(ctx context.Context) ([]task.Task, error) {
+	s.LastCtx = ctx
+	return s.Tasks, s.Err
+}
+
+// FakeManager stubs task manager behavior.
+type FakeManager struct {
+	StoreRef     *FakeStore
+	ActiveTasks  []task.Task
+	ResumeTaskID string
+	ResumeErr    error
+	CancelTaskID string
+}
+
+func (m *FakeManager) GetActiveTasks() []task.Task {
+	return m.ActiveTasks
+}
+
+func (m *FakeManager) Store() *FakeStore {
+	return m.StoreRef
+}
+
+func (m *FakeManager) GetAllTasks(ctx context.Context) ([]task.Task, error) {
+	return m.StoreRef.GetAllTasks(ctx)
+}
+
+func (m *FakeManager) ResumeTask(taskID string) error {
+	m.ResumeTaskID = taskID
+	return m.ResumeErr
+}
+
+func (m *FakeManager) CancelTask(taskID string) {
+	m.CancelTaskID = taskID
+}
+
+// Build creates task controller dependencies on shared testenv.
+func Build(t *testing.T, name string) *Env {
+	t.Helper()
+	base := testenv.NewFileSQLiteEnv(t, name)
+	store := &FakeStore{}
+	return &Env{Manager: &FakeManager{StoreRef: store}, Store: store, TestEnv: base}
+}
+
+// String returns a short summary useful in failures.
+func (e *Env) String() string {
+	if e == nil || e.TestEnv == nil {
+		return "<nil taskcontroller env>"
+	}
+	return fmt.Sprintf("db=%s trace_id=%s", e.TestEnv.DBPath, testenv.TraceIDValue(e.TestEnv.Ctx))
+}

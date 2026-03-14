@@ -6,14 +6,21 @@ import (
 	task2 "github.com/ishibata91/ai-translation-engine-2/pkg/workflow/task"
 )
 
+type taskManager interface {
+	GetActiveTasks() []task2.Task
+	GetAllTasks(ctx context.Context) ([]task2.Task, error)
+	ResumeTask(taskID string) error
+	CancelTask(taskID string)
+}
+
 // TaskController exposes generic Wails-facing task operations.
 type TaskController struct {
 	ctx     context.Context
-	manager *task2.Manager
+	manager taskManager
 }
 
 // NewTaskController constructs the task controller adapter.
-func NewTaskController(manager *task2.Manager) *TaskController {
+func NewTaskController(manager taskManager) *TaskController {
 	return &TaskController{
 		ctx:     context.Background(),
 		manager: manager,
@@ -36,7 +43,7 @@ func (c *TaskController) GetActiveTasks() []task2.Task {
 
 // GetAllTasks loads all persisted tasks.
 func (c *TaskController) GetAllTasks() ([]task2.Task, error) {
-	return c.manager.Store().GetAllTasks(c.ctx)
+	return c.manager.GetAllTasks(c.ctx)
 }
 
 // ResumeTask resumes a generic task through task manager.

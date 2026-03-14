@@ -103,13 +103,13 @@ graph TD
 
 現在の spec:
 
-- `parser/spec.md`
-- `parser/parser_test_spec.md`
-- `parser/EncodingDetection/spec.md`
-- `parser/LoadExtractedJSON/spec.md`
-- `parser/ParallelParsing/spec.md`
-- `parser/data_loader/spec.md`
-- `parser/data_loader/data_schema_test_spec.md`
+- `format/parser/spec.md`
+- `format/parser/parser_test_spec.md`
+- `format/parser/EncodingDetection/spec.md`
+- `format/parser/LoadExtractedJSON/spec.md`
+- `format/parser/ParallelParsing/spec.md`
+- `format/parser/data_loader/spec.md`
+- `format/parser/data_loader/data_schema_test_spec.md`
 - `dictionary/spec.md`
 - `dictionary/dictionary_test_spec.md`
 - `dictionary/cross-source-search.md`
@@ -121,8 +121,8 @@ graph TD
 - `terminology/terminology_test_spec.md`
 - `translator/spec.md`
 - `translator/main_translator_test_spec.md`
-- `export/spec.md`
-- `export/export_test_spec.md`
+- `format/export/spec.md`
+- `format/export/export_test_spec.md`
 - `modelcatalog/spec.md`
 
 ### 5. `runtime`
@@ -183,7 +183,7 @@ graph TD
 
 現状の棚卸しでは、以下の混在を解消対象とする。
 
-- `dictionary/spec.md`, `persona/spec.md`, `summary/spec.md`, `terminology/spec.md`, `translator/spec.md`, `export/spec.md`, `parser/spec.md` および派生 spec に、テスト設計とログ運用の共通規約が重複している
+- `dictionary/spec.md`, `persona/spec.md`, `summary/spec.md`, `terminology/spec.md`, `translator/spec.md`, `format/export/spec.md`, `format/parser/spec.md` および派生 spec に、テスト設計とログ運用の共通規約が重複している
 - `queue/spec.md`, `progress/spec.md`, `telemetry/spec.md` など runtime 系 spec に、ユースケース非依存の運用規約が散在している
 - `master-persona-ui/spec.md`, `dictionary-builder-ui/spec.md`, `wails-app-shell/spec.md`, `frontend-headless-architecture/spec.md` など UI / フロント構造の要件と、ユースケース固有要件の参照境界が不明瞭である
 - `architecture.md` を品質ゲートやログ規約の参照元として扱う記述が残り、構造文書としての責務が曖昧になっている

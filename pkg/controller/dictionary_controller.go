@@ -7,14 +7,25 @@ import (
 	dictionary2 "github.com/ishibata91/ai-translation-engine-2/pkg/slice/dictionary"
 )
 
+type dictionaryService interface {
+	GetSources(ctx context.Context) ([]dictionary2.DictSource, error)
+	DeleteSource(ctx context.Context, id int64) error
+	GetEntries(ctx context.Context, sourceID int64) ([]dictionary2.DictTerm, error)
+	GetEntriesPaginated(ctx context.Context, sourceID int64, query string, filters map[string]string, page, pageSize int) (*dictionary2.DictTermPage, error)
+	SearchAll(ctx context.Context, query string, filters map[string]string, page, pageSize int) (*dictionary2.DictTermPage, error)
+	UpdateEntry(ctx context.Context, term dictionary2.DictTerm) error
+	DeleteEntry(ctx context.Context, id int64) error
+	StartImport(ctx context.Context, filePath string) (int64, error)
+}
+
 // DictionaryController exposes Wails-facing dictionary operations.
 type DictionaryController struct {
 	ctx     context.Context
-	service *dictionary2.DictionaryService
+	service dictionaryService
 }
 
 // NewDictionaryController constructs the dictionary controller adapter.
-func NewDictionaryController(service *dictionary2.DictionaryService) *DictionaryController {
+func NewDictionaryController(service dictionaryService) *DictionaryController {
 	return &DictionaryController{
 		ctx:     context.Background(),
 		service: service,
