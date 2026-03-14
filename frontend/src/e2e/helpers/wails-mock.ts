@@ -19,7 +19,7 @@ export async function installWailsMocks(page: Page): Promise<void> {
 
     const personaTaskController = {
       GetAllTasks: async () => [],
-      GetTaskRequestState: async () => ({ total: 0, completed: 0 }),
+      GetTaskRequestState: async () => ({total: 0, completed: 0}),
       GetTaskRequests: async () => [],
       StartMasterPersonTask: async () => 'persona-task-e2e',
       ResumeMasterPersonaTask: async () => undefined,
@@ -43,6 +43,23 @@ export async function installWailsMocks(page: Page): Promise<void> {
       ConfigDelete: async () => undefined,
       ConfigGetAll: async () => ({}),
       ConfigSetMany: async () => undefined,
+      SetContext: async () => undefined,
+    };
+
+    const dictionaryController = {
+      DictDeleteEntry: async () => undefined,
+      DictDeleteSource: async () => undefined,
+      DictGetEntries: async () => [],
+      DictGetEntriesPaginated: async () => ({entries: [], totalCount: 0}),
+      DictGetSources: async () => [],
+      DictSearchAllEntriesPaginated: async () => ({entries: [], totalCount: 0}),
+      DictStartImport: async () => 'dictionary-task-e2e',
+      DictUpdateEntry: async () => undefined,
+      SetContext: async () => undefined,
+    };
+
+    const fileDialogController = {
+      SelectFiles: async () => [],
       SetContext: async () => undefined,
     };
 
@@ -75,6 +92,14 @@ export async function installWailsMocks(page: Page): Promise<void> {
     win.go.controller.ConfigController = {
       ...configController,
       ...(win.go.controller.ConfigController as Record<string, unknown> | undefined),
+    };
+    win.go.controller.DictionaryController = {
+      ...dictionaryController,
+      ...(win.go.controller.DictionaryController as Record<string, unknown> | undefined),
+    };
+    win.go.controller.FileDialogController = {
+      ...fileDialogController,
+      ...(win.go.controller.FileDialogController as Record<string, unknown> | undefined),
     };
   });
 }
