@@ -15,15 +15,15 @@ export const MASTER_PERSONA_PROVIDERS = ['lmstudio', 'gemini', 'xai'] as const;
 const FALLBACK_MODEL_OPTIONS: Record<MasterPersonaProvider, MasterPersonaModelOption[]> = {
     lmstudio: [{ id: '(model-unavailable)', label: '(モデルを取得できませんでした)', capability: { supportsBatch: false } }],
     gemini: [
-        { id: 'gemini-2.0-flash', label: 'gemini-2.0-flash', capability: { supportsBatch: false } },
-        { id: 'gemini-2.0-pro', label: 'gemini-2.0-pro', capability: { supportsBatch: false } },
-        { id: 'gemini-1.5-pro', label: 'gemini-1.5-pro', capability: { supportsBatch: false } },
-        { id: 'gemini-1.5-flash', label: 'gemini-1.5-flash', capability: { supportsBatch: false } },
+        { id: 'gemini-2.0-flash', label: 'gemini-2.0-flash', capability: { supportsBatch: true } },
+        { id: 'gemini-2.0-pro', label: 'gemini-2.0-pro', capability: { supportsBatch: true } },
+        { id: 'gemini-1.5-pro', label: 'gemini-1.5-pro', capability: { supportsBatch: true } },
+        { id: 'gemini-1.5-flash', label: 'gemini-1.5-flash', capability: { supportsBatch: true } },
     ],
     xai: [
-        { id: 'grok-3', label: 'grok-3', capability: { supportsBatch: false } },
-        { id: 'grok-3-mini', label: 'grok-3-mini', capability: { supportsBatch: false } },
-        { id: 'grok-2', label: 'grok-2', capability: { supportsBatch: false } },
+        { id: 'grok-3', label: 'grok-3', capability: { supportsBatch: true } },
+        { id: 'grok-3-mini', label: 'grok-3-mini', capability: { supportsBatch: true } },
+        { id: 'grok-2', label: 'grok-2', capability: { supportsBatch: true } },
     ],
 };
 
@@ -51,6 +51,7 @@ const modelOptionSchema = z.object({
 const modelOptionListSchema = z.array(modelOptionSchema);
 
 const DEFAULT_MODEL_CAPABILITY: MasterPersonaModelCapability = { supportsBatch: false };
+const DEFAULT_CLOUD_MODEL_CAPABILITY: MasterPersonaModelCapability = { supportsBatch: true };
 
 interface UseModelSettingsArgs {
     value: MasterPersonaLLMConfig;
@@ -95,7 +96,11 @@ const resolveModelCapability = (
     if (byID) {
         return byID.capability;
     }
-    return DEFAULT_MODEL_CAPABILITY;
+    if (provider === 'lmstudio') {
+        return DEFAULT_MODEL_CAPABILITY;
+    }
+    // Cloud provider capability may be unknown when catalog fetch fails.
+    return DEFAULT_CLOUD_MODEL_CAPABILITY;
 };
 
 /**
@@ -127,10 +132,18 @@ export function useModelSettings({ value, onChange, enabled, namespace }: UseMod
             return modelOptions;
         }
         if (currentModel.trim() !== '') {
-            return [{ id: currentModel, label: currentModel, capability: DEFAULT_MODEL_CAPABILITY }];
+            return [{
+                id: currentModel,
+                label: currentModel,
+                capability: resolveModelCapability(provider, currentModel, dynamicOptionsByProvider),
+            }];
         }
-        return [{ id: '(model-unavailable)', label: '(モデルを取得できませんでした)', capability: DEFAULT_MODEL_CAPABILITY }];
-    }, [currentModel, modelOptions]);
+        return [{
+            id: '(model-unavailable)',
+            label: '(モデルを取得できませんでした)',
+            capability: provider === 'lmstudio' ? DEFAULT_MODEL_CAPABILITY : DEFAULT_CLOUD_MODEL_CAPABILITY,
+        }];
+    }, [currentModel, dynamicOptionsByProvider, modelOptions, provider]);
 
     const selectedModelValue = useMemo(() => {
         if (selectableModelOptions.some((option) => option.id === currentModel)) {

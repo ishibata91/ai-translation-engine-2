@@ -74,6 +74,7 @@ export default function MasterPersona() {
         llmConfig,
         setLLMConfig,
         isLLMConfigHydrated,
+        isModelSettingsLocked,
         promptConfig,
         setPromptConfig,
         isPromptConfigHydrated,
@@ -194,6 +195,7 @@ export default function MasterPersona() {
                         onChange={setLLMConfig}
                         enabled={isLLMConfigHydrated}
                         namespace={providerNamespace(llmConfig.provider)}
+                        locked={isModelSettingsLocked}
                     />
                 ) : (
                     <div className="card bg-base-100 border border-base-200 shadow-sm">

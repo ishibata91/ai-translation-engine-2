@@ -305,9 +305,10 @@ func parseGeminiBatchStatus(body []byte, batchName string) (BatchStatus, error) 
 	requestCount := parseGeminiInt(stats.RequestCount)
 	successCount := parseGeminiInt(stats.SuccessfulRequestCount)
 	failedCount := parseGeminiInt(stats.FailedRequestCount)
+	pendingCount := parseGeminiInt(stats.PendingRequestCount)
 
 	normalizedState := normalizeGeminiBatchState(state, failedCount, raw.Done, raw.Error != nil)
-	progress := computeGeminiBatchProgress(normalizedState, requestCount, successCount, failedCount)
+	progress := computeGeminiBatchProgress(normalizedState, requestCount, successCount, failedCount, pendingCount)
 
 	return BatchStatus{
 		ID:       batchName,
@@ -406,9 +407,24 @@ func normalizeGeminiBatchState(rawState string, failedCount int, done bool, hasE
 	return BatchStateRunning
 }
 
-func computeGeminiBatchProgress(state BatchState, total, successful, failed int) float32 {
+func computeGeminiBatchProgress(state BatchState, total, successful, failed, pending int) float32 {
 	if total > 0 {
 		completedLike := successful + failed
+
+		// v1main payloads may omit successful/failed counts while pending decreases.
+		if pending >= 0 && pending <= total {
+			completedFromPending := total - pending
+			if completedFromPending > completedLike {
+				completedLike = completedFromPending
+			}
+		}
+		if pending == 0 {
+			switch state {
+			case BatchStateCompleted, BatchStatePartialFailed, BatchStateFailed, BatchStateCancelled:
+				completedLike = total
+			}
+		}
+
 		if completedLike < 0 {
 			completedLike = 0
 		}

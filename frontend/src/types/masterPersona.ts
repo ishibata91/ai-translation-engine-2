@@ -52,10 +52,6 @@ The user message will contain:
 Use the User Request as the variable instruction, then analyze the NPC Profile and Dialogue History.
 Generate a concise persona summary.
 Your response MUST be formatted strictly as: TL: |...|
-Inside the pipes, include these sections in plain text:
-- Personality Traits: ...
-- Speaking Habits: ...
-- Background: ...
 
 Keep the total response under 150 words and do not add extra conversational filler.`,
 };

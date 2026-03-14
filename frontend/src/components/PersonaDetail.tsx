@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import type { NpcRow } from '../types/npc';
+import React, {useState} from 'react';
+import type {NpcRow} from '../types/npc';
 
 export type DetailTab = 'persona' | 'dialogues' | 'request' | 'meta';
 
@@ -19,7 +19,7 @@ const PersonaDetail: React.FC<PersonaDetailProps> = ({ npc }) => {
     }
 
     return (
-        <div className="flex flex-col gap-4 h-full bg-base-100 border border-base-200 rounded-xl p-4 overflow-y-auto">
+        <div className="flex flex-col gap-4 h-full w-full bg-base-100 border border-base-200 rounded-xl p-4 overflow-y-auto">
             {/* ヘッダー */}
             <div className="shrink-0 flex justify-between items-start border-b pb-2">
                 <div>
@@ -28,19 +28,19 @@ const PersonaDetail: React.FC<PersonaDetailProps> = ({ npc }) => {
             </div>
 
             {/* タブナビゲーション */}
-            <div className="tabs tabs-boxed bg-base-200 w-fit shrink-0">
-                <a className={`tab ${detailTab === 'persona' ? 'tab-active' : ''}`} onClick={() => setDetailTab('persona')}>ペルソナ</a>
-                <a className={`tab ${detailTab === 'dialogues' ? 'tab-active' : ''}`} onClick={() => setDetailTab('dialogues')}>セリフ一覧</a>
-                <a className={`tab ${detailTab === 'request' ? 'tab-active' : ''}`} onClick={() => setDetailTab('request')}>生成リクエスト</a>
-                <a className={`tab ${detailTab === 'meta' ? 'tab-active' : ''}`} onClick={() => setDetailTab('meta')}>メタ情報</a>
+            <div className="tabs tabs-boxed bg-base-200 w-full shrink-0">
+                <a className={`tab flex-1 ${detailTab === 'persona' ? 'tab-active' : ''}`} onClick={() => setDetailTab('persona')}>ペルソナ</a>
+                <a className={`tab flex-1 ${detailTab === 'dialogues' ? 'tab-active' : ''}`} onClick={() => setDetailTab('dialogues')}>セリフ一覧</a>
+                <a className={`tab flex-1 ${detailTab === 'request' ? 'tab-active' : ''}`} onClick={() => setDetailTab('request')}>生成リクエスト</a>
+                <a className={`tab flex-1 ${detailTab === 'meta' ? 'tab-active' : ''}`} onClick={() => setDetailTab('meta')}>メタ情報</a>
             </div>
 
             {/* ペルソナタブ */}
             {detailTab === 'persona' && (
-                <div className="form-control flex-1 flex flex-col min-h-0 gap-2">
+                <div className="form-control flex-1 flex flex-col min-h-0 gap-2 w-full">
                     <label className="label"><span className="label-text font-bold">生成されたペルソナ情報 (プロンプト動的注入用)</span></label>
                     <textarea
-                        className="textarea textarea-bordered flex-1 text-base leading-relaxed"
+                        className="textarea textarea-bordered flex-1 text-base leading-relaxed w-full"
                         value={npc.personaText}
                         readOnly
                     />

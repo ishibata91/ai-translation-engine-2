@@ -1,6 +1,9 @@
 package llm
 
-import "testing"
+import (
+	"math"
+	"testing"
+)
 
 func TestParseGeminiBatchStatus_Normalization(t *testing.T) {
 	tests := []struct {
@@ -103,6 +106,51 @@ func TestParseGeminiBatchResults_InlinedResponses(t *testing.T) {
 	}
 }
 
+func TestParseGeminiBatchStatus_MetadataPayload(t *testing.T) {
+	body := `{
+		"name": "batches/zyy9gq671p0n1rme102glbhi6b2jgey1lm2u",
+		"metadata": {
+			"@type": "type.googleapis.com/google.ai.generativelanguage.v1main.GenerateContentBatch",
+			"model": "models/gemini-3.1-flash-lite-preview",
+			"displayName": "batch-1773512289",
+			"createTime": "2026-03-14T18:18:10.082996104Z",
+			"updateTime": "2026-03-14T18:18:10.082996104Z",
+			"batchStats": {
+				"requestCount": "31",
+				"pendingRequestCount": "31"
+			},
+			"state": "BATCH_STATE_PENDING",
+			"name": "batches/zyy9gq671p0n1rme102glbhi6b2jgey1lm2u"
+		}
+	}`
+
+	status, err := parseGeminiBatchStatus([]byte(body), "batches/zyy9gq671p0n1rme102glbhi6b2jgey1lm2u")
+	if err != nil {
+		t.Fatalf("parseGeminiBatchStatus error: %v", err)
+	}
+	if status.State != BatchStateQueued {
+		t.Fatalf("state = %q, want %q", status.State, BatchStateQueued)
+	}
+	if !almostEqualFloat32(status.Progress, 0) {
+		t.Fatalf("progress = %v, want 0", status.Progress)
+	}
+}
+
+func TestParseGeminiBatchStatus_ProgressFromPendingCount(t *testing.T) {
+	body := `{"metadata":{"state":"BATCH_STATE_RUNNING","batchStats":{"requestCount":"10","pendingRequestCount":"4"}}}`
+
+	status, err := parseGeminiBatchStatus([]byte(body), "batches/test-2")
+	if err != nil {
+		t.Fatalf("parseGeminiBatchStatus error: %v", err)
+	}
+	if status.State != BatchStateRunning {
+		t.Fatalf("state = %q, want %q", status.State, BatchStateRunning)
+	}
+	if !almostEqualFloat32(status.Progress, 0.6) {
+		t.Fatalf("progress = %v, want 0.6", status.Progress)
+	}
+}
+
 func TestExtractGeminiBatchName(t *testing.T) {
 	body := []byte(`{"response":{"name":"batches/batch-123"}}`)
 	id, err := extractGeminiBatchName(body)
@@ -112,4 +160,9 @@ func TestExtractGeminiBatchName(t *testing.T) {
 	if id != "batches/batch-123" {
 		t.Fatalf("id = %q, want %q", id, "batches/batch-123")
 	}
+}
+
+func almostEqualFloat32(a, b float32) bool {
+	const epsilon = 0.0001
+	return math.Abs(float64(a-b)) < epsilon
 }

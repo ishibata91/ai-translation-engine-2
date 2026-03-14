@@ -93,6 +93,7 @@ export function useMasterPersona() {
     const [promptConfig, setPromptConfig] = useState<MasterPersonaPromptConfig>(DEFAULT_MASTER_PERSONA_PROMPT_CONFIG);
     const [isPromptConfigHydrated, setIsPromptConfigHydrated] = useState<boolean>(false);
     const executionProfile = llmConfig.bulkStrategy;
+    const isModelSettingsLocked = Boolean(activeTaskId) && activeTaskStatus !== null && activeTaskStatus !== 'completed' && activeTaskStatus !== 'failed' && activeTaskStatus !== 'cancelled';
     const lastSavedLLMConfigRef = useRef<Partial<Record<MasterPersonaLLMConfig['provider'], MasterPersonaLLMConfig>>>({});
     const latestLLMConfigRef = useRef<MasterPersonaLLMConfig>(DEFAULT_MASTER_PERSONA_LLM_CONFIG);
     const lastSavedPromptConfigRef = useRef<MasterPersonaPromptConfig>(DEFAULT_MASTER_PERSONA_PROMPT_CONFIG);
@@ -397,7 +398,10 @@ export function useMasterPersona() {
                 syncConcurrencyKey(current.provider),
                 String(current.syncConcurrency),
             );
-        const persistAll = Promise.all([persistProvider, persistSyncConcurrency]).then(() => {
+        const persistRootBulkStrategy = previous?.bulkStrategy === current.bulkStrategy
+            ? Promise.resolve()
+            : ConfigSet(MASTER_PERSONA_LLM_NAMESPACE, 'bulk_strategy', current.bulkStrategy);
+        const persistAll = Promise.all([persistProvider, persistSyncConcurrency, persistRootBulkStrategy]).then(() => {
             lastSavedLLMConfigRef.current[current.provider] = current;
         });
 
@@ -909,6 +913,7 @@ export function useMasterPersona() {
         isPromptConfigHydrated,
         executionProfile,
         setExecutionProfile,
+        isModelSettingsLocked,
         pluginOptions,
         filteredNpcData,
         pagedNpcData,

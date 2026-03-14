@@ -25,6 +25,7 @@ interface Props {
     onChange: (next: MasterPersonaLLMConfig) => void;
     enabled?: boolean;
     namespace: string;
+    locked?: boolean;
 }
 
 /**
@@ -40,7 +41,7 @@ interface Props {
  * @param props.enabled - モデル一覧取得の有効/無効
  * @param props.namespace - モデル設定の名前空間
  */
-const ModelSettings: React.FC<Props> = ({ title = 'モデル設定', value, onChange, enabled = true, namespace }) => {
+const ModelSettings: React.FC<Props> = ({ title = 'モデル設定', value, onChange, enabled = true, namespace, locked = false }) => {
     const [draftTemperature, setDraftTemperature] = useState<number>(value.temperature);
     const [draftEndpoint, setDraftEndpoint] = useState<string>(value.endpoint);
     const [draftApiKey, setDraftApiKey] = useState<string>(value.apiKey);
@@ -50,6 +51,7 @@ const ModelSettings: React.FC<Props> = ({ title = 'モデル設定', value, onCh
     const debounceTimerRef = useRef<number | null>(null);
 
     const isLMStudio = value.provider === 'lmstudio';
+    const controlsDisabled = locked;
     const {
         availableExecutionProfiles,
         catalogError,
@@ -113,6 +115,12 @@ const ModelSettings: React.FC<Props> = ({ title = 'モデル設定', value, onCh
             </summary>
             <div className="collapse-content pt-4">
                 <div className="flex flex-col gap-6">
+                    {controlsDisabled && (
+                        <div className="alert alert-warning py-2 text-sm">
+                            <span>再開対象タスクがあるため、モデル設定は固定されています。</span>
+                        </div>
+                    )}
+
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                         <div className="flex flex-col gap-1">
                             <label className="label pb-0">
@@ -122,6 +130,7 @@ const ModelSettings: React.FC<Props> = ({ title = 'モデル設定', value, onCh
                                 className="select select-bordered select-sm w-full"
                                 value={value.provider}
                                 onChange={(e) => handleProviderChange(e.target.value)}
+                                disabled={controlsDisabled}
                             >
                                 {MASTER_PERSONA_PROVIDERS.map((p) => (
                                     <option key={p} value={p}>{PROVIDER_LABELS[p]}</option>
@@ -137,6 +146,7 @@ const ModelSettings: React.FC<Props> = ({ title = 'モデル設定', value, onCh
                                 className="select select-bordered select-sm w-full"
                                 value={selectedModelValue}
                                 onChange={(e) => onChange({ ...value, model: e.target.value })}
+                                disabled={controlsDisabled}
                             >
                                 {selectableModelOptions.map((m) => (
                                     <option key={m.id} value={m.id}>{m.label}</option>
@@ -155,7 +165,7 @@ const ModelSettings: React.FC<Props> = ({ title = 'モデル設定', value, onCh
                                 className="select select-bordered select-sm w-full"
                                 value={value.bulkStrategy}
                                 onChange={(e) => onChange({ ...value, bulkStrategy: e.target.value as MasterPersonaLLMConfig['bulkStrategy'] })}
-                                disabled={availableExecutionProfiles.length <= 1}
+                                disabled={controlsDisabled || availableExecutionProfiles.length <= 1}
                             >
                                 {availableExecutionProfiles.map((profile) => (
                                     <option key={profile} value={profile}>{EXECUTION_PROFILE_LABELS[profile]}</option>
@@ -181,6 +191,7 @@ const ModelSettings: React.FC<Props> = ({ title = 'モデル設定', value, onCh
                                 onMouseUp={commitTemperature}
                                 onTouchEnd={commitTemperature}
                                 onKeyUp={commitTemperature}
+                                disabled={controlsDisabled}
                             />
                         </div>
                         <span className={`text-xs ${selectedModelCapability.supportsBatch ? 'text-success' : 'text-base-content/70'}`}>
@@ -204,6 +215,7 @@ const ModelSettings: React.FC<Props> = ({ title = 'モデル設定', value, onCh
                                     setDraftEndpoint(e.target.value);
                                     debouncedOnChange({ endpoint: e.target.value });
                                 }}
+                                disabled={controlsDisabled}
                             />
                         </div>
                         {!isLMStudio && (
@@ -219,6 +231,7 @@ const ModelSettings: React.FC<Props> = ({ title = 'モデル設定', value, onCh
                                         setDraftApiKey(e.target.value);
                                         debouncedOnChange({ apiKey: e.target.value });
                                     }}
+                                    disabled={controlsDisabled}
                                 />
                             </div>
                         )}
@@ -237,6 +250,7 @@ const ModelSettings: React.FC<Props> = ({ title = 'モデル設定', value, onCh
                                             type="button"
                                             className={`btn btn-xs ${value.contextLength === preset.value ? 'btn-primary' : 'btn-outline'}`}
                                             onClick={() => onChange({ ...value, contextLength: preset.value })}
+                                            disabled={controlsDisabled}
                                         >
                                             {preset.label}
                                         </button>
@@ -254,6 +268,7 @@ const ModelSettings: React.FC<Props> = ({ title = 'モデル設定', value, onCh
                                         setDraftContextLength(newValue);
                                         debouncedOnChange({ contextLength: newValue });
                                     }}
+                                    disabled={controlsDisabled}
                                 />
                                 <span className="text-xs text-base-content/60">0 は LM Studio の既定値を使用</span>
                             </div>
@@ -280,6 +295,7 @@ const ModelSettings: React.FC<Props> = ({ title = 'モデル設定', value, onCh
                                         setDraftSyncConcurrency(newValue);
                                         debouncedOnChange({ syncConcurrency: newValue });
                                     }}
+                                    disabled={controlsDisabled}
                                 />
                                 <span className="text-xs text-base-content/60">1〜64 で調整</span>
                             </div>
