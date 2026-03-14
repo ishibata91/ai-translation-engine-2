@@ -3,24 +3,62 @@ import {
   DICTIONARY_BUILDER_ENTRIES_BY_SOURCE_ID,
   DICTIONARY_BUILDER_SOURCES,
 } from '../fixtures/dictionary-builder/mock-data';
+import {
+  MASTER_PERSONA_DIALOGUES_BY_PERSONA_ID,
+  MASTER_PERSONA_LLM_CONFIG_BY_NAMESPACE,
+  MASTER_PERSONA_LLM_ROOT_CONFIG,
+  MASTER_PERSONA_MODEL_CATALOG_BY_PROVIDER,
+  MASTER_PERSONA_PROMPT_CONFIG,
+  MASTER_PERSONA_REQUIRED_NPCS,
+  MASTER_PERSONA_SELECTED_JSON_PATH,
+  MASTER_PERSONA_STARTED_TASK_ID,
+} from '../fixtures/master-persona/mock-data';
 
 type DictionaryMockFixture = {
-  entriesBySourceId: Record<number, Array<Record<string, string | number>>>;
-  sources: Array<Record<string, string | number>>;
+  entriesBySourceId: Record<number, Array<Record<string, string | number | null>>>;
+  sources: Array<Record<string, string | number | null>>;
+};
+
+type MasterPersonaMockFixture = {
+  dialoguesByPersonaId: Record<number, Array<Record<string, string>>>;
+  llmConfigByNamespace: Record<string, Record<string, string>>;
+  llmRootConfig: Record<string, string>;
+  modelCatalogByProvider: Record<string, Array<{display_name: string; id: string}>>;
+  npcs: Array<Record<string, number | string>>;
+  promptConfig: Record<string, string>;
+  selectedJsonPath: string;
+  startedTaskId: string;
+};
+
+type WailsMockFixture = {
+  dictionary: DictionaryMockFixture;
+  masterPersona: MasterPersonaMockFixture;
 };
 
 export async function installWailsMocks(page: Page): Promise<void> {
-  const dictionaryFixture: DictionaryMockFixture = {
-    entriesBySourceId: DICTIONARY_BUILDER_ENTRIES_BY_SOURCE_ID,
-    sources: DICTIONARY_BUILDER_SOURCES,
+  const fixture: WailsMockFixture = {
+    dictionary: {
+      entriesBySourceId: DICTIONARY_BUILDER_ENTRIES_BY_SOURCE_ID,
+      sources: DICTIONARY_BUILDER_SOURCES,
+    },
+    masterPersona: {
+      dialoguesByPersonaId: MASTER_PERSONA_DIALOGUES_BY_PERSONA_ID,
+      llmConfigByNamespace: MASTER_PERSONA_LLM_CONFIG_BY_NAMESPACE,
+      llmRootConfig: MASTER_PERSONA_LLM_ROOT_CONFIG,
+      modelCatalogByProvider: MASTER_PERSONA_MODEL_CATALOG_BY_PROVIDER,
+      npcs: MASTER_PERSONA_REQUIRED_NPCS,
+      promptConfig: MASTER_PERSONA_PROMPT_CONFIG,
+      selectedJsonPath: MASTER_PERSONA_SELECTED_JSON_PATH,
+      startedTaskId: MASTER_PERSONA_STARTED_TASK_ID,
+    },
   };
 
-  await page.addInitScript((fixture: DictionaryMockFixture) => {
+  await page.addInitScript((mockFixture: WailsMockFixture) => {
     const toLowerText = (value: unknown): string =>
       String(value ?? '').toLowerCase();
 
     const paginateEntries = (
-      entries: Array<Record<string, string | number>>,
+      entries: Array<Record<string, string | number | null>>,
       pageNumber: number,
       pageSize: number,
     ) => {
@@ -36,9 +74,9 @@ export async function installWailsMocks(page: Page): Promise<void> {
     };
 
     const applyColumnFilters = (
-      entries: Array<Record<string, string | number>>,
+      entries: Array<Record<string, string | number | null>>,
       filters: Record<string, unknown>,
-    ): Array<Record<string, string | number>> =>
+    ): Array<Record<string, string | number | null>> =>
       entries.filter((entry) =>
         Object.entries(filters).every(([key, rawFilterValue]) => {
           const filterValue = toLowerText(rawFilterValue).trim();
@@ -50,7 +88,18 @@ export async function installWailsMocks(page: Page): Promise<void> {
         }),
       );
 
+    const configStore = new Map<string, Record<string, string>>();
+    configStore.set('master_persona.llm', {...mockFixture.masterPersona.llmRootConfig});
+    configStore.set('master_persona.prompt', {...mockFixture.masterPersona.promptConfig});
+
+    for (const [namespace, values] of Object.entries(mockFixture.masterPersona.llmConfigByNamespace)) {
+      configStore.set(namespace, {...values});
+    }
+
+    let personaTask: Record<string, unknown> | null = null;
+
     const runtime = {
+      EventsOn: () => () => undefined,
       EventsOnMultiple: () => () => undefined,
       EventsOff: () => undefined,
       EventsOffAll: () => undefined,
@@ -66,19 +115,51 @@ export async function installWailsMocks(page: Page): Promise<void> {
     };
 
     const personaTaskController = {
-      GetAllTasks: async () => [],
-      GetTaskRequestState: async () => ({total: 0, completed: 0}),
+      GetAllTasks: async () => (personaTask ? [personaTask] : []),
+      GetTaskRequestState: async () => ({total: 2, completed: 0}),
       GetTaskRequests: async () => [],
-      StartMasterPersonTask: async () => 'persona-task-e2e',
+      StartMasterPersonTask: async (payload: Record<string, unknown>) => {
+        personaTask = {
+          id: mockFixture.masterPersona.startedTaskId,
+          type: 'persona_extraction',
+          status: 'running',
+          progress: 0,
+          metadata: {
+            overwrite_existing: Boolean(payload.overwrite_existing),
+            request_count: 2,
+            resume_cursor: 0,
+            source_json_path: String(payload.source_json_path ?? ''),
+          },
+          updated_at: new Date().toISOString(),
+        };
+        return mockFixture.masterPersona.startedTaskId;
+      },
       ResumeMasterPersonaTask: async () => undefined,
-      ResumeTask: async () => undefined,
-      CancelTask: async () => undefined,
+      ResumeTask: async (taskID: string) => {
+        if (personaTask && personaTask.id === taskID) {
+          personaTask = {
+            ...personaTask,
+            status: 'running',
+            updated_at: new Date().toISOString(),
+          };
+        }
+      },
+      CancelTask: async (taskID: string) => {
+        if (personaTask && personaTask.id === taskID) {
+          personaTask = {
+            ...personaTask,
+            status: 'cancelled',
+            updated_at: new Date().toISOString(),
+          };
+        }
+      },
       SetContext: async () => undefined,
     };
 
     const personaController = {
-      ListNPCs: async () => [],
-      ListDialoguesByPersonaID: async () => [],
+      ListNPCs: async () => mockFixture.masterPersona.npcs,
+      ListDialoguesByPersonaID: async (personaID: number) =>
+        mockFixture.masterPersona.dialoguesByPersonaId[personaID] ?? [],
       SetContext: async () => undefined,
     };
 
@@ -86,11 +167,36 @@ export async function installWailsMocks(page: Page): Promise<void> {
       UIStateGetJSON: async () => '',
       UIStateSetJSON: async () => undefined,
       UIStateDelete: async () => undefined,
-      ConfigGet: async () => '',
-      ConfigSet: async () => undefined,
-      ConfigDelete: async () => undefined,
-      ConfigGetAll: async () => ({}),
-      ConfigSetMany: async () => undefined,
+      ConfigGet: async (namespace: string, key: string) => {
+        const namespaceStore = configStore.get(namespace) ?? {};
+        return namespaceStore[key] ?? '';
+      },
+      ConfigSet: async (namespace: string, key: string, value: string) => {
+        const namespaceStore = configStore.get(namespace) ?? {};
+        namespaceStore[key] = value;
+        configStore.set(namespace, namespaceStore);
+      },
+      ConfigDelete: async (namespace: string, key: string) => {
+        const namespaceStore = configStore.get(namespace) ?? {};
+        delete namespaceStore[key];
+        configStore.set(namespace, namespaceStore);
+      },
+      ConfigGetAll: async (namespace: string) => ({...(configStore.get(namespace) ?? {})}),
+      ConfigSetMany: async (namespace: string, values: Record<string, string>) => {
+        const namespaceStore = configStore.get(namespace) ?? {};
+        configStore.set(namespace, {
+          ...namespaceStore,
+          ...values,
+        });
+      },
+      SetContext: async () => undefined,
+    };
+
+    const modelCatalogController = {
+      ListModels: async (request: Record<string, unknown>) => {
+        const provider = String(request.provider ?? '');
+        return mockFixture.masterPersona.modelCatalogByProvider[provider] ?? [];
+      },
       SetContext: async () => undefined,
     };
 
@@ -105,11 +211,11 @@ export async function installWailsMocks(page: Page): Promise<void> {
         pageNumber: number,
         pageSize: number,
       ) => {
-        const baseEntries = fixture.entriesBySourceId[sourceId] ?? [];
+        const baseEntries = mockFixture.dictionary.entriesBySourceId[sourceId] ?? [];
         const filteredEntries = applyColumnFilters(baseEntries, filters ?? {});
         return paginateEntries(filteredEntries, pageNumber, pageSize);
       },
-      DictGetSources: async () => fixture.sources,
+      DictGetSources: async () => mockFixture.dictionary.sources,
       DictSearchAllEntriesPaginated: async (
         query: string,
         filters: Record<string, unknown>,
@@ -117,7 +223,7 @@ export async function installWailsMocks(page: Page): Promise<void> {
         pageSize: number,
       ) => {
         const normalizedQuery = toLowerText(query).trim();
-        const allEntries = Object.values(fixture.entriesBySourceId).flat();
+        const allEntries = Object.values(mockFixture.dictionary.entriesBySourceId).flat();
         const queryMatchedEntries = normalizedQuery.length === 0
           ? allEntries
           : allEntries.filter((entry) =>
@@ -135,6 +241,7 @@ export async function installWailsMocks(page: Page): Promise<void> {
 
     const fileDialogController = {
       SelectFiles: async () => [],
+      SelectJSONFile: async () => mockFixture.masterPersona.selectedJsonPath,
       SetContext: async () => undefined,
     };
 
@@ -168,6 +275,10 @@ export async function installWailsMocks(page: Page): Promise<void> {
       ...configController,
       ...(win.go.controller.ConfigController as Record<string, unknown> | undefined),
     };
+    win.go.controller.ModelCatalogController = {
+      ...modelCatalogController,
+      ...(win.go.controller.ModelCatalogController as Record<string, unknown> | undefined),
+    };
     win.go.controller.DictionaryController = {
       ...dictionaryController,
       ...(win.go.controller.DictionaryController as Record<string, unknown> | undefined),
@@ -176,5 +287,5 @@ export async function installWailsMocks(page: Page): Promise<void> {
       ...fileDialogController,
       ...(win.go.controller.FileDialogController as Record<string, unknown> | undefined),
     };
-  }, dictionaryFixture);
+  }, fixture);
 }

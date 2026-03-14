@@ -8,7 +8,7 @@
 build/
 .codex
 ./
-
+frontend/test-results
 # Wails build artifacts
 build/bin/
 
