@@ -92,7 +92,7 @@ graph TD
 現在の spec:
 
 - `pipeline/spec.md`
-- `master-persona-lmstudio-resume-flow/spec.md`
+- `workflow/master-persona-execution-flow/spec.md`
 
 ### 4. `usecase-slice`
 

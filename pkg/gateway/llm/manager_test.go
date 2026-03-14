@@ -63,6 +63,22 @@ func TestLLMManager_GetClient(t *testing.T) {
 	}
 }
 
+func TestLLMManager_ResolveBulkStrategy(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	manager := NewLLMManager(logger)
+	ctx := context.Background()
+
+	if got := manager.ResolveBulkStrategy(ctx, BulkStrategyBatch, "lmstudio"); got != BulkStrategySync {
+		t.Fatalf("lmstudio batch must fallback to sync: got=%s", got)
+	}
+	if got := manager.ResolveBulkStrategy(ctx, BulkStrategyBatch, "gemini"); got != BulkStrategyBatch {
+		t.Fatalf("gemini batch should stay batch: got=%s", got)
+	}
+	if got := manager.ResolveBulkStrategy(ctx, BulkStrategy(""), "xai"); got != BulkStrategySync {
+		t.Fatalf("empty strategy must default to sync: got=%s", got)
+	}
+}
+
 func TestLLMManager_GetBatchClient(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	manager := NewLLMManager(logger)
@@ -73,6 +89,11 @@ func TestLLMManager_GetBatchClient(t *testing.T) {
 		config  LLMConfig
 		wantErr bool
 	}{
+		{
+			name:    "正常系: Gemini BatchClient が返る",
+			config:  LLMConfig{Provider: "gemini", APIKey: "test-key", Model: "gemini-2.0-flash"},
+			wantErr: false,
+		},
 		{
 			name:    "正常系: xAI BatchClient (grok-3) が返る",
 			config:  LLMConfig{Provider: "xai", APIKey: "test-key", Model: "grok-3"},

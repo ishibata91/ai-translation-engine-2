@@ -38,9 +38,11 @@ type Worker struct {
 
 // ProcessHooks allows callers to observe progress boundaries while processing one process/task.
 type ProcessHooks struct {
-	OnDispatch func(current int, total int)
-	OnSaving   func(current int, total int)
-	OnComplete func(completed int, total int, failed int)
+	OnDispatch       func(current int, total int)
+	OnSaving         func(current int, total int)
+	OnComplete       func(completed int, total int, failed int)
+	OnBatchSubmitted func(batchJobID string, reconnected bool)
+	OnBatchPolling   func(state string, progress float32)
 }
 
 // ProcessOptions customizes worker execution without introducing slice-specific logic.
@@ -57,6 +59,14 @@ type ConfigReadOptions struct {
 	Namespace           string
 	DefaultProvider     string
 	SelectedProviderKey string
+}
+
+// ExecutionProfile is the resolved runtime execution mode for one process.
+type ExecutionProfile struct {
+	Provider              string
+	Model                 string
+	RequestedBulkStrategy gatewayllm.BulkStrategy
+	BulkStrategy          gatewayllm.BulkStrategy
 }
 
 // NewWorker initializes a new Worker.
@@ -118,13 +128,12 @@ func (w *Worker) ProcessProcessIDWithOptions(ctx context.Context, processID stri
 	}
 
 	cfgNamespace := resolveConfigNamespace(opts)
-	strategyStr := w.getConfigString(ctx, cfgNamespace, gatewayllm.LLMBulkStrategyKey, string(gatewayllm.BulkStrategySync))
-	strategy := w.llmManager.ResolveBulkStrategy(ctx, gatewayllm.BulkStrategy(strategyStr), llmConfig.Provider)
+	strategy := w.resolveBulkStrategy(ctx, cfgNamespace, llmConfig.Provider)
 
 	if strategy == gatewayllm.BulkStrategySync {
 		err = w.processSync(ctx, processID, llmConfig, opts)
 	} else {
-		err = w.processBatch(ctx, processID, llmConfig)
+		err = w.processBatch(ctx, processID, llmConfig, opts)
 	}
 
 	w.logger.DebugContext(ctx, "EXIT ProcessProcessID", slog.String("process_id", processID), slog.Any("error", err))
@@ -132,6 +141,38 @@ func (w *Worker) ProcessProcessIDWithOptions(ctx context.Context, processID stri
 		return fmt.Errorf("process queue jobs process_id=%s: %w", processID, err)
 	}
 	return nil
+}
+
+// ResolveExecutionProfile resolves provider/model/strategy for one execution attempt.
+func (w *Worker) ResolveExecutionProfile(ctx context.Context, opts ProcessOptions) (ExecutionProfile, error) {
+	llmConfig, err := w.fetchLLMConfig(ctx, opts)
+	if err != nil {
+		return ExecutionProfile{}, fmt.Errorf("resolve execution profile fetch config: %w", err)
+	}
+
+	ns := resolveConfigNamespace(opts)
+	requested := w.resolveConfiguredBulkStrategy(ctx, ns, llmConfig.Provider)
+	resolved := w.llmManager.ResolveBulkStrategy(ctx, requested, llmConfig.Provider)
+
+	return ExecutionProfile{
+		Provider:              llmConfig.Provider,
+		Model:                 llmConfig.Model,
+		RequestedBulkStrategy: requested,
+		BulkStrategy:          resolved,
+	}, nil
+}
+
+// ValidateExecutionProfile validates unsupported profile combinations before runtime execution.
+func (w *Worker) ValidateExecutionProfile(ctx context.Context, opts ProcessOptions) (ExecutionProfile, error) {
+	profile, err := w.ResolveExecutionProfile(ctx, opts)
+	if err != nil {
+		return ExecutionProfile{}, fmt.Errorf("validate execution profile resolve: %w", err)
+	}
+
+	if profile.RequestedBulkStrategy == gatewayllm.BulkStrategyBatch && !gatewayllm.ProviderSupportsBatch(profile.Provider) {
+		return ExecutionProfile{}, fmt.Errorf("batch execution is not supported for provider=%s", profile.Provider)
+	}
+	return profile, nil
 }
 
 func (w *Worker) processSync(ctx context.Context, processID string, llmConfig gatewayllm.LLMConfig, opts ProcessOptions) error {
@@ -155,7 +196,7 @@ func (w *Worker) processSync(ctx context.Context, processID string, llmConfig ga
 	} else {
 		resolvedProvider, resolvedModel, err = w.resolveResumeProviderModel(ctx, jobs, llmConfig.Provider, llmConfig.Model)
 		if err != nil {
-			return err
+			return fmt.Errorf("resolve resume provider/model process_id=%s: %w", processID, err)
 		}
 	}
 	if required := gatewayllm.NormalizeProvider(opts.RequireProvider); required != "" && gatewayllm.NormalizeProvider(resolvedProvider) != required {
@@ -164,7 +205,7 @@ func (w *Worker) processSync(ctx context.Context, processID string, llmConfig ga
 	llmConfig.Provider = resolvedProvider
 	llmConfig.Model = resolvedModel
 	if err := w.queue.UpdateProcessMetadata(ctx, processID, resolvedProvider, resolvedModel); err != nil {
-		return err
+		return fmt.Errorf("update process metadata process_id=%s: %w", processID, err)
 	}
 
 	var reqs []gatewayllm.Request
@@ -301,7 +342,7 @@ func (w *Worker) processSync(ctx context.Context, processID string, llmConfig ga
 		} else {
 			w.logger.ErrorContext(ctx, "ExecuteBulkSync failed", slog.String("error", err.Error()))
 		}
-		return err
+		return fmt.Errorf("execute bulk sync: %w", err)
 	}
 
 	// Update DB with results
@@ -351,14 +392,13 @@ func (w *Worker) processSync(ctx context.Context, processID string, llmConfig ga
 	return nil
 }
 
-func (w *Worker) processBatch(ctx context.Context, processID string, llmConfig gatewayllm.LLMConfig) error {
+func (w *Worker) processBatch(ctx context.Context, processID string, llmConfig gatewayllm.LLMConfig, opts ProcessOptions) error {
 	w.logger.DebugContext(ctx, "ENTER processBatch", slog.String("process_id", processID))
 
 	jobs, err := w.queue.GetJobsByStatus(ctx, processID, StatusPending)
 	if err != nil {
 		return fmt.Errorf("failed to get pending jobs: %w", err)
 	}
-
 	if len(jobs) == 0 {
 		return nil
 	}
@@ -368,43 +408,34 @@ func (w *Worker) processBatch(ctx context.Context, processID string, llmConfig g
 		return fmt.Errorf("failed to get batch client: %w", err)
 	}
 
-	var reqs []gatewayllm.Request
-	for _, job := range jobs {
-		var req gatewayllm.Request
-		if err := json.Unmarshal([]byte(job.RequestJSON), &req); err != nil {
-			return fmt.Errorf("failed to unmarshal request: %w", err)
-		}
-		reqs = append(reqs, req)
+	progressNotifier := w.notifier
+	if opts.Hooks != nil {
+		progressNotifier = nil
 	}
 
-	batchJobID, err := batchClient.SubmitBatch(ctx, reqs)
+	batchJobID, resumedFromExisting, err := w.resolveBatchJob(ctx, processID, llmConfig.Provider, jobs, batchClient)
 	if err != nil {
-		return fmt.Errorf("submit batch failed: %w", err)
+		return err
 	}
 
-	batchIDJSON, err := json.Marshal(batchJobID)
-	if err != nil {
-		return fmt.Errorf("marshal batch job id process_id=%s: %w", processID, err)
+	if opts.Hooks != nil && opts.Hooks.OnBatchSubmitted != nil {
+		opts.Hooks.OnBatchSubmitted(batchJobID.ID, resumedFromExisting)
 	}
-	batchIDString := string(batchIDJSON)
 
-	for _, job := range jobs {
-		if err := w.queue.UpdateJob(ctx, job.ID, StatusInProgress, nil, nil, &batchIDString); err != nil {
-			return fmt.Errorf("failed to mark batch job %s in progress: %w", job.ID, err)
+	if progressNotifier != nil {
+		message := fmt.Sprintf("Batch job %s submitted, polling...", batchJobID.ID)
+		if resumedFromExisting {
+			message = fmt.Sprintf("Batch job %s reconnected, polling...", batchJobID.ID)
 		}
-	}
-
-	if w.notifier != nil {
-		w.notifier.OnProgress(ctx, runtimeprogress.ProgressEvent{
+		progressNotifier.OnProgress(ctx, runtimeprogress.ProgressEvent{
 			CorrelationID: processID,
-			Total:         100, // percentage maybe?
+			Total:         100,
 			Completed:     0,
 			Status:        runtimeprogress.StatusInProgress,
-			Message:       fmt.Sprintf("Batch job %s submitted, polling...", batchJobID.ID),
+			Message:       message,
 		})
 	}
 
-	// Poll loop
 	ticker := time.NewTicker(w.pollingInterval)
 	defer ticker.Stop()
 
@@ -419,8 +450,11 @@ func (w *Worker) processBatch(ctx context.Context, processID string, llmConfig g
 				continue
 			}
 
-			if w.notifier != nil {
-				w.notifier.OnProgress(ctx, runtimeprogress.ProgressEvent{
+			if opts.Hooks != nil && opts.Hooks.OnBatchPolling != nil {
+				opts.Hooks.OnBatchPolling(string(status.State), status.Progress)
+			}
+			if progressNotifier != nil {
+				progressNotifier.OnProgress(ctx, runtimeprogress.ProgressEvent{
 					CorrelationID: processID,
 					Total:         100,
 					Completed:     int(status.Progress * 100),
@@ -429,54 +463,235 @@ func (w *Worker) processBatch(ctx context.Context, processID string, llmConfig g
 				})
 			}
 
-			if status.State == "COMPLETED" || status.State == "FAILED" || status.State == "CANCELLED" {
-				// Fetch results
-				results, err := batchClient.GetBatchResults(ctx, batchJobID)
-				if err != nil {
-					return fmt.Errorf("get batch results failed: %w", err)
-				}
-
-				// Update DB
-				for i, res := range results {
-					if i >= len(jobs) {
-						break
-					}
-					jobID := jobs[i].ID
-					if res.Success {
-						respJSON, marshalErr := json.Marshal(res)
-						if marshalErr != nil {
-							return fmt.Errorf("marshal batch result job_id=%s: %w", jobID, marshalErr)
-						}
-						respStr := string(respJSON)
-						if err := w.queue.UpdateJob(ctx, jobID, StatusCompleted, &respStr, nil, nil); err != nil {
-							return fmt.Errorf("failed to store batch result for %s: %w", jobID, err)
-						}
-					} else {
-						errMsg := res.Error
-						if err := w.queue.UpdateJob(ctx, jobID, StatusFailed, nil, &errMsg, nil); err != nil {
-							return fmt.Errorf("failed to store batch error for %s: %w", jobID, err)
-						}
-					}
-				}
-
-				if w.notifier != nil {
-					msgStatus := runtimeprogress.StatusCompleted
-					if status.State != "COMPLETED" {
-						msgStatus = runtimeprogress.StatusFailed
-					}
-					w.notifier.OnProgress(ctx, runtimeprogress.ProgressEvent{
-						CorrelationID: processID,
-						Total:         len(jobs),
-						Completed:     len(jobs),
-						Status:        msgStatus,
-						Message:       "Batch finished",
-					})
-				}
-				w.logger.DebugContext(ctx, "EXIT processBatch", slog.String("process_id", processID))
-				return nil
+			if !isBatchTerminalState(status.State) {
+				continue
 			}
+
+			results, err := batchClient.GetBatchResults(ctx, batchJobID)
+			if err != nil {
+				return fmt.Errorf("get batch results failed: %w", err)
+			}
+
+			completedCount, failedCount, err := w.applyBatchResults(ctx, jobs, results, opts)
+			if err != nil {
+				return err
+			}
+
+			if opts.Hooks != nil && opts.Hooks.OnComplete != nil {
+				opts.Hooks.OnComplete(completedCount, len(jobs), failedCount)
+			}
+			if progressNotifier != nil {
+				msgStatus := runtimeprogress.StatusCompleted
+				if status.State == gatewayllm.BatchStateFailed || status.State == gatewayllm.BatchStateCancelled {
+					msgStatus = runtimeprogress.StatusFailed
+				}
+				progressNotifier.OnProgress(ctx, runtimeprogress.ProgressEvent{
+					CorrelationID: processID,
+					Total:         len(jobs),
+					Completed:     completedCount + failedCount,
+					Status:        msgStatus,
+					Message:       "Batch finished",
+				})
+			}
+
+			w.logger.DebugContext(ctx, "EXIT processBatch",
+				slog.String("process_id", processID),
+				slog.Int("completed", completedCount),
+				slog.Int("failed", failedCount),
+			)
+			return nil
 		}
 	}
+}
+
+func (w *Worker) resolveBatchJob(
+	ctx context.Context,
+	processID string,
+	provider string,
+	jobs []JobRequest,
+	batchClient gatewayllm.BatchClient,
+) (gatewayllm.BatchJobID, bool, error) {
+	existingBatchID, hasExisting, err := findExistingBatchJobID(jobs, provider)
+	if err != nil {
+		return gatewayllm.BatchJobID{}, false, fmt.Errorf("resolve existing batch job id process_id=%s: %w", processID, err)
+	}
+
+	if hasExisting {
+		batchIDString, err := marshalBatchJobID(existingBatchID)
+		if err != nil {
+			return gatewayllm.BatchJobID{}, false, fmt.Errorf("marshal existing batch job id process_id=%s: %w", processID, err)
+		}
+		for _, job := range jobs {
+			jobBatchID := job.BatchJobID
+			if jobBatchID == nil || strings.TrimSpace(*jobBatchID) == "" {
+				jobBatchID = &batchIDString
+			}
+			if err := w.queue.UpdateJob(ctx, job.ID, StatusInProgress, nil, nil, jobBatchID); err != nil {
+				return gatewayllm.BatchJobID{}, false, fmt.Errorf("mark reconnected batch job in progress job_id=%s: %w", job.ID, err)
+			}
+		}
+		return existingBatchID, true, nil
+	}
+
+	reqs := make([]gatewayllm.Request, 0, len(jobs))
+	for _, job := range jobs {
+		var req gatewayllm.Request
+		if err := json.Unmarshal([]byte(job.RequestJSON), &req); err != nil {
+			return gatewayllm.BatchJobID{}, false, fmt.Errorf("failed to unmarshal request job_id=%s: %w", job.ID, err)
+		}
+		reqs = append(reqs, req)
+	}
+
+	batchJobID, err := batchClient.SubmitBatch(ctx, reqs)
+	if err != nil {
+		return gatewayllm.BatchJobID{}, false, fmt.Errorf("submit batch failed: %w", err)
+	}
+
+	batchIDString, err := marshalBatchJobID(batchJobID)
+	if err != nil {
+		return gatewayllm.BatchJobID{}, false, fmt.Errorf("marshal batch job id process_id=%s: %w", processID, err)
+	}
+	for _, job := range jobs {
+		if err := w.queue.UpdateJob(ctx, job.ID, StatusInProgress, nil, nil, &batchIDString); err != nil {
+			return gatewayllm.BatchJobID{}, false, fmt.Errorf("failed to mark batch job %s in progress: %w", job.ID, err)
+		}
+	}
+
+	return batchJobID, false, nil
+}
+
+func (w *Worker) applyBatchResults(ctx context.Context, jobs []JobRequest, results []gatewayllm.Response, opts ProcessOptions) (int, int, error) {
+	completedCount := 0
+	failedCount := 0
+
+	for i, job := range jobs {
+		if opts.Hooks != nil && opts.Hooks.OnSaving != nil {
+			opts.Hooks.OnSaving(i+1, len(jobs))
+		}
+		if i >= len(results) {
+			errMsg := "batch result missing for request"
+			if err := w.queue.UpdateJob(ctx, job.ID, StatusFailed, nil, &errMsg, nil); err != nil {
+				return 0, 0, fmt.Errorf("mark missing batch result as failed job_id=%s: %w", job.ID, err)
+			}
+			failedCount++
+			continue
+		}
+
+		res := results[i]
+		if res.Success {
+			respJSON, marshalErr := json.Marshal(res)
+			if marshalErr != nil {
+				return 0, 0, fmt.Errorf("marshal batch result job_id=%s: %w", job.ID, marshalErr)
+			}
+			respStr := string(respJSON)
+			if err := w.queue.UpdateJob(ctx, job.ID, StatusCompleted, &respStr, nil, nil); err != nil {
+				return 0, 0, fmt.Errorf("store batch result job_id=%s: %w", job.ID, err)
+			}
+			completedCount++
+			continue
+		}
+
+		errMsg := strings.TrimSpace(res.Error)
+		if errMsg == "" {
+			errMsg = "batch request failed"
+		}
+		if err := w.queue.UpdateJob(ctx, job.ID, StatusFailed, nil, &errMsg, nil); err != nil {
+			return 0, 0, fmt.Errorf("store batch failure job_id=%s: %w", job.ID, err)
+		}
+		failedCount++
+	}
+
+	if len(results) > len(jobs) {
+		w.logger.WarnContext(ctx, "batch results exceeded queued jobs",
+			slog.Int("results_count", len(results)),
+			slog.Int("jobs_count", len(jobs)),
+		)
+	}
+
+	return completedCount, failedCount, nil
+}
+
+func isBatchTerminalState(state gatewayllm.BatchState) bool {
+	switch state {
+	case gatewayllm.BatchStateCompleted,
+		gatewayllm.BatchStatePartialFailed,
+		gatewayllm.BatchStateFailed,
+		gatewayllm.BatchStateCancelled:
+		return true
+	default:
+		return false
+	}
+}
+
+func findExistingBatchJobID(jobs []JobRequest, fallbackProvider string) (gatewayllm.BatchJobID, bool, error) {
+	provider := gatewayllm.NormalizeProvider(fallbackProvider)
+	var resolved gatewayllm.BatchJobID
+	for _, job := range jobs {
+		if job.BatchJobID == nil {
+			continue
+		}
+		raw := strings.TrimSpace(*job.BatchJobID)
+		if raw == "" {
+			continue
+		}
+
+		parsed, err := decodeStoredBatchJobID(raw, provider)
+		if err != nil {
+			return gatewayllm.BatchJobID{}, false, fmt.Errorf("decode batch job id for job_id=%s: %w", job.ID, err)
+		}
+		if resolved.ID == "" {
+			resolved = parsed
+			continue
+		}
+		if resolved.ID != parsed.ID {
+			return gatewayllm.BatchJobID{}, false, fmt.Errorf("inconsistent batch job ids in process: %q and %q", resolved.ID, parsed.ID)
+		}
+	}
+
+	if resolved.ID == "" {
+		return gatewayllm.BatchJobID{}, false, nil
+	}
+	if resolved.Provider == "" {
+		resolved.Provider = provider
+	}
+	return resolved, true, nil
+}
+
+func decodeStoredBatchJobID(raw string, fallbackProvider string) (gatewayllm.BatchJobID, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return gatewayllm.BatchJobID{}, fmt.Errorf("empty stored batch job id")
+	}
+
+	var parsed gatewayllm.BatchJobID
+	if err := json.Unmarshal([]byte(trimmed), &parsed); err == nil {
+		if strings.TrimSpace(parsed.ID) == "" {
+			return gatewayllm.BatchJobID{}, fmt.Errorf("stored batch job id payload is missing id")
+		}
+		if strings.TrimSpace(parsed.Provider) == "" {
+			parsed.Provider = gatewayllm.NormalizeProvider(fallbackProvider)
+		}
+		return parsed, nil
+	}
+
+	var textID string
+	if err := json.Unmarshal([]byte(trimmed), &textID); err == nil {
+		textID = strings.TrimSpace(textID)
+		if textID == "" {
+			return gatewayllm.BatchJobID{}, fmt.Errorf("stored batch job id string is empty")
+		}
+		return gatewayllm.BatchJobID{ID: textID, Provider: gatewayllm.NormalizeProvider(fallbackProvider)}, nil
+	}
+
+	return gatewayllm.BatchJobID{ID: trimmed, Provider: gatewayllm.NormalizeProvider(fallbackProvider)}, nil
+}
+
+func marshalBatchJobID(batchJobID gatewayllm.BatchJobID) (string, error) {
+	encoded, err := json.Marshal(batchJobID)
+	if err != nil {
+		return "", fmt.Errorf("marshal batch job id: %w", err)
+	}
+	return string(encoded), nil
 }
 
 // progressReportingClient wraps LLMClient to emit progress events.
@@ -666,6 +881,29 @@ func (w *Worker) resolveResumeProviderModel(ctx context.Context, jobs []JobReque
 		}
 	}
 	return provider, model, nil
+}
+
+func (w *Worker) resolveBulkStrategy(ctx context.Context, ns, provider string) gatewayllm.BulkStrategy {
+	configured := w.resolveConfiguredBulkStrategy(ctx, ns, provider)
+	return w.llmManager.ResolveBulkStrategy(ctx, configured, provider)
+}
+
+func (w *Worker) resolveConfiguredBulkStrategy(ctx context.Context, ns, provider string) gatewayllm.BulkStrategy {
+	provider = gatewayllm.NormalizeProvider(provider)
+	providerNS := ns + "." + provider
+
+	strategyStr := strings.TrimSpace(w.getConfigString(ctx, providerNS, gatewayllm.LLMBulkStrategyKey, ""))
+	if strategyStr == "" {
+		// Backward compatibility for legacy key layout.
+		strategyStr = strings.TrimSpace(w.getConfigString(ctx, ns, gatewayllm.LLMBulkStrategyKey, ""))
+	}
+	if strategyStr == "" {
+		return gatewayllm.BulkStrategySync
+	}
+	if strings.EqualFold(strategyStr, string(gatewayllm.BulkStrategyBatch)) {
+		return gatewayllm.BulkStrategyBatch
+	}
+	return gatewayllm.BulkStrategySync
 }
 
 func (w *Worker) getConfigString(ctx context.Context, ns, key, defaultVal string) string {

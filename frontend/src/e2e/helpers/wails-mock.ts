@@ -23,7 +23,13 @@ type MasterPersonaMockFixture = {
   dialoguesByPersonaId: Record<number, Array<Record<string, string>>>;
   llmConfigByNamespace: Record<string, Record<string, string>>;
   llmRootConfig: Record<string, string>;
-  modelCatalogByProvider: Record<string, Array<{display_name: string; id: string}>>;
+  modelCatalogByProvider: Record<string, Array<{
+    capability: {
+      supports_batch: boolean;
+    };
+    display_name: string;
+    id: string;
+  }>>;
   npcs: Array<Record<string, number | string>>;
   promptConfig: Record<string, string>;
   selectedJsonPath: string;

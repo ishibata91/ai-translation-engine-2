@@ -86,7 +86,7 @@ func (m *mockLLMManager) ResolveBulkStrategy(ctx context.Context, strategy llm.B
 func TestModelCatalogService_ListModels_UsesNamespaceConfig(t *testing.T) {
 	manager := &mockLLMManager{
 		client: &mockLLMClient{
-			models: []llm.ModelInfo{{ID: "model-a", DisplayName: "Model A", Loaded: true}},
+			models: []llm.ModelInfo{{ID: "model-a", DisplayName: "Model A", Loaded: true, SupportsBatch: true}},
 		},
 	}
 	service := NewModelCatalogService(
@@ -108,6 +108,9 @@ func TestModelCatalogService_ListModels_UsesNamespaceConfig(t *testing.T) {
 	}
 	if len(got) != 1 || got[0].ID != "model-a" {
 		t.Fatalf("unexpected model list: %+v", got)
+	}
+	if !got[0].Capability.SupportsBatch {
+		t.Fatalf("expected capability.supports_batch=true, got %+v", got[0])
 	}
 	if manager.lastConfig.Provider != "lmstudio" || manager.lastConfig.Model != "stored-model" {
 		t.Fatalf("unexpected config used: %+v", manager.lastConfig)

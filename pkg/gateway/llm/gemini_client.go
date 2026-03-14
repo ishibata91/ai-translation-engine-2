@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	telemetry2 "github.com/ishibata91/ai-translation-engine-2/pkg/foundation/telemetry"
@@ -63,9 +64,10 @@ func (c *geminiClient) ListModels(ctx context.Context) ([]ModelInfo, error) {
 	}
 	var raw struct {
 		Models []struct {
-			Name        string `json:"name"`
-			DisplayName string `json:"displayName"`
-			InputToken  int    `json:"inputTokenLimit"`
+			Name                       string   `json:"name"`
+			DisplayName                string   `json:"displayName"`
+			InputToken                 int      `json:"inputTokenLimit"`
+			SupportedGenerationMethods []string `json:"supportedGenerationMethods"`
 		} `json:"models"`
 	}
 	if err := json.Unmarshal(body, &raw); err != nil {
@@ -73,7 +75,23 @@ func (c *geminiClient) ListModels(ctx context.Context) ([]ModelInfo, error) {
 	}
 	out := make([]ModelInfo, 0, len(raw.Models))
 	for _, m := range raw.Models {
-		out = append(out, ModelInfo{ID: m.Name, DisplayName: m.DisplayName, MaxContextLength: m.InputToken, Loaded: false})
+		supportsBatch := false
+		if strings.HasPrefix(m.Name, "models/gemini") {
+			for _, method := range m.SupportedGenerationMethods {
+				if method == "generateContent" {
+					supportsBatch = true
+					break
+				}
+			}
+		}
+
+		out = append(out, ModelInfo{
+			ID:               m.Name,
+			DisplayName:      m.DisplayName,
+			MaxContextLength: m.InputToken,
+			Loaded:           false,
+			SupportsBatch:    supportsBatch,
+		})
 	}
 	return out, nil
 }

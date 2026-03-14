@@ -45,7 +45,7 @@ func (m *Manager) GetClient(ctx context.Context, config LLMConfig) (LLMClient, e
 }
 
 // GetBatchClient は LLMConfig に基づいて BatchClient を返す。
-// Batch サポート: "xai"
+// Batch サポート: "gemini", "xai"
 func (m *Manager) GetBatchClient(ctx context.Context, config LLMConfig) (BatchClient, error) {
 	config.Provider = NormalizeProvider(config.Provider)
 	m.logger.DebugContext(ctx, "ENTER GetBatchClient", "provider", config.Provider, "model", config.Model)
@@ -59,7 +59,12 @@ func (m *Manager) GetBatchClient(ctx context.Context, config LLMConfig) (BatchCl
 		m.logger.DebugContext(ctx, "EXIT GetBatchClient", "provider", "xai")
 		return bc, nil
 	case "gemini":
-		return nil, fmt.Errorf("llm_manager: gemini BatchClient not yet implemented")
+		bc, err := NewGeminiBatchClient(m.logger, config)
+		if err != nil {
+			return nil, fmt.Errorf("llm_manager: gemini BatchClient creation failed: %w", err)
+		}
+		m.logger.DebugContext(ctx, "EXIT GetBatchClient", "provider", "gemini")
+		return bc, nil
 	case "lmstudio":
 		return nil, fmt.Errorf("llm_manager: provider %q does not support Batch API", config.Provider)
 	default:
@@ -72,8 +77,8 @@ func (m *Manager) ResolveBulkStrategy(ctx context.Context, strategy BulkStrategy
 	provider = NormalizeProvider(provider)
 	m.logger.DebugContext(ctx, "ENTER ResolveBulkStrategy", "strategy", strategy, "provider", provider)
 
-	if provider == "lmstudio" && strategy == BulkStrategyBatch {
-		m.logger.WarnContext(ctx, "ResolveBulkStrategy: provider 'lmstudio' does not support batch strategy; falling back to sync",
+	if strategy == BulkStrategyBatch && !ProviderSupportsBatch(provider) {
+		m.logger.WarnContext(ctx, "ResolveBulkStrategy: provider does not support batch strategy; falling back to sync",
 			"provider", provider,
 		)
 		return BulkStrategySync

@@ -2,6 +2,7 @@ package queue
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -61,16 +62,26 @@ func (m *mockLLMClient) UnloadModel(ctx context.Context, instanceID string) erro
 }
 
 type mockBatchClient struct {
-	status string
+	status       llm.BatchState
+	results      []llm.Response
+	submitCalls  int
+	statusCalls  int
+	resultsCalls int
 }
 
 func (m *mockBatchClient) SubmitBatch(ctx context.Context, reqs []llm.Request) (llm.BatchJobID, error) {
+	m.submitCalls++
 	return llm.BatchJobID{ID: "batch-123", Provider: "mock"}, nil
 }
 func (m *mockBatchClient) GetBatchStatus(ctx context.Context, id llm.BatchJobID) (llm.BatchStatus, error) {
+	m.statusCalls++
 	return llm.BatchStatus{ID: id.ID, State: m.status, Progress: 0.5}, nil
 }
 func (m *mockBatchClient) GetBatchResults(ctx context.Context, id llm.BatchJobID) ([]llm.Response, error) {
+	m.resultsCalls++
+	if len(m.results) > 0 {
+		return m.results, nil
+	}
 	return []llm.Response{{Success: true, Content: "batch results"}}, nil
 }
 
@@ -224,13 +235,13 @@ func TestJobQueue_BatchPolling(t *testing.T) {
 		t.Fatalf("SubmitJobs failed: %v", err)
 	}
 
-	batchMock := &mockBatchClient{status: "PENDING"}
+	batchMock := &mockBatchClient{status: llm.BatchStateRunning}
 	manager := &mockLLMManager{batchClient: batchMock}
 
 	// Fast-forward status in background
 	go func() {
 		time.Sleep(100 * time.Millisecond)
-		batchMock.status = "COMPLETED"
+		batchMock.status = llm.BatchStateCompleted
 	}()
 
 	// Mock config to force batch
@@ -239,7 +250,7 @@ func TestJobQueue_BatchPolling(t *testing.T) {
 	worker := NewWorker(q, manager, cfg, &mockSecretStore{}, progress.NewNoopNotifier(), logger)
 	worker.SetPollingInterval(50 * time.Millisecond)
 
-	err = worker.processBatch(ctx, processID, llm.LLMConfig{})
+	err = worker.processBatch(ctx, processID, llm.LLMConfig{}, ProcessOptions{})
 	if err != nil {
 		t.Errorf("processBatch failed: %v", err)
 	}
@@ -247,6 +258,166 @@ func TestJobQueue_BatchPolling(t *testing.T) {
 	results, _ := q.GetJobsByStatus(ctx, processID, StatusCompleted)
 	if len(results) != 1 {
 		t.Errorf("Expected 1 completed job from batch, got %d", len(results))
+	}
+}
+
+func TestQueue_PrepareTaskResume_PreservesBatchJobID(t *testing.T) {
+	ctx := context.Background()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	q, err := NewQueue(ctx, ":memory:", logger)
+	if err != nil {
+		t.Fatalf("failed to create queue: %v", err)
+	}
+	defer q.Close()
+
+	taskID := "resume-keep-batch-id"
+	if err := q.SubmitTaskRequests(ctx, taskID, "persona_extraction", []llm.Request{{UserPrompt: "q"}}); err != nil {
+		t.Fatalf("SubmitTaskRequests failed: %v", err)
+	}
+
+	jobs, err := q.GetTaskRequests(ctx, taskID)
+	if err != nil {
+		t.Fatalf("GetTaskRequests failed: %v", err)
+	}
+	if len(jobs) != 1 {
+		t.Fatalf("expected 1 job, got %d", len(jobs))
+	}
+
+	encodedBatchID, err := json.Marshal(llm.BatchJobID{ID: "batch-existing", Provider: "xai"})
+	if err != nil {
+		t.Fatalf("marshal batch id failed: %v", err)
+	}
+	batchIDString := string(encodedBatchID)
+
+	if err := q.UpdateJob(ctx, jobs[0].ID, StatusInProgress, nil, nil, &batchIDString); err != nil {
+		t.Fatalf("UpdateJob failed: %v", err)
+	}
+
+	if err := q.PrepareTaskResume(ctx, taskID); err != nil {
+		t.Fatalf("PrepareTaskResume failed: %v", err)
+	}
+
+	resumedJobs, err := q.GetTaskRequests(ctx, taskID)
+	if err != nil {
+		t.Fatalf("GetTaskRequests after resume failed: %v", err)
+	}
+	if len(resumedJobs) != 1 {
+		t.Fatalf("expected 1 resumed job, got %d", len(resumedJobs))
+	}
+	if resumedJobs[0].Status != StatusPending || resumedJobs[0].RequestState != RequestStatePending {
+		t.Fatalf("unexpected resumed state: status=%s request_state=%s", resumedJobs[0].Status, resumedJobs[0].RequestState)
+	}
+	if resumedJobs[0].BatchJobID == nil || *resumedJobs[0].BatchJobID != batchIDString {
+		t.Fatalf("expected batch_job_id to be preserved, got %v", resumedJobs[0].BatchJobID)
+	}
+}
+
+func TestWorker_ProcessBatch_ReconnectsExistingBatchJob(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+
+	q, err := NewQueue(ctx, ":memory:", logger)
+	if err != nil {
+		t.Fatalf("failed to create queue: %v", err)
+	}
+	defer q.Close()
+
+	processID := "batch-reconnect"
+	if err := q.SubmitTaskRequests(ctx, processID, "persona_extraction", []llm.Request{{UserPrompt: "q"}}); err != nil {
+		t.Fatalf("SubmitTaskRequests failed: %v", err)
+	}
+
+	jobs, err := q.GetTaskRequests(ctx, processID)
+	if err != nil {
+		t.Fatalf("GetTaskRequests failed: %v", err)
+	}
+	if len(jobs) != 1 {
+		t.Fatalf("expected 1 job, got %d", len(jobs))
+	}
+
+	encodedBatchID, err := json.Marshal(llm.BatchJobID{ID: "batch-existing", Provider: "xai"})
+	if err != nil {
+		t.Fatalf("marshal batch id failed: %v", err)
+	}
+	batchIDString := string(encodedBatchID)
+	if err := q.UpdateJob(ctx, jobs[0].ID, StatusPending, nil, nil, &batchIDString); err != nil {
+		t.Fatalf("UpdateJob failed: %v", err)
+	}
+
+	batchMock := &mockBatchClient{
+		status:  llm.BatchStateCompleted,
+		results: []llm.Response{{Success: true, Content: "batch results"}},
+	}
+	manager := &mockLLMManager{batchClient: batchMock}
+	worker := NewWorker(q, manager, &mockConfigStore{}, &mockSecretStore{}, progress.NewNoopNotifier(), logger)
+	worker.SetPollingInterval(10 * time.Millisecond)
+
+	if err := worker.processBatch(ctx, processID, llm.LLMConfig{Provider: "xai", Model: "xai-model"}, ProcessOptions{}); err != nil {
+		t.Fatalf("processBatch failed: %v", err)
+	}
+
+	if batchMock.submitCalls != 0 {
+		t.Fatalf("expected reconnect path to skip SubmitBatch, got %d calls", batchMock.submitCalls)
+	}
+	if batchMock.statusCalls == 0 || batchMock.resultsCalls == 0 {
+		t.Fatalf("expected reconnect path to poll and fetch results, status_calls=%d results_calls=%d", batchMock.statusCalls, batchMock.resultsCalls)
+	}
+
+	completedJobs, err := q.GetJobsByStatus(ctx, processID, StatusCompleted)
+	if err != nil {
+		t.Fatalf("GetJobsByStatus completed failed: %v", err)
+	}
+	if len(completedJobs) != 1 {
+		t.Fatalf("expected 1 completed job after reconnect, got %d", len(completedJobs))
+	}
+}
+
+func TestWorker_ProcessBatch_PartialFailedPersistsSuccessfulResponses(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+
+	q, err := NewQueue(ctx, ":memory:", logger)
+	if err != nil {
+		t.Fatalf("failed to create queue: %v", err)
+	}
+	defer q.Close()
+
+	processID := "batch-partial-failed"
+	if err := q.SubmitTaskRequests(ctx, processID, "persona_extraction", []llm.Request{{UserPrompt: "q1"}, {UserPrompt: "q2"}}); err != nil {
+		t.Fatalf("SubmitTaskRequests failed: %v", err)
+	}
+
+	batchMock := &mockBatchClient{
+		status: llm.BatchStatePartialFailed,
+		results: []llm.Response{
+			{Success: true, Content: "ok"},
+			{Success: false, Error: "provider error"},
+		},
+	}
+	manager := &mockLLMManager{batchClient: batchMock}
+	worker := NewWorker(q, manager, &mockConfigStore{}, &mockSecretStore{}, progress.NewNoopNotifier(), logger)
+	worker.SetPollingInterval(10 * time.Millisecond)
+
+	if err := worker.processBatch(ctx, processID, llm.LLMConfig{Provider: "xai", Model: "xai-model"}, ProcessOptions{}); err != nil {
+		t.Fatalf("processBatch failed: %v", err)
+	}
+
+	completedJobs, err := q.GetJobsByStatus(ctx, processID, StatusCompleted)
+	if err != nil {
+		t.Fatalf("GetJobsByStatus completed failed: %v", err)
+	}
+	if len(completedJobs) != 1 {
+		t.Fatalf("expected 1 completed job in partial_failed, got %d", len(completedJobs))
+	}
+
+	failedJobs, err := q.GetJobsByStatus(ctx, processID, StatusFailed)
+	if err != nil {
+		t.Fatalf("GetJobsByStatus failed failed: %v", err)
+	}
+	if len(failedJobs) != 1 {
+		t.Fatalf("expected 1 failed job in partial_failed, got %d", len(failedJobs))
 	}
 }
 
@@ -600,7 +771,7 @@ func TestWorker_CancelKeepsCompletedRequests(t *testing.T) {
 	}
 }
 
-func TestWorker_ProcessWithOptions_UsesConfigReadNamespaceForBulkStrategy(t *testing.T) {
+func TestWorker_ProcessWithOptions_UsesProviderScopedBulkStrategy(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
@@ -618,7 +789,61 @@ func TestWorker_ProcessWithOptions_UsesConfigReadNamespaceForBulkStrategy(t *tes
 
 	manager := &mockLLMManager{
 		client:      &mockLLMClient{},
-		batchClient: &mockBatchClient{status: "COMPLETED"},
+		batchClient: &mockBatchClient{status: llm.BatchStateCompleted},
+	}
+	cfg := &mapConfigStore{
+		values: map[string]string{
+			"custom.llm::selected_provider":    "xai",
+			"custom.llm.xai::model":            "xai-model",
+			"custom.llm::bulk_strategy":        "sync",
+			"custom.llm.xai::bulk_strategy":    "batch",
+			"custom.llm.gemini::bulk_strategy": "sync",
+		},
+	}
+	worker := NewWorker(q, manager, cfg, &mockSecretStore{}, progress.NewNoopNotifier(), logger)
+	worker.SetPollingInterval(10 * time.Millisecond)
+
+	err = worker.ProcessProcessIDWithOptions(ctx, processID, ProcessOptions{
+		UseConfigProviderModel: true,
+		ConfigRead: ConfigReadOptions{
+			Namespace:           "custom.llm",
+			DefaultProvider:     "xai",
+			SelectedProviderKey: "selected_provider",
+		},
+	})
+	if err != nil {
+		t.Fatalf("ProcessProcessIDWithOptions failed: %v", err)
+	}
+	if manager.batchCalls == 0 {
+		t.Fatalf("expected batch client path to be selected by provider-scoped strategy")
+	}
+	if manager.clientCalls != 0 {
+		t.Fatalf("expected sync client path not to run when provider-scoped strategy=batch")
+	}
+	if manager.lastConfig.Provider != "xai" || manager.lastConfig.Model != "xai-model" {
+		t.Fatalf("unexpected config resolved from custom namespace: %+v", manager.lastConfig)
+	}
+}
+
+func TestWorker_ProcessWithOptions_FallsBackToLegacyBulkStrategyKey(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	q, err := NewQueue(ctx, ":memory:", logger)
+	if err != nil {
+		t.Fatalf("failed to create queue: %v", err)
+	}
+	defer q.Close()
+
+	processID := "legacy-bulk-strategy"
+	if err := q.SubmitTaskRequests(ctx, processID, "generic_task", []llm.Request{{UserPrompt: "q"}}); err != nil {
+		t.Fatalf("SubmitTaskRequests failed: %v", err)
+	}
+
+	manager := &mockLLMManager{
+		client:      &mockLLMClient{},
+		batchClient: &mockBatchClient{status: llm.BatchStateCompleted},
 	}
 	cfg := &mapConfigStore{
 		values: map[string]string{
@@ -642,12 +867,118 @@ func TestWorker_ProcessWithOptions_UsesConfigReadNamespaceForBulkStrategy(t *tes
 		t.Fatalf("ProcessProcessIDWithOptions failed: %v", err)
 	}
 	if manager.batchCalls == 0 {
-		t.Fatalf("expected batch client path to be selected for custom namespace strategy")
+		t.Fatalf("expected legacy root bulk_strategy to keep batch behavior")
 	}
 	if manager.clientCalls != 0 {
-		t.Fatalf("expected sync client path not to run when strategy=batch")
+		t.Fatalf("expected sync client path not to run when legacy strategy=batch")
 	}
-	if manager.lastConfig.Provider != "xai" || manager.lastConfig.Model != "xai-model" {
-		t.Fatalf("unexpected config resolved from custom namespace: %+v", manager.lastConfig)
+}
+
+func TestWorker_ProcessWithOptions_DefaultsBulkStrategyToSync(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	q, err := NewQueue(ctx, ":memory:", logger)
+	if err != nil {
+		t.Fatalf("failed to create queue: %v", err)
+	}
+	defer q.Close()
+
+	processID := "default-sync-strategy"
+	if err := q.SubmitTaskRequests(ctx, processID, "generic_task", []llm.Request{{UserPrompt: "q"}}); err != nil {
+		t.Fatalf("SubmitTaskRequests failed: %v", err)
+	}
+
+	manager := &mockLLMManager{
+		client:      &mockLLMClient{},
+		batchClient: &mockBatchClient{status: llm.BatchStateCompleted},
+	}
+	cfg := &mapConfigStore{
+		values: map[string]string{
+			"custom.llm::selected_provider": "xai",
+			"custom.llm.xai::model":         "xai-model",
+		},
+	}
+	worker := NewWorker(q, manager, cfg, &mockSecretStore{}, progress.NewNoopNotifier(), logger)
+	worker.SetPollingInterval(10 * time.Millisecond)
+
+	err = worker.ProcessProcessIDWithOptions(ctx, processID, ProcessOptions{
+		UseConfigProviderModel: true,
+		ConfigRead: ConfigReadOptions{
+			Namespace:           "custom.llm",
+			DefaultProvider:     "xai",
+			SelectedProviderKey: "selected_provider",
+		},
+	})
+	if err != nil {
+		t.Fatalf("ProcessProcessIDWithOptions failed: %v", err)
+	}
+	if manager.clientCalls == 0 {
+		t.Fatalf("expected sync client path to run when bulk_strategy is not saved")
+	}
+	if manager.batchCalls != 0 {
+		t.Fatalf("expected batch path not to run when bulk_strategy defaults to sync")
+	}
+}
+
+func TestWorker_ValidateExecutionProfile_RejectsUnsupportedBatchProvider(t *testing.T) {
+	ctx := context.Background()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	worker := NewWorker(
+		&Queue{},
+		&mockLLMManager{client: &mockLLMClient{}, batchClient: &mockBatchClient{status: llm.BatchStateCompleted}},
+		&mapConfigStore{values: map[string]string{
+			"master_persona.llm::selected_provider":         "lmstudio",
+			"master_persona.llm.lmstudio::model":            "local-model",
+			"master_persona.llm.lmstudio::bulk_strategy":    "batch",
+			"master_persona.llm::sync_concurrency.lmstudio": "1",
+		}},
+		&mockSecretStore{},
+		progress.NewNoopNotifier(),
+		logger,
+	)
+
+	_, err := worker.ValidateExecutionProfile(ctx, ProcessOptions{
+		ConfigRead: ConfigReadOptions{
+			Namespace:           "master_persona.llm",
+			DefaultProvider:     "lmstudio",
+			SelectedProviderKey: "selected_provider",
+		},
+	})
+	if err == nil {
+		t.Fatalf("expected unsupported batch provider to be rejected")
+	}
+}
+
+func TestWorker_ValidateExecutionProfile_AllowsSupportedBatchProvider(t *testing.T) {
+	ctx := context.Background()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	worker := NewWorker(
+		&Queue{},
+		&mockLLMManager{client: &mockLLMClient{}, batchClient: &mockBatchClient{status: llm.BatchStateCompleted}},
+		&mapConfigStore{values: map[string]string{
+			"master_persona.llm::selected_provider":    "xai",
+			"master_persona.llm.xai::model":            "xai-model",
+			"master_persona.llm.xai::bulk_strategy":    "batch",
+			"master_persona.llm::sync_concurrency.xai": "3",
+		}},
+		&mockSecretStore{},
+		progress.NewNoopNotifier(),
+		logger,
+	)
+
+	profile, err := worker.ValidateExecutionProfile(ctx, ProcessOptions{
+		ConfigRead: ConfigReadOptions{
+			Namespace:           "master_persona.llm",
+			DefaultProvider:     "xai",
+			SelectedProviderKey: "selected_provider",
+		},
+	})
+	if err != nil {
+		t.Fatalf("ValidateExecutionProfile failed: %v", err)
+	}
+	if profile.Provider != "xai" || profile.BulkStrategy != llm.BulkStrategyBatch {
+		t.Fatalf("unexpected execution profile: %+v", profile)
 	}
 }

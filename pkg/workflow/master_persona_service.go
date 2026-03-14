@@ -39,6 +39,15 @@ type personaSaveSummary struct {
 	SavedRequestIDs    []string
 }
 
+const (
+	phaseRequestEnqueued      = "REQUEST_ENQUEUED"
+	phaseRequestExecutingSync = "REQUEST_EXECUTING_SYNC"
+	phaseBatchSubmitted       = "BATCH_SUBMITTED"
+	phaseBatchPolling         = "BATCH_POLLING"
+	phaseRequestSaving        = "REQUEST_SAVING"
+	phaseRequestCompleted     = "REQUEST_COMPLETED"
+)
+
 // NewMasterPersonaService constructs the workflow implementation.
 func NewMasterPersonaService(
 	manager *task2.Manager,
@@ -207,13 +216,21 @@ func (s *MasterPersonaService) runPersonaExecution(ctx context.Context, currentT
 		return fmt.Errorf("request queue worker is not configured")
 	}
 
+	processOpts := masterPersonaProcessOptions()
+	profile, err := s.worker.ValidateExecutionProfile(ctx, processOpts)
+	if err != nil {
+		return fmt.Errorf("validate execution profile task_id=%s: %w", currentTask.ID, err)
+	}
+
+	taskMetadata := s.persistTaskMetadata(ctx, currentTask.ID, currentTask.Metadata, executionProfileMetadata(profile))
+
 	state, err := s.loadTaskRequestState(ctx, currentTask.ID)
 	if err != nil {
 		return err
 	}
 
-	s.reportTaskPhaseProgress(ctx, currentTask.ID, currentTask.Type, "REQUEST_ENQUEUED", state.Completed, state.Total, runtimeprogress.StatusInProgress, "リクエスト再開準備")
-	update("REQUEST_ENQUEUED", toPercent(state.Completed, state.Total))
+	s.reportTaskPhaseProgress(ctx, currentTask.ID, currentTask.Type, phaseRequestEnqueued, state.Completed, state.Total, runtimeprogress.StatusInProgress, "リクエスト再開準備")
+	update(phaseRequestEnqueued, toPercent(state.Completed, state.Total))
 
 	baseCompleted := state.Completed
 	overallTotal := state.Total
@@ -222,7 +239,7 @@ func (s *MasterPersonaService) runPersonaExecution(ctx context.Context, currentT
 		return fmt.Errorf("prepare task resume task_id=%s: %w", currentTask.ID, err)
 	}
 
-	if err := s.processQueuedRequests(ctx, currentTask, state, update, baseCompleted, overallTotal); err != nil {
+	if err := s.processQueuedRequests(ctx, currentTask, state, update, baseCompleted, overallTotal, profile, processOpts, &taskMetadata); err != nil {
 		return err
 	}
 
@@ -231,7 +248,79 @@ func (s *MasterPersonaService) runPersonaExecution(ctx context.Context, currentT
 		return err
 	}
 
-	return s.finalizePersonaExecution(ctx, currentTask, updatedState)
+	return s.finalizePersonaExecution(ctx, currentTask, updatedState, taskMetadata)
+}
+
+func masterPersonaProcessOptions() runtimequeue.ProcessOptions {
+	return runtimequeue.ProcessOptions{
+		ConfigNamespace:        "master_persona.llm",
+		UseConfigProviderModel: true,
+		ConfigRead: runtimequeue.ConfigReadOptions{
+			Namespace:           "master_persona.llm",
+			DefaultProvider:     "lmstudio",
+			SelectedProviderKey: "selected_provider",
+		},
+	}
+}
+
+func executionProfileMetadata(profile runtimequeue.ExecutionProfile) task2.TaskMetadata {
+	return task2.TaskMetadata{
+		"execution_profile": map[string]interface{}{
+			"provider":                profile.Provider,
+			"model":                   profile.Model,
+			"requested_bulk_strategy": string(profile.RequestedBulkStrategy),
+			"bulk_strategy":           string(profile.BulkStrategy),
+		},
+		"execution_provider":                profile.Provider,
+		"execution_model":                   profile.Model,
+		"execution_requested_bulk_strategy": string(profile.RequestedBulkStrategy),
+		"execution_bulk_strategy":           string(profile.BulkStrategy),
+	}
+}
+
+func (s *MasterPersonaService) persistTaskMetadata(ctx context.Context, taskID string, base task2.TaskMetadata, updates task2.TaskMetadata) task2.TaskMetadata {
+	metadata := mergeTaskMetadata(base, updates)
+	if err := s.manager.Store().SaveMetadata(ctx, taskID, metadata); err != nil {
+		wrappedErr := fmt.Errorf("save metadata task_id=%s: %w", taskID, err)
+		s.logger.WarnContext(ctx, "persona.metadata_persist_failed",
+			append(telemetry2.ErrorAttrs(wrappedErr), slog.String("task_id", taskID))...)
+		return base
+	}
+	return metadata
+}
+
+func isBatchExecutionProfile(profile runtimequeue.ExecutionProfile) bool {
+	return strings.EqualFold(string(profile.BulkStrategy), "batch")
+}
+
+func batchProgressCurrent(baseCompleted int, overallTotal int, progress float32) int {
+	if overallTotal <= 0 {
+		return 0
+	}
+	if baseCompleted < 0 {
+		baseCompleted = 0
+	}
+	if baseCompleted > overallTotal {
+		baseCompleted = overallTotal
+	}
+
+	ratio := float64(progress)
+	if ratio < 0 {
+		ratio = 0
+	}
+	if ratio > 1 {
+		ratio = 1
+	}
+
+	remaining := overallTotal - baseCompleted
+	current := baseCompleted + int(math.Round(ratio*float64(remaining)))
+	if current < baseCompleted {
+		return baseCompleted
+	}
+	if current > overallTotal {
+		return overallTotal
+	}
+	return current
 }
 
 func (s *MasterPersonaService) executeRequestPreparation(ctx context.Context, taskID string, input StartMasterPersonaInput, update func(phase string, progress float64)) error {
@@ -274,7 +363,7 @@ func (s *MasterPersonaService) executeRequestPreparation(ctx context.Context, ta
 		"source_json_path":   input.SourceJSONPath,
 		"overwrite_existing": input.OverwriteExisting,
 		"entrypoint":         "master_persona",
-		"phase":              "request_enqueued",
+		"phase":              phaseRequestEnqueued,
 		"resume_cursor":      0,
 		"request_count":      len(requests),
 	}
@@ -330,17 +419,61 @@ func (s *MasterPersonaService) processQueuedRequests(
 	update func(phase string, progress float64),
 	baseCompleted int,
 	overallTotal int,
+	profile runtimequeue.ExecutionProfile,
+	processOpts runtimequeue.ProcessOptions,
+	taskMetadata *task2.TaskMetadata,
 ) error {
+	executionMessage := "リクエスト実行中"
+	if profile.Provider != "" && profile.Model != "" {
+		executionMessage = fmt.Sprintf("リクエスト実行中 (%s / %s)", profile.Provider, profile.Model)
+	} else if profile.Provider != "" {
+		executionMessage = fmt.Sprintf("リクエスト実行中 (%s)", profile.Provider)
+	}
+
+	failurePhase := phaseRequestExecutingSync
+	if isBatchExecutionProfile(profile) {
+		failurePhase = phaseBatchPolling
+	}
+
+	lastBatchState := ""
 	hooks := &runtimequeue.ProcessHooks{
 		OnDispatch: func(current int, _ int) {
 			progressCurrent := baseCompleted + current
-			s.reportTaskPhaseProgress(ctx, currentTask.ID, currentTask.Type, "REQUEST_DISPATCHING", progressCurrent, overallTotal, runtimeprogress.StatusInProgress, "LM Studioへリクエスト送信中")
-			update("REQUEST_DISPATCHING", toPercent(progressCurrent, overallTotal))
+			s.reportTaskPhaseProgress(ctx, currentTask.ID, currentTask.Type, phaseRequestExecutingSync, progressCurrent, overallTotal, runtimeprogress.StatusInProgress, executionMessage)
+			update(phaseRequestExecutingSync, toPercent(progressCurrent, overallTotal))
+		},
+		OnBatchSubmitted: func(batchJobID string, reconnected bool) {
+			message := "Batchジョブを送信しました"
+			if reconnected {
+				message = "既存Batchジョブに再接続しました"
+			}
+			s.reportTaskPhaseProgress(ctx, currentTask.ID, currentTask.Type, phaseBatchSubmitted, baseCompleted, overallTotal, runtimeprogress.StatusInProgress, message)
+			update(phaseBatchSubmitted, toPercent(baseCompleted, overallTotal))
+			if taskMetadata != nil {
+				*taskMetadata = s.persistTaskMetadata(ctx, currentTask.ID, *taskMetadata, task2.TaskMetadata{
+					"phase":             phaseBatchSubmitted,
+					"batch_job_id":      batchJobID,
+					"batch_reconnected": reconnected,
+					"batch_state":       "submitted",
+				})
+			}
+		},
+		OnBatchPolling: func(state string, progress float32) {
+			pollingCurrent := batchProgressCurrent(baseCompleted, overallTotal, progress)
+			s.reportTaskPhaseProgress(ctx, currentTask.ID, currentTask.Type, phaseBatchPolling, pollingCurrent, overallTotal, runtimeprogress.StatusInProgress, fmt.Sprintf("Batch状態を確認中 (%s)", state))
+			update(phaseBatchPolling, toPercent(pollingCurrent, overallTotal))
+			if taskMetadata != nil && state != "" && state != lastBatchState {
+				lastBatchState = state
+				*taskMetadata = s.persistTaskMetadata(ctx, currentTask.ID, *taskMetadata, task2.TaskMetadata{
+					"phase":       phaseBatchPolling,
+					"batch_state": state,
+				})
+			}
 		},
 		OnSaving: func(current int, _ int) {
 			progressCurrent := baseCompleted + current
-			s.reportTaskPhaseProgress(ctx, currentTask.ID, currentTask.Type, "REQUEST_SAVING", progressCurrent, overallTotal, runtimeprogress.StatusInProgress, "レスポンス保存中")
-			update("REQUEST_SAVING", toPercent(progressCurrent, overallTotal))
+			s.reportTaskPhaseProgress(ctx, currentTask.ID, currentTask.Type, phaseRequestSaving, progressCurrent, overallTotal, runtimeprogress.StatusInProgress, "レスポンス保存中")
+			update(phaseRequestSaving, toPercent(progressCurrent, overallTotal))
 		},
 		OnComplete: func(completed int, _ int, failed int) {
 			progressCompleted := baseCompleted + completed
@@ -350,23 +483,15 @@ func (s *MasterPersonaService) processQueuedRequests(
 				finalStatus = runtimeprogress.StatusFailed
 				finalMessage = "一部リクエストが失敗"
 			}
-			s.reportTaskPhaseProgress(ctx, currentTask.ID, currentTask.Type, "REQUEST_COMPLETED", progressCompleted, overallTotal, finalStatus, finalMessage)
+			s.reportTaskPhaseProgress(ctx, currentTask.ID, currentTask.Type, phaseRequestCompleted, progressCompleted, overallTotal, finalStatus, finalMessage)
 			if failed == 0 {
-				update("REQUEST_COMPLETED", 100)
+				update(phaseRequestCompleted, 100)
 			}
 		},
 	}
 
-	err := s.worker.ProcessProcessIDWithOptions(ctx, currentTask.ID, runtimequeue.ProcessOptions{
-		ConfigNamespace:        "master_persona.llm",
-		UseConfigProviderModel: true,
-		ConfigRead: runtimequeue.ConfigReadOptions{
-			Namespace:           "master_persona.llm",
-			DefaultProvider:     "lmstudio",
-			SelectedProviderKey: "selected_provider",
-		},
-		Hooks: hooks,
-	})
+	processOpts.Hooks = hooks
+	err := s.worker.ProcessProcessIDWithOptions(ctx, currentTask.ID, processOpts)
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			if cancelErr := s.queue.MarkTaskRequestsCanceled(ctx, currentTask.ID); cancelErr != nil {
@@ -375,7 +500,7 @@ func (s *MasterPersonaService) processQueuedRequests(
 					append(telemetry2.ErrorAttrs(wrappedErr), slog.String("task_id", currentTask.ID))...)
 			}
 		}
-		s.reportTaskPhaseProgress(ctx, currentTask.ID, currentTask.Type, "REQUEST_DISPATCHING", state.Completed, state.Total, runtimeprogress.StatusFailed, err.Error())
+		s.reportTaskPhaseProgress(ctx, currentTask.ID, currentTask.Type, failurePhase, state.Completed, state.Total, runtimeprogress.StatusFailed, err.Error())
 		return fmt.Errorf("process queued requests task_id=%s: %w", currentTask.ID, err)
 	}
 	return nil
@@ -389,10 +514,10 @@ func (s *MasterPersonaService) loadUpdatedTaskState(ctx context.Context, taskID 
 	return state, nil
 }
 
-func (s *MasterPersonaService) finalizePersonaExecution(ctx context.Context, currentTask *task2.Task, updatedState runtimequeue.TaskRequestState) error {
+func (s *MasterPersonaService) finalizePersonaExecution(ctx context.Context, currentTask *task2.Task, updatedState runtimequeue.TaskRequestState, baseMetadata task2.TaskMetadata) error {
 	saveSummary, saveErr := s.persistPersonaResponses(ctx, currentTask)
-	metadata := mergeTaskMetadata(currentTask.Metadata, task2.TaskMetadata{
-		"phase":                "REQUEST_COMPLETED",
+	metadata := mergeTaskMetadata(baseMetadata, task2.TaskMetadata{
+		"phase":                phaseRequestCompleted,
 		"resume_cursor":        updatedState.Completed,
 		"saved_request_ids":    saveSummary.SavedRequestIDs,
 		"persona_saved_count":  saveSummary.Saved,
@@ -405,7 +530,7 @@ func (s *MasterPersonaService) finalizePersonaExecution(ctx context.Context, cur
 			append(telemetry2.ErrorAttrs(wrappedErr), slog.String("task_id", currentTask.ID))...)
 	}
 
-	s.manager.EmitPhaseCompleted(currentTask.ID, "REQUEST_COMPLETED", map[string]int{
+	s.manager.EmitPhaseCompleted(currentTask.ID, phaseRequestCompleted, map[string]int{
 		"total":                updatedState.Total,
 		"completed":            updatedState.Completed,
 		"failed":               updatedState.Failed,
@@ -416,7 +541,7 @@ func (s *MasterPersonaService) finalizePersonaExecution(ctx context.Context, cur
 	})
 
 	if saveErr != nil {
-		s.reportTaskPhaseProgress(ctx, currentTask.ID, currentTask.Type, "REQUEST_COMPLETED", updatedState.Completed, updatedState.Total, runtimeprogress.StatusFailed, saveErr.Error())
+		s.reportTaskPhaseProgress(ctx, currentTask.ID, currentTask.Type, phaseRequestCompleted, updatedState.Completed, updatedState.Total, runtimeprogress.StatusFailed, saveErr.Error())
 		return fmt.Errorf("persist persona responses task_id=%s: %w", currentTask.ID, saveErr)
 	}
 	return nil

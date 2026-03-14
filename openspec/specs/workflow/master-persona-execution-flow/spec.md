@@ -1,4 +1,4 @@
-# Master Persona LM Studio Resume Flow 仕様
+# Master Persona Execution Flow 仕様
 
 ## Purpose
 MasterPersona 実行を `request enqueue -> lmstudio dispatch -> persona save` の段階で追跡し、再開可能なフローを定義する。

@@ -76,6 +76,9 @@ func (s *ModelCatalogService) ListModels(ctx context.Context, input ListModelsIn
 			DisplayName:      m.DisplayName,
 			MaxContextLength: m.MaxContextLength,
 			Loaded:           m.Loaded,
+			Capability: ModelCapability{
+				SupportsBatch: m.SupportsBatch,
+			},
 		})
 	}
 

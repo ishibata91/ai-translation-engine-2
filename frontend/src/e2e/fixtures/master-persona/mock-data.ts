@@ -20,6 +20,9 @@ type PersonaDialogueRecord = {
 };
 
 type ModelCatalogEntry = {
+  capability: {
+    supports_batch: boolean;
+  };
   display_name: string;
   id: string;
 };
@@ -83,8 +86,8 @@ export const MASTER_PERSONA_PROMPT_CONFIG = {
 };
 
 export const MASTER_PERSONA_LLM_ROOT_CONFIG: Record<string, string> = {
-  selected_provider: 'openai',
-  'sync_concurrency.openai': '8',
+  selected_provider: 'lmstudio',
+  'sync_concurrency.lmstudio': '4',
 };
 
 export const MASTER_PERSONA_LLM_CONFIG_BY_NAMESPACE: Record<string, Record<string, string>> = {
@@ -95,19 +98,13 @@ export const MASTER_PERSONA_LLM_CONFIG_BY_NAMESPACE: Record<string, Record<strin
     temperature: '0.30',
     context_length: '8192',
   },
-  'master_persona.llm.openai': {
-    model: 'gpt-4o-mini',
-    endpoint: 'https://api.openai.com/v1',
-    api_key: 'sk-e2e-openai',
-    temperature: '0.45',
-    context_length: '32768',
-  },
   'master_persona.llm.gemini': {
     model: 'gemini-2.0-flash',
     endpoint: 'https://generativelanguage.googleapis.com',
     api_key: 'gm-e2e-key',
     temperature: '0.50',
     context_length: '16384',
+    bulk_strategy: 'batch',
   },
   'master_persona.llm.xai': {
     model: 'grok-3-mini',
@@ -115,25 +112,22 @@ export const MASTER_PERSONA_LLM_CONFIG_BY_NAMESPACE: Record<string, Record<strin
     api_key: 'xai-e2e-key',
     temperature: '0.40',
     context_length: '16384',
+    bulk_strategy: 'batch',
   },
 };
 
 export const MASTER_PERSONA_MODEL_CATALOG_BY_PROVIDER: Record<string, ModelCatalogEntry[]> = {
   lmstudio: [
-    {id: 'local-model', display_name: 'local-model'},
-    {id: 'local-model-2', display_name: 'local-model-2'},
-  ],
-  openai: [
-    {id: 'gpt-4o-mini', display_name: 'gpt-4o-mini'},
-    {id: 'gpt-4o', display_name: 'gpt-4o'},
+    {id: 'local-model', display_name: 'local-model', capability: {supports_batch: false}},
+    {id: 'local-model-2', display_name: 'local-model-2', capability: {supports_batch: false}},
   ],
   gemini: [
-    {id: 'gemini-2.0-flash', display_name: 'gemini-2.0-flash'},
-    {id: 'gemini-2.0-pro', display_name: 'gemini-2.0-pro'},
+    {id: 'gemini-2.0-flash', display_name: 'gemini-2.0-flash', capability: {supports_batch: true}},
+    {id: 'gemini-2.0-pro', display_name: 'gemini-2.0-pro', capability: {supports_batch: true}},
   ],
   xai: [
-    {id: 'grok-3-mini', display_name: 'grok-3-mini'},
-    {id: 'grok-3', display_name: 'grok-3'},
+    {id: 'grok-3-mini', display_name: 'grok-3-mini', capability: {supports_batch: true}},
+    {id: 'grok-3', display_name: 'grok-3', capability: {supports_batch: true}},
   ],
 };
 

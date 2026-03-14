@@ -1,9 +1,9 @@
 import {test} from './fixtures/app.fixture';
 import {
-    MASTER_PERSONA_REQUIRED_NAMES,
-    MASTER_PERSONA_REQUIRED_NPCS,
-    MASTER_PERSONA_REQUIRED_PROMPT_TEXT,
-    MASTER_PERSONA_SELECTED_JSON_PATH,
+  MASTER_PERSONA_REQUIRED_NAMES,
+  MASTER_PERSONA_REQUIRED_NPCS,
+  MASTER_PERSONA_REQUIRED_PROMPT_TEXT,
+  MASTER_PERSONA_SELECTED_JSON_PATH,
 } from './fixtures/master-persona/mock-data';
 
 const PRIMARY_PERSONA = MASTER_PERSONA_REQUIRED_NPCS[0];
@@ -34,10 +34,10 @@ test('MasterPersona の必須シナリオ: PromptSettingCard の表示と編集�
 
 test('MasterPersona の必須シナリオ: ModelSettings の主要操作', async ({app}) => {
   await app.masterPersona.open();
-  await app.masterPersona.changeProvider('openai');
+  await app.masterPersona.changeProvider('gemini');
   await app.masterPersona.expectModelSettingsValue({
-    model: 'gpt-4o-mini',
-    provider: 'openai',
+    model: 'gemini-2.0-flash',
+    provider: 'gemini',
   });
   await app.masterPersona.changeTemperature('0.72');
   await app.masterPersona.expectModelSettingsValue({temperature: '0.72'});

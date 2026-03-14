@@ -9,10 +9,16 @@ type ListModelsInput struct {
 	APIKey    string `json:"apiKey"`
 }
 
+// ModelCapability is provider-derived model execution capability exposed to UI.
+type ModelCapability struct {
+	SupportsBatch bool `json:"supports_batch"`
+}
+
 // ModelOption is a UI-facing model entry.
 type ModelOption struct {
-	ID               string `json:"id"`
-	DisplayName      string `json:"display_name"`
-	MaxContextLength int    `json:"max_context_length,omitempty"`
-	Loaded           bool   `json:"loaded"`
+	ID               string          `json:"id"`
+	DisplayName      string          `json:"display_name"`
+	MaxContextLength int             `json:"max_context_length,omitempty"`
+	Loaded           bool            `json:"loaded"`
+	Capability       ModelCapability `json:"capability"`
 }

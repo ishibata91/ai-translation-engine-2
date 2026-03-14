@@ -1,0 +1,309 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Google Gemini API - Complete Developer Reference",
+    "description": "\n# Google Gemini API 完全仕様書 (2026年3月版)\n\n**Gemini 1.5 Pro/Flash/2.0** の全APIエンドポイントを網羅。\n- Chat Completion (Streaming/Non-streaming)\n- Batch Processing (最大1,000リクエスト)\n- Multimodal (画像/動画/音声)\n- Function Calling & Structured Output\n- Model Management\n\n## 認証\nすべてのリクエストに `key=YOUR_API_KEY` query parameter 必須。\n\n## Rate Limits\n- 1,500 RPM (Requests Per Minute)\n- 1M TPM (Tokens Per Minute)\n- Batch: 50同時バッチ上限\n        ",
+    "version": "v1beta",
+    "contact": {
+      "name": "Google AI Studio",
+      "url": "https://aistudio.google.com"
+    }
+  },
+  "servers": [
+    {
+      "url": "https://generativelanguage.googleapis.com",
+      "description": "Production"
+    }
+  ],
+  "components": {
+    "schemas": {
+      "Content": {
+        "type": "object",
+        "description": "メッセージ内容 (テキスト/画像/動画)",
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "user",
+              "model"
+            ],
+            "description": "話者役割"
+          },
+          "parts": {
+            "type": "array",
+            "items": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "text": {
+                      "type": "string"
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "inline_data": {
+                      "type": "object",
+                      "properties": {
+                        "mime_type": {
+                          "type": "string"
+                        },
+                        "data": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            "description": "テキスト or Base64画像/動画データ"
+          }
+        },
+        "required": [
+          "role",
+          "parts"
+        ]
+      },
+      "GenerateContentRequest": {
+        "type": "object",
+        "description": "単発生成リクエスト。最大2Mトークン。",
+        "properties": {
+          "model": {
+            "type": "string",
+            "example": "models/gemini-1.5-pro-latest",
+            "description": "利用モデル (models.listで取得)"
+          },
+          "contents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Content"
+            },
+            "minItems": 1
+          },
+          "generationConfig": {
+            "type": "object",
+            "properties": {
+              "temperature": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 2
+              },
+              "topP": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "maxOutputTokens": {
+                "type": "integer",
+                "maximum": 8192
+              }
+            },
+            "description": "生成パラメータ"
+          },
+          "tools": {
+            "type": "array",
+            "description": "Function Calling用ツール定義",
+            "items": {
+              "type": "object",
+              "properties": {
+                "functionDeclarations": {
+                  "type": "array"
+                }
+              }
+            }
+          },
+          "responseMimeType": {
+            "type": "string",
+            "enum": [
+              "text/plain",
+              "application/json"
+            ],
+            "description": "JSON強制出力"
+          }
+        },
+        "required": [
+          "model",
+          "contents"
+        ]
+      }
+    }
+  },
+  "paths": {
+    "/v1beta/models": {
+      "get": {
+        "summary": "全利用可能モデル取得",
+        "description": "\n## モデル一覧API\n- **Batch対応確認**: `supportedGenerationMethods` に `batchGenerateContent` 存在\n- **Multimodal確認**: `supportedModalities` に `IMAGE`, `VIDEO` 存在\n- 更新頻度: 数時間おきに実行推奨\n                ",
+        "parameters": [
+          {
+            "name": "key",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "モデルメタデータ一覧",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "supportedGenerationMethods": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "supportedModalities": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1beta/models/{model}:generateContent": {
+      "post": {
+        "summary": "単発コンテンツ生成 (Chat/Function Calling)",
+        "description": "\n## 主要生成API (非Streaming)\n- 最大2Mトークン入力\n- JSON Schema強制出力対応\n- 画像/動画同時入力可\n- Function Callingネイティブ\n                ",
+        "parameters": [
+          {
+            "name": "model",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "key",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "$ref": "#/components/schemas/GenerateContentRequest"
+        },
+        "responses": {
+          "200": {
+            "description": "生成完了",
+            "content": {
+              "application/json": {}
+            }
+          }
+        }
+      }
+    },
+    "/v1beta/models/{model}:streamGenerateContent": {
+      "post": {
+        "summary": "Streaming生成",
+        "description": "リアルタイムストリーミング応答。チャットボットに最適。",
+        "parameters": [
+          {
+            "name": "model",
+            "in": "path",
+            "required": true
+          },
+          {
+            "name": "key",
+            "in": "query",
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "$ref": "#/components/schemas/GenerateContentRequest"
+        },
+        "responses": {
+          "200": {
+            "description": "SSEストリーム"
+          }
+        }
+      }
+    },
+    "/v1beta/batches": {
+      "post": {
+        "summary": "Batchタスク作成 (最大1,000リクエスト)",
+        "description": "\n## Batch API (50%割引)\n- 同時実行上限: 50バッチ\n- 完了時間: 数分〜24時間\n- コスト: 通常APIの50%OFF\n- ユースケース: 大量データ処理/エージェント評価\n                ",
+        "parameters": [
+          {
+            "name": "key",
+            "in": "query",
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "requests": {
+                    "type": "array",
+                    "description": "並列実行リクエスト群",
+                    "items": {
+                      "$ref": "#/components/schemas/GenerateContentRequest"
+                    },
+                    "minItems": 1,
+                    "maxItems": 1000
+                  }
+                },
+                "required": [
+                  "requests"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Batch ID返却"
+          }
+        }
+      }
+    },
+    "/v1beta/batches/{batchId}": {
+      "get": {
+        "summary": "Batchステータス確認",
+        "description": "PENDING/RUNNING/SUCCEEDED/FAILEDのいずれか",
+        "parameters": [
+          {
+            "name": "batchId",
+            "in": "path",
+            "required": true
+          },
+          {
+            "name": "key",
+            "in": "query",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "進捗情報"
+          }
+        }
+      }
+    }
+  }
+}

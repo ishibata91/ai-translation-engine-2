@@ -99,6 +99,7 @@ func (c *lmStudioClient) ListModels(ctx context.Context) ([]ModelInfo, error) {
 			DisplayName:      m.DisplayName,
 			MaxContextLength: m.MaxContextLength,
 			Loaded:           len(m.LoadedInstances) > 0,
+			SupportsBatch:    false,
 		})
 	}
 	return models, nil

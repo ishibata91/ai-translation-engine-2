@@ -1,46 +1,56 @@
 import {useEffect, useMemo, useState} from 'react';
 import {z} from 'zod';
 import {ListModels} from '../../../wailsjs/go/controller/ModelCatalogController';
-import {type MasterPersonaLLMConfig, type MasterPersonaProvider} from '../../../types/masterPersona';
+import {
+    DEFAULT_MASTER_PERSONA_LLM_CONFIG,
+    type MasterPersonaExecutionProfile,
+    type MasterPersonaLLMConfig,
+    type MasterPersonaModelCapability,
+    type MasterPersonaModelOption,
+    type MasterPersonaProvider,
+} from '../../../types/masterPersona';
 
-type ModelOptionItem = { id: string; label: string };
+export const MASTER_PERSONA_PROVIDERS = ['lmstudio', 'gemini', 'xai'] as const;
 
-export const MASTER_PERSONA_PROVIDERS = ['lmstudio', 'gemini', 'openai', 'xai'] as const;
-
-const FALLBACK_MODEL_OPTIONS: Record<MasterPersonaProvider, ModelOptionItem[]> = {
-    lmstudio: [{ id: '(model-unavailable)', label: '(モデルを取得できませんでした)' }],
+const FALLBACK_MODEL_OPTIONS: Record<MasterPersonaProvider, MasterPersonaModelOption[]> = {
+    lmstudio: [{ id: '(model-unavailable)', label: '(モデルを取得できませんでした)', capability: { supportsBatch: false } }],
     gemini: [
-        { id: 'gemini-2.0-flash', label: 'gemini-2.0-flash' },
-        { id: 'gemini-2.0-pro', label: 'gemini-2.0-pro' },
-        { id: 'gemini-1.5-pro', label: 'gemini-1.5-pro' },
-        { id: 'gemini-1.5-flash', label: 'gemini-1.5-flash' },
-    ],
-    openai: [
-        { id: 'gpt-4o', label: 'gpt-4o' },
-        { id: 'gpt-4o-mini', label: 'gpt-4o-mini' },
-        { id: 'gpt-4-turbo', label: 'gpt-4-turbo' },
-        { id: 'gpt-3.5-turbo', label: 'gpt-3.5-turbo' },
+        { id: 'gemini-2.0-flash', label: 'gemini-2.0-flash', capability: { supportsBatch: false } },
+        { id: 'gemini-2.0-pro', label: 'gemini-2.0-pro', capability: { supportsBatch: false } },
+        { id: 'gemini-1.5-pro', label: 'gemini-1.5-pro', capability: { supportsBatch: false } },
+        { id: 'gemini-1.5-flash', label: 'gemini-1.5-flash', capability: { supportsBatch: false } },
     ],
     xai: [
-        { id: 'grok-3', label: 'grok-3' },
-        { id: 'grok-3-mini', label: 'grok-3-mini' },
-        { id: 'grok-2', label: 'grok-2' },
+        { id: 'grok-3', label: 'grok-3', capability: { supportsBatch: false } },
+        { id: 'grok-3-mini', label: 'grok-3-mini', capability: { supportsBatch: false } },
+        { id: 'grok-2', label: 'grok-2', capability: { supportsBatch: false } },
     ],
 };
 
 export const PROVIDER_LABELS: Record<MasterPersonaProvider, string> = {
     lmstudio: 'Local LLM (LM Studio)',
     gemini: 'Google Gemini',
-    openai: 'OpenAI (GPT)',
     xai: 'xAI (Grok)',
 };
 
 const providerSchema = z.enum(MASTER_PERSONA_PROVIDERS);
+const modelCapabilitySchema = z
+    .object({
+        supports_batch: z.boolean().optional().catch(false),
+    })
+    .transform((raw) => ({
+        supports_batch: raw.supports_batch ?? false,
+    }));
+
 const modelOptionSchema = z.object({
     id: z.string().catch(''),
     display_name: z.string().optional().catch(''),
+    capability: modelCapabilitySchema.optional(),
 });
+
 const modelOptionListSchema = z.array(modelOptionSchema);
+
+const DEFAULT_MODEL_CAPABILITY: MasterPersonaModelCapability = { supportsBatch: false };
 
 interface UseModelSettingsArgs {
     value: MasterPersonaLLMConfig;
@@ -49,17 +59,56 @@ interface UseModelSettingsArgs {
     namespace: string;
 }
 
+const normalizeProvider = (provider: MasterPersonaLLMConfig['provider']): MasterPersonaProvider => {
+    if (provider === 'lmstudio' || provider === 'gemini' || provider === 'xai') {
+        return provider;
+    }
+    return DEFAULT_MASTER_PERSONA_LLM_CONFIG.provider;
+};
+
+const normalizeExecutionProfiles = (capability: MasterPersonaModelCapability): MasterPersonaExecutionProfile[] => {
+    if (capability.supportsBatch) {
+        return ['sync', 'batch'];
+    }
+    return ['sync'];
+};
+
+const resolveNextModel = (
+    provider: MasterPersonaProvider,
+    currentModel: string,
+    dynamicOptionsByProvider: Partial<Record<MasterPersonaProvider, MasterPersonaModelOption[]>>,
+): string => {
+    const candidates = dynamicOptionsByProvider[provider] ?? FALLBACK_MODEL_OPTIONS[provider];
+    if (candidates.some((option) => option.id === currentModel)) {
+        return currentModel;
+    }
+    return candidates[0]?.id ?? '';
+};
+
+const resolveModelCapability = (
+    provider: MasterPersonaProvider,
+    modelID: string,
+    dynamicOptionsByProvider: Partial<Record<MasterPersonaProvider, MasterPersonaModelOption[]>>,
+): MasterPersonaModelCapability => {
+    const options = dynamicOptionsByProvider[provider] ?? FALLBACK_MODEL_OPTIONS[provider];
+    const byID = options.find((option) => option.id === modelID);
+    if (byID) {
+        return byID.capability;
+    }
+    return DEFAULT_MODEL_CAPABILITY;
+};
+
 /**
  * モデル一覧取得と provider 切替ロジックを UI から分離する。
  */
 export function useModelSettings({ value, onChange, enabled, namespace }: UseModelSettingsArgs) {
-    const [dynamicOptionsByProvider, setDynamicOptionsByProvider] = useState<Partial<Record<MasterPersonaProvider, ModelOptionItem[]>>>({});
+    const [dynamicOptionsByProvider, setDynamicOptionsByProvider] = useState<Partial<Record<MasterPersonaProvider, MasterPersonaModelOption[]>>>({});
     const [catalogLoading, setCatalogLoading] = useState<boolean>(false);
     const [catalogError, setCatalogError] = useState<string>('');
     const [lastFetchedProvider, setLastFetchedProvider] = useState<MasterPersonaProvider | null>(null);
     const [lastFetchedApiKey, setLastFetchedApiKey] = useState<string>('');
 
-    const provider = value.provider;
+    const provider = normalizeProvider(value.provider);
     const endpoint = value.endpoint;
     const apiKey = value.apiKey;
     const currentModel = value.model;
@@ -78,9 +127,9 @@ export function useModelSettings({ value, onChange, enabled, namespace }: UseMod
             return modelOptions;
         }
         if (currentModel.trim() !== '') {
-            return [{ id: currentModel, label: currentModel }];
+            return [{ id: currentModel, label: currentModel, capability: DEFAULT_MODEL_CAPABILITY }];
         }
-        return [{ id: '(model-unavailable)', label: '(モデルを取得できませんでした)' }];
+        return [{ id: '(model-unavailable)', label: '(モデルを取得できませんでした)', capability: DEFAULT_MODEL_CAPABILITY }];
     }, [currentModel, modelOptions]);
 
     const selectedModelValue = useMemo(() => {
@@ -94,15 +143,47 @@ export function useModelSettings({ value, onChange, enabled, namespace }: UseMod
         return selectableModelOptions[0].id;
     }, [currentModel, selectableModelOptions]);
 
+    const selectedModelCapability = useMemo(() => {
+        const selected = selectableModelOptions.find((option) => option.id === selectedModelValue);
+        if (selected) {
+            return selected.capability;
+        }
+        return DEFAULT_MODEL_CAPABILITY;
+    }, [selectableModelOptions, selectedModelValue]);
+
+    const availableExecutionProfiles = useMemo(
+        () => normalizeExecutionProfiles(selectedModelCapability),
+        [selectedModelCapability],
+    );
+
+    useEffect(() => {
+        if (value.provider === provider) {
+            return;
+        }
+        const nextModel = resolveNextModel(provider, value.model, dynamicOptionsByProvider);
+        onChange({
+            ...value,
+            provider,
+            model: nextModel,
+            bulkStrategy: 'sync',
+        });
+    }, [dynamicOptionsByProvider, onChange, provider, value]);
+
+    useEffect(() => {
+        if (value.bulkStrategy !== 'batch') {
+            return;
+        }
+        if (selectedModelCapability.supportsBatch) {
+            return;
+        }
+        onChange({ ...value, bulkStrategy: 'sync' });
+    }, [onChange, selectedModelCapability, value]);
+
     useEffect(() => {
         if (!enabled) {
             return;
         }
 
-        // モデル一覧を取得するのは以下の場合のみ:
-        // 1. 初回ロード（lastFetchedProvider が null）
-        // 2. プロバイダが変更された
-        // 3. API キーが設定された（空文字列から値が入った場合）
         const isFirstLoad = lastFetchedProvider === null;
         const providerChanged = lastFetchedProvider !== provider;
         const apiKeySet = !isLMStudio && lastFetchedApiKey === '' && apiKey !== '';
@@ -129,7 +210,7 @@ export function useModelSettings({ value, onChange, enabled, namespace }: UseMod
                 }
 
                 const seen = new Set<string>();
-                const options: ModelOptionItem[] = [];
+                const options: MasterPersonaModelOption[] = [];
                 for (const row of rows) {
                     const id = row.id.trim();
                     const label = (row.display_name ?? row.id).trim();
@@ -137,7 +218,13 @@ export function useModelSettings({ value, onChange, enabled, namespace }: UseMod
                         continue;
                     }
                     seen.add(id);
-                    options.push({ id, label: label.length > 0 ? label : id });
+                    options.push({
+                        id,
+                        label: label.length > 0 ? label : id,
+                        capability: {
+                            supportsBatch: row.capability?.supports_batch ?? false,
+                        },
+                    });
                 }
 
                 setDynamicOptionsByProvider((prev) => ({ ...prev, [provider]: options }));
@@ -146,7 +233,13 @@ export function useModelSettings({ value, onChange, enabled, namespace }: UseMod
 
                 const hasCurrent = options.some((option) => option.id === currentModel || option.label === currentModel);
                 if (options.length > 0 && !hasCurrent) {
-                    onChange({ ...value, model: options[0].id });
+                    const nextModel = options[0].id;
+                    const nextCapability = resolveModelCapability(provider, nextModel, { ...dynamicOptionsByProvider, [provider]: options });
+                    onChange({
+                        ...value,
+                        model: nextModel,
+                        bulkStrategy: nextCapability.supportsBatch ? value.bulkStrategy : 'sync',
+                    });
                 }
             } catch {
                 if (!alive) {
@@ -166,7 +259,20 @@ export function useModelSettings({ value, onChange, enabled, namespace }: UseMod
         return () => {
             alive = false;
         };
-    }, [apiKey, currentModel, enabled, endpoint, isLMStudio, namespace, onChange, provider, value, lastFetchedProvider, lastFetchedApiKey]);
+    }, [
+        apiKey,
+        currentModel,
+        dynamicOptionsByProvider,
+        enabled,
+        endpoint,
+        isLMStudio,
+        namespace,
+        onChange,
+        provider,
+        value,
+        lastFetchedProvider,
+        lastFetchedApiKey,
+    ]);
 
     const handleProviderChange = (rawProvider: string) => {
         const parsed = providerSchema.safeParse(rawProvider);
@@ -175,21 +281,25 @@ export function useModelSettings({ value, onChange, enabled, namespace }: UseMod
         }
 
         const nextProvider = parsed.data;
-        const candidates = FALLBACK_MODEL_OPTIONS[nextProvider];
-        const nextModel = nextProvider === provider ? value.model : (candidates[0]?.id ?? '');
+        const nextOptions = dynamicOptionsByProvider[nextProvider] ?? FALLBACK_MODEL_OPTIONS[nextProvider];
+        const nextModel = nextProvider === provider ? value.model : (nextOptions[0]?.id ?? '');
+        const nextCapability = resolveModelCapability(nextProvider, nextModel, dynamicOptionsByProvider);
         onChange({
             ...value,
             provider: nextProvider,
             model: nextModel,
             endpoint: nextProvider === 'lmstudio' ? value.endpoint || 'http://localhost:1234' : value.endpoint,
+            bulkStrategy: nextCapability.supportsBatch ? value.bulkStrategy : 'sync',
         });
     };
 
     return {
+        availableExecutionProfiles,
         catalogError,
         catalogLoading,
         handleProviderChange,
         selectableModelOptions,
+        selectedModelCapability,
         selectedModelValue,
     };
 }

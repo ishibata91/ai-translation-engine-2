@@ -18,6 +18,7 @@ type ModelInfo struct {
 	DisplayName      string `json:"display_name"`
 	MaxContextLength int    `json:"max_context_length,omitempty"`
 	Loaded           bool   `json:"loaded"`
+	SupportsBatch    bool   `json:"supports_batch"`
 }
 
 // Response represents a response from an LLM provider.
@@ -93,11 +94,23 @@ type BatchJobID struct {
 	Provider string `json:"provider"`
 }
 
+// BatchState is the normalized cross-provider batch state.
+type BatchState string
+
+const (
+	BatchStateQueued        BatchState = "queued"
+	BatchStateRunning       BatchState = "running"
+	BatchStateCompleted     BatchState = "completed"
+	BatchStatePartialFailed BatchState = "partial_failed"
+	BatchStateFailed        BatchState = "failed"
+	BatchStateCancelled     BatchState = "cancelled"
+)
+
 // BatchStatus represents the current status of a batch job.
 type BatchStatus struct {
-	ID       string  `json:"id"`
-	State    string  `json:"state"`
-	Progress float32 `json:"progress"`
+	ID       string     `json:"id"`
+	State    BatchState `json:"state"`
+	Progress float32    `json:"progress"`
 }
 
 // NormalizeProvider maps legacy provider names to canonical identifiers.
@@ -107,5 +120,15 @@ func NormalizeProvider(provider string) string {
 		return "lmstudio"
 	default:
 		return strings.ToLower(strings.TrimSpace(provider))
+	}
+}
+
+// ProviderSupportsBatch returns whether provider has native Batch API support.
+func ProviderSupportsBatch(provider string) bool {
+	switch NormalizeProvider(provider) {
+	case "gemini", "xai":
+		return true
+	default:
+		return false
 	}
 }

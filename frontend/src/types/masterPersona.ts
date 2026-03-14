@@ -1,4 +1,18 @@
-export type MasterPersonaProvider = 'lmstudio' | 'gemini' | 'openai' | 'xai';
+export type MasterPersonaProvider = 'lmstudio' | 'gemini' | 'xai';
+
+export type MasterPersonaExecutionProfile = 'sync' | 'batch';
+
+export type MasterPersonaBulkStrategy = MasterPersonaExecutionProfile;
+
+export interface MasterPersonaModelCapability {
+    supportsBatch: boolean;
+}
+
+export interface MasterPersonaModelOption {
+    id: string;
+    label: string;
+    capability: MasterPersonaModelCapability;
+}
 
 export interface MasterPersonaLLMConfig {
     provider: MasterPersonaProvider;
@@ -8,6 +22,7 @@ export interface MasterPersonaLLMConfig {
     temperature: number;
     contextLength: number;
     syncConcurrency: number;
+    bulkStrategy: MasterPersonaBulkStrategy;
 }
 
 export const DEFAULT_MASTER_PERSONA_LLM_CONFIG: MasterPersonaLLMConfig = {
@@ -18,6 +33,7 @@ export const DEFAULT_MASTER_PERSONA_LLM_CONFIG: MasterPersonaLLMConfig = {
     temperature: 0.3,
     contextLength: 0,
     syncConcurrency: 1,
+    bulkStrategy: 'sync',
 };
 
 export interface MasterPersonaPromptConfig {

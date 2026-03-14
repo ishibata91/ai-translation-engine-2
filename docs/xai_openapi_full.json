@@ -1,0 +1,559 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "xAI Grok Inference API",
+    "version": "2026-03-14",
+    "description": "xAI Grok Inference API の完全版 OpenAPI 3.1 仕様書です。\n\n本 API でできること:\n- /models: 利用可能な Grok モデル一覧の取得\n- /chat/completions: OpenAI 互換のチャット補完 (翻訳・要約・対話・推論タスクに利用可能)\n- /batches: 大量のチャット補完リクエストを非同期バッチ処理\n\n何をリクエストすればよいか:\n- 単発・同期処理: /chat/completions に ChatCompletionRequest を投げる\n- 大量一括処理: /batches でバッチを作成 → /batches/{id}/requests でリクエスト追加 → /batches/{id}/results で結果取得\n\nバッチでできること:\n- 最大全体で数千件クラスの chat completion リクエストを、一度のバッチジョブとして登録\n- ステータス (待機/実行中/成功/失敗数など) をポーリングで監視\n- 完了後に結果をページングして取得し、自前でストレージやDBに保存\n\n制約例 (実装想定):\n- 1 バッチあたりのリクエスト件数上限 (例: 5,000 件程度)\n- 入力/出力の合計トークン数上限 (モデルごとのコンテキスト長に依存)\n- 同時にアクティブにできるバッチ数上限 (アカウントごとのレート制御)\n\nこの仕様書は、AI アプリケーションやバッチ推論パイプラインの開発者が、\n\"何ができる API なのか\" \"どのエンドポイントをどう叩けばよいか\" を理解しやすいよう、\n説明を冗長めに記述しています。\n"
+  },
+  "servers": [
+    {
+      "url": "https://api.x.ai/v1",
+      "description": "xAI Grok public inference endpoint"
+    }
+  ],
+  "paths": {
+    "/models": {
+      "get": {
+        "summary": "List available Grok models",
+        "responses": {
+          "200": {
+            "description": "List of available models",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "object": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Model"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "利用可能な Grok モデル一覧を取得し、どの model 名を /chat/completions に渡せるか確認できる。"
+      }
+    },
+    "/chat/completions": {
+      "post": {
+        "summary": "Create chat completion (OpenAI-compatible)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatCompletionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Chat completion response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatCompletionResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "OpenAI 互換形式でチャット補完を生成する同期 API。翻訳、要約、対話、推論タスクなど汎用的に利用可能。"
+      }
+    },
+    "/batches": {
+      "post": {
+        "summary": "新しいバッチジョブを作成",
+        "description": "空のバッチコンテナを作成し、後続で個々のリクエストを追加できるようにする。",
+        "tags": [
+          "Batches"
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "作成されたバッチのメタデータを返す。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Batch"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      },
+      "get": {
+        "summary": "バッチ一覧の取得",
+        "description": "最近作成されたバッチジョブの一覧とステータスを取得する。",
+        "tags": [
+          "Batches"
+        ],
+        "responses": {
+          "200": {
+            "description": "バッチのリストを返す。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "batches": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Batch"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/batches/{batch_id}": {
+      "get": {
+        "summary": "特定バッチのステータスを取得",
+        "description": "バッチの進行状況 (成功/失敗/保留数など) を確認するためのエンドポイント。",
+        "tags": [
+          "Batches"
+        ],
+        "parameters": [
+          {
+            "name": "batch_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "対象バッチの ID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "バッチメタデータとステータスを返す。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Batch"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/batches/{batch_id}/requests": {
+      "post": {
+        "summary": "バッチにリクエストを一括追加",
+        "description": "既存のバッチに対して複数の chat completion リクエストを登録する。リクエストが多いほど非同期処理のメリットが大きい。",
+        "tags": [
+          "Batches"
+        ],
+        "parameters": [
+          {
+            "name": "batch_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "対象バッチの ID"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchAddRequests"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "追加されたリクエスト数など簡易情報を返す (実装依存)。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/batches/{batch_id}/results": {
+      "get": {
+        "summary": "バッチ結果の取得 (ページング対応)",
+        "description": "完了したバッチの個々のリクエスト結果をページングしながら取得する。クライアント側で結果をダウンロード・保存できる。",
+        "tags": [
+          "Batches"
+        ],
+        "parameters": [
+          {
+            "name": "batch_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "対象バッチの ID"
+          },
+          {
+            "name": "page_token",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "次ページ取得用トークン。最初の呼び出しでは省略。"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "指定されたページのバッチ結果を返す。全結果をダウンロードしたい場合はページを繰り返し取得する。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchResultsPage"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "XAI_API_KEY"
+      }
+    },
+    "schemas": {
+      "Model": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "object": {
+            "type": "string"
+          },
+          "created": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "owned_by": {
+            "type": "string"
+          }
+        }
+      },
+      "ChatMessage": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "role",
+          "content"
+        ]
+      },
+      "ChatCompletionRequest": {
+        "type": "object",
+        "properties": {
+          "model": {
+            "type": "string"
+          },
+          "messages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ChatMessage"
+            }
+          },
+          "temperature": {
+            "type": "number"
+          },
+          "top_p": {
+            "type": "number"
+          },
+          "max_tokens": {
+            "type": "integer"
+          },
+          "stream": {
+            "type": "boolean"
+          },
+          "stop": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            ]
+          },
+          "user": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "model",
+          "messages"
+        ]
+      },
+      "ChatCompletionChoice": {
+        "type": "object",
+        "properties": {
+          "index": {
+            "type": "integer"
+          },
+          "message": {
+            "$ref": "#/components/schemas/ChatMessage"
+          },
+          "finish_reason": {
+            "type": "string"
+          }
+        }
+      },
+      "Usage": {
+        "type": "object",
+        "properties": {
+          "prompt_tokens": {
+            "type": "integer"
+          },
+          "completion_tokens": {
+            "type": "integer"
+          },
+          "total_tokens": {
+            "type": "integer"
+          }
+        }
+      },
+      "ChatCompletionResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "object": {
+            "type": "string"
+          },
+          "created": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "model": {
+            "type": "string"
+          },
+          "choices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ChatCompletionChoice"
+            }
+          },
+          "usage": {
+            "$ref": "#/components/schemas/Usage"
+          }
+        }
+      },
+      "BatchState": {
+        "type": "object",
+        "description": "バッチ内リクエストの集計ステータス (総数/成功/失敗/保留)。",
+        "properties": {
+          "num_requests": {
+            "type": "integer"
+          },
+          "num_pending": {
+            "type": "integer"
+          },
+          "num_success": {
+            "type": "integer"
+          },
+          "num_error": {
+            "type": "integer"
+          }
+        }
+      },
+      "Batch": {
+        "type": "object",
+        "description": "1 つのバッチジョブのメタデータとステータスを表す。",
+        "properties": {
+          "batch_id": {
+            "type": "string"
+          },
+          "batch_name": {
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/BatchState"
+          },
+          "create_time": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "create_api_key_id": {
+            "type": "string"
+          }
+        }
+      },
+      "BatchCreateRequest": {
+        "type": "object",
+        "description": "空のバッチコンテナを新規作成するためのリクエスト。",
+        "properties": {
+          "batch_name": {
+            "type": "string",
+            "description": "任意の論理名。ログや課金分析時に便利。"
+          }
+        }
+      },
+      "BatchAddRequestItem": {
+        "type": "object",
+        "description": "バッチに追加される個々のチャット補完リクエスト。",
+        "properties": {
+          "batch_request_id": {
+            "type": "string"
+          },
+          "batch_request": {
+            "type": "object",
+            "properties": {
+              "chat_get_completion": {
+                "$ref": "#/components/schemas/ChatCompletionRequest"
+              }
+            },
+            "required": [
+              "chat_get_completion"
+            ]
+          }
+        },
+        "required": [
+          "batch_request_id",
+          "batch_request"
+        ]
+      },
+      "BatchAddRequests": {
+        "type": "object",
+        "description": "既存バッチに複数リクエストを一括追加するためのコンテナ。",
+        "properties": {
+          "batch_requests": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BatchAddRequestItem"
+            }
+          }
+        },
+        "required": [
+          "batch_requests"
+        ]
+      },
+      "BatchResultItem": {
+        "type": "object",
+        "description": "バッチ処理された 1 リクエスト分の結果。",
+        "properties": {
+          "batch_request_id": {
+            "type": "string"
+          },
+          "response": {
+            "$ref": "#/components/schemas/ChatCompletionResponse"
+          },
+          "error_message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "batch_request_id"
+        ]
+      },
+      "BatchResultsPage": {
+        "type": "object",
+        "description": "list_batch_results のページ単位レスポンス。",
+        "properties": {
+          "succeeded": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BatchResultItem"
+            }
+          },
+          "failed": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BatchResultItem"
+            }
+          },
+          "pagination_token": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "security": [
+    {
+      "BearerAuth": []
+    }
+  ]
+}

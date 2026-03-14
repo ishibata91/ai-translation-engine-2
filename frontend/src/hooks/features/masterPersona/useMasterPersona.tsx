@@ -1,36 +1,44 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useLocation } from 'react-router-dom';
-import type { NpcRow } from '../../../types/npc';
-import { SelectJSONFile } from '../../../wailsjs/go/controller/FileDialogController';
-import { CancelTask, GetAllTasks, GetTaskRequestState, ResumeTask, StartMasterPersonTask } from '../../../wailsjs/go/controller/PersonaTaskController';
-import { ListDialoguesByPersonaID, ListNPCs } from '../../../wailsjs/go/controller/PersonaController';
-import { ConfigGetAll, ConfigSet } from '../../../wailsjs/go/controller/ConfigController';
-import type { PhaseCompletedEvent, FrontendTask } from '../../../types/task';
+import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import {useLocation} from 'react-router-dom';
+import type {NpcRow} from '../../../types/npc';
+import {SelectJSONFile} from '../../../wailsjs/go/controller/FileDialogController';
+import {
+    CancelTask,
+    GetAllTasks,
+    GetTaskRequestState,
+    ResumeTask,
+    StartMasterPersonTask
+} from '../../../wailsjs/go/controller/PersonaTaskController';
+import {ListDialoguesByPersonaID, ListNPCs} from '../../../wailsjs/go/controller/PersonaController';
+import {ConfigGetAll, ConfigSet} from '../../../wailsjs/go/controller/ConfigController';
+import type {FrontendTask, PhaseCompletedEvent} from '../../../types/task';
 import {
     DEFAULT_MASTER_PERSONA_LLM_CONFIG,
     DEFAULT_MASTER_PERSONA_PROMPT_CONFIG,
+    type MasterPersonaBulkStrategy,
+    type MasterPersonaExecutionProfile,
     type MasterPersonaLLMConfig,
     type MasterPersonaPromptConfig,
 } from '../../../types/masterPersona';
 import * as Events from '../../../wailsjs/runtime/runtime';
-import type { PersonaProgressEvent, PersonaNPCRecord, PersonaDialogueRecord } from './types';
+import type {PersonaDialogueRecord, PersonaNPCRecord, PersonaProgressEvent} from './types';
 import {
+    buildPromptConfigPairs,
+    buildProviderConfigPairs,
+    formatUpdatedAt,
     MASTER_PERSONA_LLM_NAMESPACE,
     MASTER_PERSONA_PROMPT_NAMESPACE,
-    SELECTED_PROVIDER_KEY,
-    USER_PROMPT_KEY,
-    SYSTEM_PROMPT_KEY,
-    pickString,
-    formatUpdatedAt,
     normalizeNpcStatus,
     normalizeProvider,
-    providerNamespace,
-    syncConcurrencyKey,
-    toErrorMessage,
-    statusMessageFromTask,
-    buildProviderConfigPairs,
-    buildPromptConfigPairs,
     parseTaskTimestamp,
+    pickString,
+    providerNamespace,
+    SELECTED_PROVIDER_KEY,
+    statusMessageFromTask,
+    syncConcurrencyKey,
+    SYSTEM_PROMPT_KEY,
+    toErrorMessage,
+    USER_PROMPT_KEY,
 } from './helpers';
 
 const PERSONA_PAGE_SIZE = 100;
@@ -63,6 +71,7 @@ export function useMasterPersona() {
     const [isLLMConfigHydrated, setIsLLMConfigHydrated] = useState<boolean>(false);
     const [promptConfig, setPromptConfig] = useState<MasterPersonaPromptConfig>(DEFAULT_MASTER_PERSONA_PROMPT_CONFIG);
     const [isPromptConfigHydrated, setIsPromptConfigHydrated] = useState<boolean>(false);
+    const executionProfile = llmConfig.bulkStrategy;
     const lastSavedLLMConfigRef = useRef<Partial<Record<MasterPersonaLLMConfig['provider'], MasterPersonaLLMConfig>>>({});
     const latestLLMConfigRef = useRef<MasterPersonaLLMConfig>(DEFAULT_MASTER_PERSONA_LLM_CONFIG);
     const lastSavedPromptConfigRef = useRef<MasterPersonaPromptConfig>(DEFAULT_MASTER_PERSONA_PROMPT_CONFIG);
@@ -85,6 +94,8 @@ export function useMasterPersona() {
         const loadedTemperature = Number.parseFloat(source.temperature ?? '');
         const loadedContextLength = Number.parseInt(source.context_length ?? '', 10);
         const loadedSyncConcurrency = Number.parseInt(root[syncConcurrencyKey(provider)] ?? '', 10);
+        const loadedBulkStrategyRaw = String(source.bulk_strategy ?? root.bulk_strategy ?? '').trim().toLowerCase();
+        const loadedBulkStrategy: MasterPersonaBulkStrategy = loadedBulkStrategyRaw === 'batch' ? 'batch' : 'sync';
         const config = {
             provider,
             model: source.model ?? DEFAULT_MASTER_PERSONA_LLM_CONFIG.model,
@@ -97,6 +108,7 @@ export function useMasterPersona() {
             syncConcurrency: Number.isFinite(loadedSyncConcurrency) && loadedSyncConcurrency > 0
                 ? loadedSyncConcurrency
                 : DEFAULT_MASTER_PERSONA_LLM_CONFIG.syncConcurrency,
+            bulkStrategy: loadedBulkStrategy,
         };
         return config;
     };
@@ -113,6 +125,18 @@ export function useMasterPersona() {
         setSelectedRow(row);
         setSelectedRowId(rowId);
     };
+
+    const setExecutionProfile = useCallback((nextProfile: MasterPersonaExecutionProfile) => {
+        setLLMConfig((prev) => {
+            if (prev.bulkStrategy === nextProfile) {
+                return prev;
+            }
+            return {
+                ...prev,
+                bulkStrategy: nextProfile,
+            };
+        });
+    }, []);
 
     const pluginOptions = useMemo(() => {
         const unique = new Set<string>();
@@ -809,6 +833,8 @@ export function useMasterPersona() {
         promptConfig,
         setPromptConfig,
         isPromptConfigHydrated,
+        executionProfile,
+        setExecutionProfile,
         pluginOptions,
         filteredNpcData,
         pagedNpcData,

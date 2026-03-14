@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"time"
 
 	telemetry2 "github.com/ishibata91/ai-translation-engine-2/pkg/foundation/telemetry"
@@ -21,6 +22,7 @@ const (
 	xaiDefaultTimeout    = 300 * time.Second
 	xaiPollInterval      = 30 * time.Second
 	xaiMaxBatchChunkSize = 100
+	xaiResultsPageSize   = 100
 )
 
 // XAIBatchSupportedModels は xAI Batch API がサポートするモデル一覧。
@@ -85,7 +87,11 @@ func (c *xaiClient) ListModels(ctx context.Context) ([]ModelInfo, error) {
 	}
 	models := make([]ModelInfo, 0, len(raw.Data))
 	for _, m := range raw.Data {
-		models = append(models, ModelInfo{ID: m.ID, DisplayName: m.ID})
+		models = append(models, ModelInfo{
+			ID:            m.ID,
+			DisplayName:   m.ID,
+			SupportsBatch: XAIBatchSupportedModels[m.ID],
+		})
 	}
 	return models, nil
 }
@@ -580,10 +586,10 @@ func (b *xaiBatchClient) pollUntilCompleted(ctx context.Context, batchID string)
 		}
 
 		switch status.State {
-		case "completed":
-			b.logger.DebugContext(ctx, "EXIT pollUntilCompleted", "batch_id", batchID, "state", "completed")
+		case BatchStateCompleted, BatchStatePartialFailed:
+			b.logger.DebugContext(ctx, "EXIT pollUntilCompleted", "batch_id", batchID, "state", status.State)
 			return nil
-		case "failed", "cancelled":
+		case BatchStateFailed, BatchStateCancelled:
 			return fmt.Errorf("xai: batch %s ended with state %q", batchID, status.State)
 		}
 
@@ -620,24 +626,41 @@ func (b *xaiBatchClient) parseBatchStatus(ctx context.Context, body []byte, batc
 		return BatchStatus{}, fmt.Errorf("xai: parseBatchStatus unmarshal failed: %w", err)
 	}
 
-	var state string
+	total := raw.State.NumRequests
+	pending := raw.State.NumPending
+	success := raw.State.NumSuccess
+	errCount := raw.State.NumError
+	cancelled := raw.State.NumCancelled
+	completedLike := success + errCount + cancelled
+
+	var state BatchState
 	switch {
+	case total == 0:
+		state = BatchStateQueued
+	case pending > 0:
+		state = BatchStateRunning
+	case success == total:
+		state = BatchStateCompleted
+	case cancelled == total:
+		state = BatchStateCancelled
+	case errCount == total:
+		state = BatchStateFailed
+	case success > 0 && (errCount > 0 || cancelled > 0):
+		state = BatchStatePartialFailed
 	case raw.CancelTime != nil:
-		state = "cancelled"
-	case raw.State.NumRequests == 0:
-		state = "validating"
-	case raw.State.NumPending > 0:
-		state = "in_progress"
-	case raw.State.NumError > 0 && raw.State.NumSuccess == 0:
-		state = "failed"
+		state = BatchStateCancelled
+	case completedLike < total:
+		state = BatchStateRunning
 	default:
-		state = "completed"
+		state = BatchStateFailed
 	}
 
-	total := raw.State.NumRequests
 	var progress float32
 	if total > 0 {
-		progress = float32(raw.State.NumSuccess+raw.State.NumError) / float32(total)
+		if completedLike > total {
+			completedLike = total
+		}
+		progress = float32(completedLike) / float32(total)
 	}
 
 	status := BatchStatus{
@@ -661,12 +684,12 @@ func (b *xaiBatchClient) fetchResultPage(ctx context.Context, batchID, paginatio
 		"has_token", paginationToken != "",
 	)
 
-	url := fmt.Sprintf("%s%s/%s/results", xaiBaseURL, xaiBatchesEndpoint, batchID)
+	requestURL := fmt.Sprintf("%s%s/%s/results?page_size=%d", xaiBaseURL, xaiBatchesEndpoint, batchID, xaiResultsPageSize)
 	if paginationToken != "" {
-		url += "?pagination_token=" + paginationToken
+		requestURL += "&pagination_token=" + url.QueryEscape(paginationToken)
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL, nil)
 	if err != nil {
 		return nil, "", fmt.Errorf("xai: fetchResultPage request creation failed: %w", err)
 	}
@@ -725,7 +748,8 @@ func (b *xaiBatchClient) parseResults(ctx context.Context, body []byte) ([]Respo
 				} `json:"response"`
 			} `json:"batch_result"`
 		} `json:"results"`
-		PaginationToken string `json:"pagination_token"`
+		PaginationToken     string `json:"pagination_token"`
+		NextPaginationToken string `json:"next_pagination_token"`
 	}
 
 	if err := json.Unmarshal(body, &raw); err != nil {
@@ -764,11 +788,16 @@ func (b *xaiBatchClient) parseResults(ctx context.Context, body []byte) ([]Respo
 		})
 	}
 
+	nextToken := raw.PaginationToken
+	if nextToken == "" {
+		nextToken = raw.NextPaginationToken
+	}
+
 	b.logger.DebugContext(ctx, "EXIT parseResults",
 		"parsed_count", len(responses),
-		"next_token", raw.PaginationToken,
+		"next_token", nextToken,
 	)
-	return responses, raw.PaginationToken, nil
+	return responses, nextToken, nil
 }
 
 // xaiStreamResponse — フォールバック用
