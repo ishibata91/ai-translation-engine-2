@@ -2,18 +2,20 @@ package controller
 
 import (
 	"context"
-	"database/sql"
 	"errors"
+	"io"
 	"log/slog"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/ishibata91/ai-translation-engine-2/pkg/gateway/configstore"
+	configcontrollertest "github.com/ishibata91/ai-translation-engine-2/pkg/tests/api_tests/configcontroller"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/tests/api_tests/testenv"
 	workflowpersona "github.com/ishibata91/ai-translation-engine-2/pkg/workflow/persona"
-	_ "modernc.org/sqlite"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
-
-type configTestContextKey string
 
 type recordingConfigStore struct {
 	lastCtx       context.Context
@@ -72,94 +74,80 @@ func (s *recordingConfigStore) GetJSON(ctx context.Context, namespace string, ke
 	return nil
 }
 
-func setupConfigControllerTest(t *testing.T) (*sql.DB, *ConfigController) {
-	t.Helper()
-	db, err := sql.Open("sqlite", ":memory:")
-	if err != nil {
-		t.Fatalf("failed to open sqlite: %v", err)
-	}
-	logger := slog.Default()
-	store, err := configstore.NewSQLiteStore(context.Background(), db, logger)
-	if err != nil {
-		t.Fatalf("failed to init sqlite store: %v", err)
-	}
-	return db, NewConfigController(store, logger)
-}
+func TestConfigController_API_TableDriven(t *testing.T) {
+	testCases := []struct {
+		name string
+		run  func(t *testing.T, controller *ConfigController)
+	}{
+		{
+			name: "ConfigSetMany and ConfigGetAll",
+			run: func(t *testing.T, controller *ConfigController) {
+				values := map[string]string{
+					"provider":    "lmstudio",
+					"model":       "llama-3",
+					"endpoint":    "http://localhost:1234",
+					"api_key":     "plain-text-key",
+					"temperature": "0.3",
+					"max_tokens":  "500",
+				}
 
-func TestConfigController_ConfigSetManyAndGetAll(t *testing.T) {
-	db, controller := setupConfigControllerTest(t)
-	defer db.Close()
+				err := controller.ConfigSetMany("master_persona.llm", values)
+				require.NoError(t, err)
 
-	values := map[string]string{
-		"provider":    "lmstudio",
-		"model":       "llama-3",
-		"endpoint":    "http://localhost:1234",
-		"api_key":     "plain-text-key",
-		"temperature": "0.3",
-		"max_tokens":  "500",
-	}
-	if err := controller.ConfigSetMany("master_persona.llm", values); err != nil {
-		t.Fatalf("ConfigSetMany failed: %v", err)
+				got, err := controller.ConfigGetAll("master_persona.llm")
+				require.NoError(t, err)
+				require.Len(t, got, len(values))
+				assert.Equal(t, values, got)
+			},
+		},
+		{
+			name: "ConfigGet missing key returns empty",
+			run: func(t *testing.T, controller *ConfigController) {
+				got, err := controller.ConfigGet("master_persona.llm", "provider")
+				require.NoError(t, err)
+				assert.Empty(t, got)
+			},
+		},
+		{
+			name: "ConfigGetAll returns master persona prompt defaults",
+			run: func(t *testing.T, controller *ConfigController) {
+				got, err := controller.ConfigGetAll(workflowpersona.MasterPersonaPromptNamespace)
+				require.NoError(t, err)
+				assert.Equal(t, workflowpersona.DefaultMasterPersonaUserPrompt, got[workflowpersona.MasterPersonaUserPromptKey])
+				assert.Equal(t, workflowpersona.DefaultMasterPersonaSystemPrompt, got[workflowpersona.MasterPersonaSystemPromptKey])
+			},
+		},
+		{
+			name: "ConfigGet returns master persona system prompt default",
+			run: func(t *testing.T, controller *ConfigController) {
+				got, err := controller.ConfigGet(
+					workflowpersona.MasterPersonaPromptNamespace,
+					workflowpersona.MasterPersonaSystemPromptKey,
+				)
+				require.NoError(t, err)
+				assert.Equal(t, workflowpersona.DefaultMasterPersonaSystemPrompt, got)
+			},
+		},
 	}
 
-	got, err := controller.ConfigGetAll("master_persona.llm")
-	if err != nil {
-		t.Fatalf("ConfigGetAll failed: %v", err)
-	}
-	if len(got) != len(values) {
-		t.Fatalf("unexpected key count: got=%d want=%d", len(got), len(values))
-	}
-	for key, want := range values {
-		if got[key] != want {
-			t.Fatalf("unexpected value for %s: got=%s want=%s", key, got[key], want)
-		}
-	}
-}
-
-func TestConfigController_ConfigGet_MissingReturnsEmpty(t *testing.T) {
-	db, controller := setupConfigControllerTest(t)
-	defer db.Close()
-
-	got, err := controller.ConfigGet("master_persona.llm", "provider")
-	if err != nil {
-		t.Fatalf("ConfigGet failed: %v", err)
-	}
-	if got != "" {
-		t.Fatalf("expected empty for missing key, got=%s", got)
-	}
-}
-
-func TestConfigController_ConfigGetAll_MasterPersonaPromptDefaults(t *testing.T) {
-	db, controller := setupConfigControllerTest(t)
-	defer db.Close()
-
-	got, err := controller.ConfigGetAll(workflowpersona.MasterPersonaPromptNamespace)
-	if err != nil {
-		t.Fatalf("ConfigGetAll failed: %v", err)
-	}
-	if got[workflowpersona.MasterPersonaUserPromptKey] != workflowpersona.DefaultMasterPersonaUserPrompt {
-		t.Fatalf("unexpected default user prompt: %q", got[workflowpersona.MasterPersonaUserPromptKey])
-	}
-	if got[workflowpersona.MasterPersonaSystemPromptKey] != workflowpersona.DefaultMasterPersonaSystemPrompt {
-		t.Fatalf("unexpected default system prompt: %q", got[workflowpersona.MasterPersonaSystemPromptKey])
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			env := configcontrollertest.Build(t, tc.name)
+			controller := NewConfigController(env.Store, env.TestEnv.Logger)
+			controller.SetContext(env.TestEnv.Ctx)
+			tc.run(t, controller)
+		})
 	}
 }
 
-func TestConfigController_ConfigGet_MasterPersonaPromptDefault(t *testing.T) {
-	db, controller := setupConfigControllerTest(t)
-	defer db.Close()
-
-	got, err := controller.ConfigGet(workflowpersona.MasterPersonaPromptNamespace, workflowpersona.MasterPersonaSystemPromptKey)
-	if err != nil {
-		t.Fatalf("ConfigGet failed: %v", err)
-	}
-	if got != workflowpersona.DefaultMasterPersonaSystemPrompt {
-		t.Fatalf("unexpected default system prompt: %q", got)
-	}
+func TestConfigController_APITestEnv_UsesTmpDBPath(t *testing.T) {
+	env := configcontrollertest.Build(t, "db-path")
+	require.NotEmpty(t, env.TestEnv.DBPath)
+	assert.Contains(t, filepath.ToSlash(env.TestEnv.DBPath), "tmp/api_test_db/")
 }
 
 func TestConfigController_ContextPropagationAndErrorWrap(t *testing.T) {
-	baseCtx := context.WithValue(context.Background(), configTestContextKey("trace_id"), "trace-123")
+	baseCtx := testenv.NewTraceContext("trace-123")
 
 	testCases := []struct {
 		name           string
@@ -196,24 +184,19 @@ func TestConfigController_ContextPropagationAndErrorWrap(t *testing.T) {
 			if tc.setupStore != nil {
 				tc.setupStore(store)
 			}
+
 			controller := &ConfigController{
 				ctx:          baseCtx,
-				logger:       slog.Default(),
+				logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
 				uiStateStore: store,
 				configStore:  store,
 			}
 
 			err := tc.run(controller)
-			if err == nil {
-				t.Fatalf("expected error")
-			}
-			if got := store.lastCtx.Value(configTestContextKey("trace_id")); got != "trace-123" {
-				t.Fatalf("expected propagated context value, got=%v", got)
-			}
+			require.Error(t, err)
+			assert.Equal(t, "trace-123", testenv.TraceIDValue(store.lastCtx))
 			for _, substr := range tc.wantErrSubstrs {
-				if !strings.Contains(err.Error(), substr) {
-					t.Fatalf("expected error to contain %q, got=%q", substr, err.Error())
-				}
+				assert.True(t, strings.Contains(err.Error(), substr), "expected wrapped error to contain %q: %s", substr, err.Error())
 			}
 		})
 	}
