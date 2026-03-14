@@ -480,6 +480,7 @@ func (q *Queue) GetJobsByStatus(ctx context.Context, processID string, status st
 			batch_job_id, response_json, error_message, created_at, updated_at
 		FROM llm_jobs
 		WHERE process_id = ? AND status = ?
+		ORDER BY resume_cursor ASC, created_at ASC, id ASC
 	`, processID, status)
 	if err != nil {
 		q.logger.ErrorContext(ctx, "failed to query jobs by status", telemetry2.ErrorAttrs(err)...)

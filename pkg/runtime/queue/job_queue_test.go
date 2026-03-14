@@ -62,15 +62,17 @@ func (m *mockLLMClient) UnloadModel(ctx context.Context, instanceID string) erro
 }
 
 type mockBatchClient struct {
-	status       llm.BatchState
-	results      []llm.Response
-	submitCalls  int
-	statusCalls  int
-	resultsCalls int
+	status        llm.BatchState
+	results       []llm.Response
+	submitCalls   int
+	statusCalls   int
+	resultsCalls  int
+	submittedReqs []llm.Request
 }
 
 func (m *mockBatchClient) SubmitBatch(ctx context.Context, reqs []llm.Request) (llm.BatchJobID, error) {
 	m.submitCalls++
+	m.submittedReqs = append([]llm.Request(nil), reqs...)
 	return llm.BatchJobID{ID: "batch-123", Provider: "mock"}, nil
 }
 func (m *mockBatchClient) GetBatchStatus(ctx context.Context, id llm.BatchJobID) (llm.BatchStatus, error) {
@@ -418,6 +420,120 @@ func TestWorker_ProcessBatch_PartialFailedPersistsSuccessfulResponses(t *testing
 	}
 	if len(failedJobs) != 1 {
 		t.Fatalf("expected 1 failed job in partial_failed, got %d", len(failedJobs))
+	}
+}
+
+func TestWorker_ProcessBatch_CorrelatesByQueueJobIDOnShuffledResults(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+
+	q, err := NewQueue(ctx, ":memory:", logger)
+	if err != nil {
+		t.Fatalf("failed to create queue: %v", err)
+	}
+	defer q.Close()
+
+	processID := "batch-correlation-shuffled"
+	if err := q.SubmitTaskRequests(ctx, processID, "persona_extraction", []llm.Request{{UserPrompt: "q0"}, {UserPrompt: "q1"}, {UserPrompt: "q2"}}); err != nil {
+		t.Fatalf("SubmitTaskRequests failed: %v", err)
+	}
+
+	pendingJobs, err := q.GetJobsByStatus(ctx, processID, StatusPending)
+	if err != nil {
+		t.Fatalf("GetJobsByStatus pending failed: %v", err)
+	}
+	if len(pendingJobs) != 3 {
+		t.Fatalf("expected 3 pending jobs, got %d", len(pendingJobs))
+	}
+
+	if _, err := q.db.ExecContext(ctx, `
+		UPDATE llm_jobs
+		SET resume_cursor = CASE id
+			WHEN ? THEN 30
+			WHEN ? THEN 10
+			WHEN ? THEN 20
+			ELSE resume_cursor
+		END
+		WHERE process_id = ?
+	`, pendingJobs[0].ID, pendingJobs[1].ID, pendingJobs[2].ID, processID); err != nil {
+		t.Fatalf("failed to update resume cursor: %v", err)
+	}
+
+	batchMock := &mockBatchClient{
+		status: llm.BatchStateCompleted,
+		results: []llm.Response{
+			{Success: true, Content: "content-2", Metadata: map[string]interface{}{llm.BatchMetadataQueueJobIDKey: pendingJobs[2].ID}},
+			{Success: false, Error: "failed-1", Metadata: map[string]interface{}{llm.BatchMetadataQueueJobIDKey: pendingJobs[1].ID}},
+			{Success: true, Content: "content-0", Metadata: map[string]interface{}{llm.BatchMetadataQueueJobIDKey: pendingJobs[0].ID}},
+		},
+	}
+	worker := NewWorker(q, &mockLLMManager{batchClient: batchMock}, &mockConfigStore{}, &mockSecretStore{}, progress.NewNoopNotifier(), logger)
+	worker.SetPollingInterval(10 * time.Millisecond)
+
+	if err := worker.processBatch(ctx, processID, llm.LLMConfig{Provider: "xai", Model: "xai-model"}, ProcessOptions{}); err != nil {
+		t.Fatalf("processBatch failed: %v", err)
+	}
+
+	if len(batchMock.submittedReqs) != 3 {
+		t.Fatalf("expected 3 submitted requests, got %d", len(batchMock.submittedReqs))
+	}
+	seenIDs := map[string]bool{}
+	for idx, req := range batchMock.submittedReqs {
+		queueJobID, ok := req.Metadata[llm.BatchMetadataQueueJobIDKey].(string)
+		if !ok || queueJobID == "" {
+			t.Fatalf("submitted request %d missing queue_job_id metadata: %+v", idx, req.Metadata)
+		}
+		if _, ok := req.Metadata[llm.BatchMetadataQueueRequestSeqKey]; !ok {
+			t.Fatalf("submitted request %d missing queue_request_seq metadata: %+v", idx, req.Metadata)
+		}
+		seenIDs[queueJobID] = true
+	}
+	for _, job := range pendingJobs {
+		if !seenIDs[job.ID] {
+			t.Fatalf("job %s was not submitted with queue_job_id metadata", job.ID)
+		}
+	}
+
+	allJobs, err := q.GetResults(ctx, processID)
+	if err != nil {
+		t.Fatalf("GetResults failed: %v", err)
+	}
+	if len(allJobs) != 3 {
+		t.Fatalf("expected 3 jobs, got %d", len(allJobs))
+	}
+	jobsByID := map[string]JobRequest{}
+	for _, job := range allJobs {
+		jobsByID[job.ID] = job
+	}
+
+	job0 := jobsByID[pendingJobs[0].ID]
+	if job0.Status != StatusCompleted || job0.ResponseJSON == nil {
+		t.Fatalf("job0 unexpected state: %+v", job0)
+	}
+	var job0Resp llm.Response
+	if err := json.Unmarshal([]byte(*job0.ResponseJSON), &job0Resp); err != nil {
+		t.Fatalf("unmarshal job0 response failed: %v", err)
+	}
+	if job0Resp.Content != "content-0" {
+		t.Fatalf("job0 content = %q, want content-0", job0Resp.Content)
+	}
+
+	job1 := jobsByID[pendingJobs[1].ID]
+	if job1.Status != StatusFailed || job1.ErrorMessage == nil || *job1.ErrorMessage != "failed-1" {
+		t.Fatalf("job1 unexpected state: %+v", job1)
+	}
+
+	job2 := jobsByID[pendingJobs[2].ID]
+	if job2.Status != StatusCompleted || job2.ResponseJSON == nil {
+		t.Fatalf("job2 unexpected state: %+v", job2)
+	}
+	var job2Resp llm.Response
+	if err := json.Unmarshal([]byte(*job2.ResponseJSON), &job2Resp); err != nil {
+		t.Fatalf("unmarshal job2 response failed: %v", err)
+	}
+	if job2Resp.Content != "content-2" {
+		t.Fatalf("job2 content = %q, want content-2", job2Resp.Content)
 	}
 }
 

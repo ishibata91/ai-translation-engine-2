@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	telemetry2 "github.com/ishibata91/ai-translation-engine-2/pkg/foundation/telemetry"
@@ -518,8 +519,16 @@ func (b *xaiBatchClient) addRequests(ctx context.Context, batchID string, reqs [
 		}
 		msgs = append(msgs, message{Role: "user", Content: req.UserPrompt})
 
+		batchRequestID := fmt.Sprintf("req-%d", startIdx+i)
+		if queueJobID, ok := xaiQueueJobIDFromMetadata(req.Metadata); ok {
+			batchRequestID = queueJobID
+		} else {
+			b.logger.WarnContext(ctx, "xai batch request missing queue_job_id metadata",
+				slog.Int("request_index", startIdx+i),
+			)
+		}
 		br := batchRequest{
-			BatchRequestID: fmt.Sprintf("req-%d", startIdx+i),
+			BatchRequestID: batchRequestID,
 		}
 		br.BatchRequest.ChatGetCompletion = chatCompletion{
 			Model:       b.config.Model,
@@ -558,6 +567,29 @@ func (b *xaiBatchClient) addRequests(ctx context.Context, batchID string, reqs [
 
 	b.logger.DebugContext(ctx, "EXIT addRequests", "batch_id", batchID, "added", len(reqs))
 	return nil
+}
+
+func xaiQueueJobIDFromMetadata(metadata map[string]interface{}) (string, bool) {
+	if len(metadata) == 0 {
+		return "", false
+	}
+	raw, exists := metadata[BatchMetadataQueueJobIDKey]
+	if !exists {
+		return "", false
+	}
+	trimmed := strings.TrimSpace(fmt.Sprintf("%v", raw))
+	if trimmed == "" || trimmed == "<nil>" {
+		return "", false
+	}
+	return trimmed, true
+}
+
+func xaiMetadataWithQueueJobID(batchRequestID string) map[string]interface{} {
+	trimmed := strings.TrimSpace(batchRequestID)
+	if trimmed == "" {
+		return nil
+	}
+	return map[string]interface{}{BatchMetadataQueueJobIDKey: trimmed}
 }
 
 // pollUntilCompleted はバッチジョブが completed になるまで polling する。
@@ -747,11 +779,22 @@ func (b *xaiBatchClient) parseResults(ctx context.Context, body []byte) ([]Respo
 
 	responses := make([]Response, 0, len(raw.Results))
 	for _, r := range raw.Results {
+		queueJobID := strings.TrimSpace(r.BatchRequestID)
+		if queueJobID == "" {
+			responses = append(responses, Response{
+				Success: false,
+				Error:   "xai: batch result missing batch_request_id",
+			})
+			continue
+		}
+		metadata := xaiMetadataWithQueueJobID(queueJobID)
+
 		if r.Error != nil {
 			responses = append(responses, Response{
-				Content: "",
-				Success: false,
-				Error:   r.Error.Message,
+				Content:  "",
+				Success:  false,
+				Error:    r.Error.Message,
+				Metadata: metadata,
 			})
 			continue
 		}
@@ -759,16 +802,18 @@ func (b *xaiBatchClient) parseResults(ctx context.Context, body []byte) ([]Respo
 		completion := r.BatchResult.Response.ChatGetCompletion
 		if len(completion.Choices) == 0 {
 			responses = append(responses, Response{
-				Content: "",
-				Success: false,
-				Error:   "no choices in response",
+				Content:  "",
+				Success:  false,
+				Error:    "no choices in response",
+				Metadata: metadata,
 			})
 			continue
 		}
 
 		responses = append(responses, Response{
-			Content: completion.Choices[0].Message.Content,
-			Success: true,
+			Content:  completion.Choices[0].Message.Content,
+			Success:  true,
+			Metadata: metadata,
 			Usage: TokenUsage{
 				PromptTokens:     completion.Usage.PromptTokens,
 				CompletionTokens: completion.Usage.CompletionTokens,

@@ -517,6 +517,11 @@ func (w *Worker) resolveBatchJob(
 	}
 
 	if hasExisting {
+		w.logger.InfoContext(ctx, "reconnected existing batch job",
+			slog.String("process_id", processID),
+			slog.String("batch_job_id", existingBatchID.ID),
+			slog.Int("job_count", len(jobs)),
+		)
 		batchIDString, err := marshalBatchJobID(existingBatchID)
 		if err != nil {
 			return gatewayllm.BatchJobID{}, false, fmt.Errorf("marshal existing batch job id process_id=%s: %w", processID, err)
@@ -539,6 +544,12 @@ func (w *Worker) resolveBatchJob(
 		if err := json.Unmarshal([]byte(job.RequestJSON), &req); err != nil {
 			return gatewayllm.BatchJobID{}, false, fmt.Errorf("failed to unmarshal request job_id=%s: %w", job.ID, err)
 		}
+		req = withBatchCorrelationMetadata(req, job)
+		w.logger.DebugContext(ctx, "prepared batch correlation metadata",
+			slog.String("process_id", processID),
+			slog.String("job_id", job.ID),
+			slog.Int("queue_request_seq", job.ResumeCursor),
+		)
 		reqs = append(reqs, req)
 	}
 
@@ -560,47 +571,178 @@ func (w *Worker) resolveBatchJob(
 	return batchJobID, false, nil
 }
 
+func withBatchCorrelationMetadata(req gatewayllm.Request, job JobRequest) gatewayllm.Request {
+	metadata := make(map[string]interface{}, len(req.Metadata)+2)
+	for key, value := range req.Metadata {
+		metadata[key] = value
+	}
+	metadata[gatewayllm.BatchMetadataQueueJobIDKey] = job.ID
+	metadata[gatewayllm.BatchMetadataQueueRequestSeqKey] = job.ResumeCursor
+	req.Metadata = metadata
+	return req
+}
+
+func extractBatchQueueJobID(metadata map[string]interface{}) (string, bool) {
+	if len(metadata) == 0 {
+		return "", false
+	}
+	raw, exists := metadata[gatewayllm.BatchMetadataQueueJobIDKey]
+	if !exists {
+		return "", false
+	}
+
+	switch value := raw.(type) {
+	case string:
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			return "", false
+		}
+		return trimmed, true
+	default:
+		trimmed := strings.TrimSpace(fmt.Sprintf("%v", value))
+		if trimmed == "" || trimmed == "<nil>" {
+			return "", false
+		}
+		return trimmed, true
+	}
+}
+
+func (w *Worker) applySingleBatchResult(ctx context.Context, job JobRequest, res gatewayllm.Response) (bool, error) {
+	if res.Success {
+		respJSON, marshalErr := json.Marshal(res)
+		if marshalErr != nil {
+			return false, fmt.Errorf("marshal batch result job_id=%s: %w", job.ID, marshalErr)
+		}
+		respStr := string(respJSON)
+		if err := w.queue.UpdateJob(ctx, job.ID, StatusCompleted, &respStr, nil, nil); err != nil {
+			return false, fmt.Errorf("store batch result job_id=%s: %w", job.ID, err)
+		}
+		return true, nil
+	}
+
+	errMsg := strings.TrimSpace(res.Error)
+	if errMsg == "" {
+		errMsg = "batch request failed"
+	}
+	if err := w.queue.UpdateJob(ctx, job.ID, StatusFailed, nil, &errMsg, nil); err != nil {
+		return false, fmt.Errorf("store batch failure job_id=%s: %w", job.ID, err)
+	}
+	return false, nil
+}
+
 func (w *Worker) applyBatchResults(ctx context.Context, jobs []JobRequest, results []gatewayllm.Response, opts ProcessOptions) (int, int, error) {
 	completedCount := 0
 	failedCount := 0
 
+	jobsByID := make(map[string]JobRequest, len(jobs))
+	for _, job := range jobs {
+		jobsByID[job.ID] = job
+	}
+
+	resultsByJobID := make(map[string]gatewayllm.Response, len(results))
+	duplicateJobIDs := make(map[string]struct{})
+	fallbackResults := make([]gatewayllm.Response, 0)
+	unknownIDCount := 0
+
+	for _, res := range results {
+		queueJobID, hasJobID := extractBatchQueueJobID(res.Metadata)
+		if !hasJobID {
+			fallbackResults = append(fallbackResults, res)
+			continue
+		}
+
+		if _, exists := jobsByID[queueJobID]; !exists {
+			unknownIDCount++
+			w.logger.WarnContext(ctx, "batch result has unknown queue_job_id",
+				slog.String("queue_job_id", queueJobID),
+			)
+			continue
+		}
+
+		if _, duplicated := duplicateJobIDs[queueJobID]; duplicated {
+			continue
+		}
+		if _, exists := resultsByJobID[queueJobID]; exists {
+			delete(resultsByJobID, queueJobID)
+			duplicateJobIDs[queueJobID] = struct{}{}
+			w.logger.WarnContext(ctx, "batch result has duplicate queue_job_id",
+				slog.String("queue_job_id", queueJobID),
+			)
+			continue
+		}
+		resultsByJobID[queueJobID] = res
+	}
+
+	if len(fallbackResults) > 0 {
+		w.logger.WarnContext(ctx, "batch results missing queue_job_id, using limited index fallback",
+			slog.Int("fallback_result_count", len(fallbackResults)),
+		)
+	}
+
+	fallbackIndex := 0
 	for i, job := range jobs {
 		if opts.Hooks != nil && opts.Hooks.OnSaving != nil {
 			opts.Hooks.OnSaving(i+1, len(jobs))
 		}
-		if i >= len(results) {
-			errMsg := "batch result missing for request"
+
+		if _, duplicated := duplicateJobIDs[job.ID]; duplicated {
+			errMsg := "duplicate queue_job_id in batch results"
 			if err := w.queue.UpdateJob(ctx, job.ID, StatusFailed, nil, &errMsg, nil); err != nil {
-				return 0, 0, fmt.Errorf("mark missing batch result as failed job_id=%s: %w", job.ID, err)
+				return 0, 0, fmt.Errorf("store duplicate queue_job_id failure job_id=%s: %w", job.ID, err)
 			}
 			failedCount++
 			continue
 		}
 
-		res := results[i]
-		if res.Success {
-			respJSON, marshalErr := json.Marshal(res)
-			if marshalErr != nil {
-				return 0, 0, fmt.Errorf("marshal batch result job_id=%s: %w", job.ID, marshalErr)
+		if res, exists := resultsByJobID[job.ID]; exists {
+			succeeded, err := w.applySingleBatchResult(ctx, job, res)
+			if err != nil {
+				return 0, 0, err
 			}
-			respStr := string(respJSON)
-			if err := w.queue.UpdateJob(ctx, job.ID, StatusCompleted, &respStr, nil, nil); err != nil {
-				return 0, 0, fmt.Errorf("store batch result job_id=%s: %w", job.ID, err)
+			if succeeded {
+				completedCount++
+			} else {
+				failedCount++
 			}
-			completedCount++
 			continue
 		}
 
-		errMsg := strings.TrimSpace(res.Error)
-		if errMsg == "" {
-			errMsg = "batch request failed"
+		if fallbackIndex < len(fallbackResults) {
+			res := fallbackResults[fallbackIndex]
+			w.logger.WarnContext(ctx, "applying index fallback for result without queue_job_id",
+				slog.String("job_id", job.ID),
+				slog.Int("fallback_index", fallbackIndex),
+			)
+			fallbackIndex++
+			succeeded, err := w.applySingleBatchResult(ctx, job, res)
+			if err != nil {
+				return 0, 0, err
+			}
+			if succeeded {
+				completedCount++
+			} else {
+				failedCount++
+			}
+			continue
 		}
+
+		errMsg := "batch result missing for request"
 		if err := w.queue.UpdateJob(ctx, job.ID, StatusFailed, nil, &errMsg, nil); err != nil {
-			return 0, 0, fmt.Errorf("store batch failure job_id=%s: %w", job.ID, err)
+			return 0, 0, fmt.Errorf("mark missing batch result as failed job_id=%s: %w", job.ID, err)
 		}
 		failedCount++
 	}
 
+	if unknownIDCount > 0 {
+		w.logger.WarnContext(ctx, "batch results contained unknown queue_job_id values",
+			slog.Int("unknown_id_count", unknownIDCount),
+		)
+	}
+	if fallbackIndex < len(fallbackResults) {
+		w.logger.WarnContext(ctx, "batch fallback results exceeded queued jobs",
+			slog.Int("remaining_fallback_results", len(fallbackResults)-fallbackIndex),
+		)
+	}
 	if len(results) > len(jobs) {
 		w.logger.WarnContext(ctx, "batch results exceeded queued jobs",
 			slog.Int("results_count", len(results)),

@@ -107,10 +107,78 @@ func TestXAIParseResultsPagination(t *testing.T) {
 	if !results[0].Success || results[0].Content != "ok" {
 		t.Fatalf("first result unexpected: %+v", results[0])
 	}
+	if got := results[0].Metadata[BatchMetadataQueueJobIDKey]; got != "req-1" {
+		t.Fatalf("first result queue_job_id = %v, want req-1", got)
+	}
 	if results[1].Success || results[1].Error != "bad request" {
 		t.Fatalf("second result unexpected: %+v", results[1])
 	}
+	if got := results[1].Metadata[BatchMetadataQueueJobIDKey]; got != "req-2" {
+		t.Fatalf("second result queue_job_id = %v, want req-2", got)
+	}
 	if token != "token-2" {
 		t.Fatalf("token = %q, want %q", token, "token-2")
+	}
+}
+
+func TestXAIParseResults_ShuffledOrderAndMissingBatchRequestID(t *testing.T) {
+	client := &xaiBatchClient{logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	ctx := context.Background()
+
+	body := `{
+	  "results": [
+	    {
+	      "batch_request_id": "job-2",
+	      "batch_result": {
+	        "response": {
+	          "chat_get_completion": {
+	            "choices": [{"message": {"content": "second"}}],
+	            "usage": {"prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3}
+	          }
+	        }
+	      }
+	    },
+	    {
+	      "batch_request_id": "job-1",
+	      "batch_result": {
+	        "response": {
+	          "chat_get_completion": {
+	            "choices": [{"message": {"content": "first"}}],
+	            "usage": {"prompt_tokens": 3, "completion_tokens": 4, "total_tokens": 7}
+	          }
+	        }
+	      }
+	    },
+	    {
+	      "batch_result": {
+	        "response": {
+	          "chat_get_completion": {
+	            "choices": [{"message": {"content": "no-id"}}],
+	            "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}
+	          }
+	        }
+	      }
+	    }
+	  ]
+	}`
+
+	results, token, err := client.parseResults(ctx, []byte(body))
+	if err != nil {
+		t.Fatalf("parseResults error: %v", err)
+	}
+	if token != "" {
+		t.Fatalf("token = %q, want empty", token)
+	}
+	if len(results) != 3 {
+		t.Fatalf("len(results) = %d, want 3", len(results))
+	}
+	if got := results[0].Metadata[BatchMetadataQueueJobIDKey]; got != "job-2" {
+		t.Fatalf("results[0] queue_job_id = %v, want job-2", got)
+	}
+	if got := results[1].Metadata[BatchMetadataQueueJobIDKey]; got != "job-1" {
+		t.Fatalf("results[1] queue_job_id = %v, want job-1", got)
+	}
+	if results[2].Success || results[2].Error == "" {
+		t.Fatalf("results[2] should be failed due to missing batch_request_id: %+v", results[2])
 	}
 }

@@ -16,7 +16,7 @@ const CONTEXT_LENGTH_PRESETS: Array<{ label: string; value: number }> = [
 
 const EXECUTION_PROFILE_LABELS: Record<MasterPersonaLLMConfig['bulkStrategy'], string> = {
     sync: '同期実行',
-    batch: 'クラウドBatch',
+    batch: 'Batch API',
 };
 
 interface Props {

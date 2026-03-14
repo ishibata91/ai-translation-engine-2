@@ -65,6 +65,12 @@ const (
 	LLMSyncConcurrencyKeySuffix = "sync_concurrency"
 )
 
+// Batch correlation metadata keys shared across worker/provider implementations.
+const (
+	BatchMetadataQueueJobIDKey      = "queue_job_id"
+	BatchMetadataQueueRequestSeqKey = "queue_request_seq"
+)
+
 // DefaultConcurrency returns the default concurrency for a given provider.
 // Local LLM providers default to 1; cloud providers default to 5.
 func DefaultConcurrency(provider string) int {

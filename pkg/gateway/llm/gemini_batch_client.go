@@ -75,7 +75,7 @@ func (b *geminiBatchClient) SubmitBatch(ctx context.Context, reqs []Request) (Ba
 	body := requestBody{}
 	body.Batch.DisplayName = fmt.Sprintf("batch-%d", time.Now().UTC().Unix())
 
-	for _, req := range reqs {
+	for idx, req := range reqs {
 		inlineReq := inlinedRequest{}
 		inlineReq.Request.Contents = []content{{
 			Role:  "user",
@@ -88,11 +88,18 @@ func (b *geminiBatchClient) SubmitBatch(ctx context.Context, reqs []Request) (Ba
 			}
 		}
 		inlineReq.Request.GenerationConfig = generationConfig{Temperature: req.Temperature}
-		if len(req.Metadata) > 0 {
-			inlineReq.Metadata = req.Metadata
+		metadata, err := buildGeminiBatchRequestMetadata(req.Metadata, idx)
+		if err != nil {
+			return BatchJobID{}, fmt.Errorf("gemini: prepare request metadata failed: %w", err)
 		}
+		// Correlation must stay in transport metadata and never rely on LLM output text.
+		inlineReq.Metadata = metadata
 		body.Batch.InputConfig.Requests.Requests = append(body.Batch.InputConfig.Requests.Requests, inlineReq)
 	}
+	b.logger.DebugContext(ctx, "prepared gemini batch request metadata",
+		slog.Int("request_count", len(reqs)),
+		slog.String("correlation_key", BatchMetadataQueueJobIDKey),
+	)
 
 	payload, err := json.Marshal(body)
 	if err != nil {
@@ -341,6 +348,7 @@ func parseGeminiBatchResults(body []byte) ([]Response, error) {
 
 	results := make([]Response, 0, len(output.InlinedResponses.InlinedResponses))
 	for _, item := range output.InlinedResponses.InlinedResponses {
+		normalizedMetadata := normalizeGeminiBatchResultMetadata(item.Metadata)
 		if item.Error != nil {
 			errMsg := strings.TrimSpace(item.Error.Message)
 			if errMsg == "" {
@@ -349,7 +357,7 @@ func parseGeminiBatchResults(body []byte) ([]Response, error) {
 			results = append(results, Response{
 				Success:  false,
 				Error:    errMsg,
-				Metadata: item.Metadata,
+				Metadata: normalizedMetadata,
 			})
 			continue
 		}
@@ -358,7 +366,7 @@ func parseGeminiBatchResults(body []byte) ([]Response, error) {
 			results = append(results, Response{
 				Success:  false,
 				Error:    "gemini: empty inlined response",
-				Metadata: item.Metadata,
+				Metadata: normalizedMetadata,
 			})
 			continue
 		}
@@ -371,11 +379,53 @@ func parseGeminiBatchResults(body []byte) ([]Response, error) {
 				CompletionTokens: item.Response.UsageMetadata.CandidatesTokenCount,
 				TotalTokens:      item.Response.UsageMetadata.TotalTokenCount,
 			},
-			Metadata: item.Metadata,
+			Metadata: normalizedMetadata,
 		})
 	}
 
 	return results, nil
+}
+
+func buildGeminiBatchRequestMetadata(metadata map[string]interface{}, requestIndex int) (map[string]interface{}, error) {
+	queueJobID, ok := readBatchMetadataString(metadata, BatchMetadataQueueJobIDKey)
+	if !ok {
+		return nil, fmt.Errorf("%s is required for batch request index=%d", BatchMetadataQueueJobIDKey, requestIndex)
+	}
+	cloned := make(map[string]interface{}, len(metadata)+1)
+	for key, value := range metadata {
+		cloned[key] = value
+	}
+	cloned[BatchMetadataQueueJobIDKey] = queueJobID
+	return cloned, nil
+}
+
+func normalizeGeminiBatchResultMetadata(metadata map[string]interface{}) map[string]interface{} {
+	if len(metadata) == 0 {
+		return nil
+	}
+	cloned := make(map[string]interface{}, len(metadata))
+	for key, value := range metadata {
+		cloned[key] = value
+	}
+	if queueJobID, ok := readBatchMetadataString(cloned, BatchMetadataQueueJobIDKey); ok {
+		cloned[BatchMetadataQueueJobIDKey] = queueJobID
+	}
+	return cloned
+}
+
+func readBatchMetadataString(metadata map[string]interface{}, key string) (string, bool) {
+	if len(metadata) == 0 {
+		return "", false
+	}
+	raw, exists := metadata[key]
+	if !exists {
+		return "", false
+	}
+	trimmed := strings.TrimSpace(fmt.Sprintf("%v", raw))
+	if trimmed == "" || trimmed == "<nil>" {
+		return "", false
+	}
+	return trimmed, true
 }
 
 func normalizeGeminiBatchState(rawState string, failedCount int, done bool, hasError bool) BatchState {

@@ -63,7 +63,7 @@ func TestParseGeminiBatchResults_InlinedResponses(t *testing.T) {
 				"inlinedResponses": {
 					"inlinedResponses": [
 						{
-							"metadata": {"req_id": "1"},
+							"metadata": {"queue_job_id": "job-1"},
 							"response": {
 								"candidates": [{"content": {"parts": [{"text": "ok"}]}}],
 								"usageMetadata": {
@@ -74,7 +74,7 @@ func TestParseGeminiBatchResults_InlinedResponses(t *testing.T) {
 							}
 						},
 						{
-							"metadata": {"req_id": "2"},
+							"metadata": {"queue_job_id": "job-2"},
 							"error": {"message": "bad request"}
 						}
 					]
@@ -103,6 +103,30 @@ func TestParseGeminiBatchResults_InlinedResponses(t *testing.T) {
 	}
 	if results[1].Error != "bad request" {
 		t.Fatalf("second result error = %q, want %q", results[1].Error, "bad request")
+	}
+	if got := results[0].Metadata[BatchMetadataQueueJobIDKey]; got != "job-1" {
+		t.Fatalf("first result queue_job_id = %v, want job-1", got)
+	}
+	if got := results[1].Metadata[BatchMetadataQueueJobIDKey]; got != "job-2" {
+		t.Fatalf("second result queue_job_id = %v, want job-2", got)
+	}
+}
+
+func TestGeminiBatchRequestMetadata_RequiresQueueJobID(t *testing.T) {
+	_, err := buildGeminiBatchRequestMetadata(map[string]interface{}{"foo": "bar"}, 0)
+	if err == nil {
+		t.Fatalf("expected queue_job_id validation error")
+	}
+
+	metadata, err := buildGeminiBatchRequestMetadata(map[string]interface{}{
+		BatchMetadataQueueJobIDKey:      "job-10",
+		BatchMetadataQueueRequestSeqKey: 7,
+	}, 1)
+	if err != nil {
+		t.Fatalf("buildGeminiBatchRequestMetadata failed: %v", err)
+	}
+	if metadata[BatchMetadataQueueJobIDKey] != "job-10" {
+		t.Fatalf("queue_job_id = %v, want job-10", metadata[BatchMetadataQueueJobIDKey])
 	}
 }
 
