@@ -1,10 +1,11 @@
-import React, { useEffect } from 'react';
-import { HashRouter, Routes, Route } from 'react-router-dom';
+import React, {useEffect} from 'react';
+import {HashRouter, Route, Routes} from 'react-router-dom';
 import Layout from './components/layout/Layout';
 import Dashboard from './pages/Dashboard';
 import DictionaryBuilder from './pages/DictionaryBuilder';
 import MasterPersona from './pages/MasterPersona';
-import { useTaskStore, initTaskListeners } from './store/taskStore';
+import TranslationFlow from './pages/TranslationFlow';
+import {initTaskListeners, useTaskStore} from './store/taskStore';
 
 const PlaceholderPage: React.FC<{ title: string }> = ({ title }) => (
     <div className="flex items-center justify-center h-full w-full">
@@ -27,7 +28,7 @@ function App() {
                     <Route index element={<Dashboard />} />
                     <Route path="dictionary" element={<DictionaryBuilder />} />
                     <Route path="master_persona" element={<MasterPersona />} />
-                    <Route path="translation_flow" element={<PlaceholderPage title="翻訳プロジェクト" />} />
+                    <Route path="translation_flow" element={<TranslationFlow />} />
                     <Route path="settings" element={<PlaceholderPage title="設定" />} />
                     <Route path="theme" element={<PlaceholderPage title="テーマ確認" />} />
                 </Route>
