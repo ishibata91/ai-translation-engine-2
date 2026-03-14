@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
-import { z } from 'zod';
-import { ListModels } from '../../../wailsjs/go/controller/ModelCatalogController';
-import { type MasterPersonaLLMConfig, type MasterPersonaProvider } from '../../../types/masterPersona';
+import {useEffect, useMemo, useState} from 'react';
+import {z} from 'zod';
+import {ListModels} from '../../../wailsjs/go/controller/ModelCatalogController';
+import {type MasterPersonaLLMConfig, type MasterPersonaProvider} from '../../../types/masterPersona';
 
 type ModelOptionItem = { id: string; label: string };
 
@@ -56,6 +56,8 @@ export function useModelSettings({ value, onChange, enabled, namespace }: UseMod
     const [dynamicOptionsByProvider, setDynamicOptionsByProvider] = useState<Partial<Record<MasterPersonaProvider, ModelOptionItem[]>>>({});
     const [catalogLoading, setCatalogLoading] = useState<boolean>(false);
     const [catalogError, setCatalogError] = useState<string>('');
+    const [lastFetchedProvider, setLastFetchedProvider] = useState<MasterPersonaProvider | null>(null);
+    const [lastFetchedApiKey, setLastFetchedApiKey] = useState<string>('');
 
     const provider = value.provider;
     const endpoint = value.endpoint;
@@ -97,6 +99,18 @@ export function useModelSettings({ value, onChange, enabled, namespace }: UseMod
             return;
         }
 
+        // モデル一覧を取得するのは以下の場合のみ:
+        // 1. 初回ロード（lastFetchedProvider が null）
+        // 2. プロバイダが変更された
+        // 3. API キーが設定された（空文字列から値が入った場合）
+        const isFirstLoad = lastFetchedProvider === null;
+        const providerChanged = lastFetchedProvider !== provider;
+        const apiKeySet = !isLMStudio && lastFetchedApiKey === '' && apiKey !== '';
+
+        if (!isFirstLoad && !providerChanged && !apiKeySet) {
+            return;
+        }
+
         let alive = true;
         void (async () => {
             setCatalogLoading(true);
@@ -127,6 +141,9 @@ export function useModelSettings({ value, onChange, enabled, namespace }: UseMod
                 }
 
                 setDynamicOptionsByProvider((prev) => ({ ...prev, [provider]: options }));
+                setLastFetchedProvider(provider);
+                setLastFetchedApiKey(apiKey);
+
                 const hasCurrent = options.some((option) => option.id === currentModel || option.label === currentModel);
                 if (options.length > 0 && !hasCurrent) {
                     onChange({ ...value, model: options[0].id });
@@ -137,6 +154,8 @@ export function useModelSettings({ value, onChange, enabled, namespace }: UseMod
                 }
                 setDynamicOptionsByProvider((prev) => ({ ...prev, [provider]: [] }));
                 setCatalogError('モデル一覧の取得に失敗しました');
+                setLastFetchedProvider(provider);
+                setLastFetchedApiKey(apiKey);
             } finally {
                 if (alive) {
                     setCatalogLoading(false);
@@ -147,7 +166,7 @@ export function useModelSettings({ value, onChange, enabled, namespace }: UseMod
         return () => {
             alive = false;
         };
-    }, [apiKey, currentModel, enabled, endpoint, isLMStudio, namespace, onChange, provider, value]);
+    }, [apiKey, currentModel, enabled, endpoint, isLMStudio, namespace, onChange, provider, value, lastFetchedProvider, lastFetchedApiKey]);
 
     const handleProviderChange = (rawProvider: string) => {
         const parsed = providerSchema.safeParse(rawProvider);

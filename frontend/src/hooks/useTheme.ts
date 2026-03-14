@@ -1,7 +1,7 @@
-import { useEffect } from 'react';
-import { useUIStore } from '../store/uiStore';
+import {useEffect} from 'react';
+import {useUIStore} from '../store/uiStore';
 
-const THEME_STORAGE_KEY = 'ai_translation_engine_theme';
+const THEME_STORAGE_KEY = 'ai_translation_engine_theme_v2';
 
 /**
  * UI ストアと localStorage を同期し、利用可能なテーマ一覧を返す。
@@ -12,10 +12,11 @@ export function useTheme() {
     // Load theme from local storage on initial mount
     useEffect(() => {
         const savedTheme = localStorage.getItem(THEME_STORAGE_KEY);
-        if (savedTheme && savedTheme !== theme) {
+        if (savedTheme) {
             setTheme(savedTheme);
         }
-    }, [setTheme, theme]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     // Sync theme with HTML attribute and local storage when it changes
     useEffect(() => {
@@ -24,11 +25,7 @@ export function useTheme() {
     }, [theme]);
 
     const availableThemes = [
-        "light", "dark", "cupcake", "bumblebee", "emerald", "corporate",
-        "synthwave", "retro", "cyberpunk", "valentine", "halloween",
-        "garden", "forest", "aqua", "lofi", "pastel", "fantasy", "wireframe",
-        "black", "luxury", "dracula", "cmyk", "autumn", "business", "acid",
-        "lemonade", "night", "coffee", "winter", "dim", "nord", "sunset"
+        "light", "dark"
     ];
 
     return { theme, setTheme, availableThemes };

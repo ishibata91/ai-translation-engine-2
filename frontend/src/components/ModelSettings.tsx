@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { type MasterPersonaLLMConfig } from '../types/masterPersona';
+import React, {useEffect, useRef, useState} from 'react';
+import {type MasterPersonaLLMConfig} from '../types/masterPersona';
 import {
     MASTER_PERSONA_PROVIDERS,
     PROVIDER_LABELS,
@@ -22,8 +22,28 @@ interface Props {
     namespace: string;
 }
 
+/**
+ * LLMモデルの設定を行うコンポーネント。
+ *
+ * プロバイダ選択、モデル選択、エンドポイント、APIキー、並列実行数、Temperature などの
+ * 設定項目を提供し、入力値のデバウンス処理を行う。
+ *
+ * @param props - コンポーネントのプロパティ
+ * @param props.title - セクションタイトル（デフォルト: 'モデル設定'）
+ * @param props.value - 現在のLLM設定値
+ * @param props.onChange - 設定変更時のコールバック
+ * @param props.enabled - モデル一覧取得の有効/無効
+ * @param props.namespace - モデル設定の名前空間
+ */
 const ModelSettings: React.FC<Props> = ({ title = 'モデル設定', value, onChange, enabled = true, namespace }) => {
     const [draftTemperature, setDraftTemperature] = useState<number>(value.temperature);
+    const [draftEndpoint, setDraftEndpoint] = useState<string>(value.endpoint);
+    const [draftApiKey, setDraftApiKey] = useState<string>(value.apiKey);
+    const [draftSyncConcurrency, setDraftSyncConcurrency] = useState<number>(value.syncConcurrency);
+    const [draftContextLength, setDraftContextLength] = useState<number>(value.contextLength);
+
+    const debounceTimerRef = useRef<number | null>(null);
+
     const isLMStudio = value.provider === 'lmstudio';
     const {
         catalogError,
@@ -37,6 +57,41 @@ const ModelSettings: React.FC<Props> = ({ title = 'モデル設定', value, onCh
         setDraftTemperature(value.temperature);
     }, [value.temperature]);
 
+    useEffect(() => {
+        setDraftEndpoint(value.endpoint);
+    }, [value.endpoint]);
+
+    useEffect(() => {
+        setDraftApiKey(value.apiKey);
+    }, [value.apiKey]);
+
+    useEffect(() => {
+        setDraftSyncConcurrency(value.syncConcurrency);
+    }, [value.syncConcurrency]);
+
+    useEffect(() => {
+        setDraftContextLength(value.contextLength);
+    }, [value.contextLength]);
+
+    /**
+     * 設定値の変更を500msデバウンスして親コンポーネントへ反映する。
+     * 頻繁な設定保存を防ぎ、ユーザーの入力完了を待つ。
+     *
+     * @param updates - 更新する設定項目の部分オブジェクト
+     */
+    const debouncedOnChange = (updates: Partial<MasterPersonaLLMConfig>) => {
+        if (debounceTimerRef.current) {
+            clearTimeout(debounceTimerRef.current);
+        }
+        debounceTimerRef.current = setTimeout(() => {
+            onChange({ ...value, ...updates });
+        }, 500);
+    };
+
+    /**
+     * Temperature スライダーの操作完了時（マウスアップ、タッチエンド等）に
+     * draft値を親コンポーネントへ即座に反映する。
+     */
     const commitTemperature = () => {
         if (value.temperature !== draftTemperature) {
             onChange({ ...value, temperature: draftTemperature });
@@ -95,8 +150,11 @@ const ModelSettings: React.FC<Props> = ({ title = 'モデル設定', value, onCh
                                 type="text"
                                 className="input input-bordered input-sm w-full font-mono"
                                 placeholder="http://localhost:1234"
-                                value={value.endpoint}
-                                onChange={(e) => onChange({ ...value, endpoint: e.target.value })}
+                                value={draftEndpoint}
+                                onChange={(e) => {
+                                    setDraftEndpoint(e.target.value);
+                                    debouncedOnChange({ endpoint: e.target.value });
+                                }}
                             />
                         </div>
                         {!isLMStudio && (
@@ -107,8 +165,11 @@ const ModelSettings: React.FC<Props> = ({ title = 'モデル設定', value, onCh
                                 <input
                                     type="password"
                                     className="input input-bordered input-sm w-full"
-                                    value={value.apiKey}
-                                    onChange={(e) => onChange({ ...value, apiKey: e.target.value })}
+                                    value={draftApiKey}
+                                    onChange={(e) => {
+                                        setDraftApiKey(e.target.value);
+                                        debouncedOnChange({ apiKey: e.target.value });
+                                    }}
                                 />
                             </div>
                         )}
@@ -137,13 +198,12 @@ const ModelSettings: React.FC<Props> = ({ title = 'モデル設定', value, onCh
                                     min={0}
                                     step={1}
                                     className="input input-bordered input-sm w-full font-mono"
-                                    value={value.contextLength}
+                                    value={draftContextLength}
                                     onChange={(e) => {
                                         const parsed = Number.parseInt(e.target.value, 10);
-                                        onChange({
-                                            ...value,
-                                            contextLength: Number.isFinite(parsed) && parsed > 0 ? parsed : 0,
-                                        });
+                                        const newValue = Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+                                        setDraftContextLength(newValue);
+                                        debouncedOnChange({ contextLength: newValue });
                                     }}
                                 />
                                 <span className="text-xs text-base-content/60">0 は LM Studio の既定値を使用</span>
@@ -155,7 +215,7 @@ const ModelSettings: React.FC<Props> = ({ title = 'モデル設定', value, onCh
                         <div className="flex flex-col gap-1">
                             <div className="flex justify-between items-center">
                                 <label className="label-text font-bold text-sm">並列実行数</label>
-                                <span className="badge badge-ghost badge-sm font-mono">{value.syncConcurrency}</span>
+                                <span className="badge badge-ghost badge-sm font-mono">{draftSyncConcurrency}</span>
                             </div>
                             <input
                                 type="range"
@@ -163,13 +223,12 @@ const ModelSettings: React.FC<Props> = ({ title = 'モデル設定', value, onCh
                                 max="64"
                                 step="1"
                                 className="range range-primary range-sm w-full"
-                                value={value.syncConcurrency}
+                                value={draftSyncConcurrency}
                                 onChange={(e) => {
                                     const parsed = Number.parseInt(e.target.value, 10);
-                                    onChange({
-                                        ...value,
-                                        syncConcurrency: Number.isFinite(parsed) && parsed > 0 ? parsed : 1,
-                                    });
+                                    const newValue = Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+                                    setDraftSyncConcurrency(newValue);
+                                    debouncedOnChange({ syncConcurrency: newValue });
                                 }}
                             />
                             <span className="text-xs text-base-content/60">1〜64 で調整</span>
