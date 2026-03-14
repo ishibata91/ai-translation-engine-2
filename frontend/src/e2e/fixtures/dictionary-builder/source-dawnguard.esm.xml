@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sstxml source="Dawnguard.esm" language="en-US">
+  <entry id="DLG_DragonHunter">
+    <source>The dragon circles above the fort.</source>
+    <dest>ドラゴンが砦の上空を旋回している。</dest>
+  </entry>
+</sstxml>

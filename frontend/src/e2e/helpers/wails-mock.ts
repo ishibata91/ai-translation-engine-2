@@ -1,7 +1,55 @@
 import {Page} from '@playwright/test';
+import {
+  DICTIONARY_BUILDER_ENTRIES_BY_SOURCE_ID,
+  DICTIONARY_BUILDER_SOURCES,
+} from '../fixtures/dictionary-builder/mock-data';
+
+type DictionaryMockFixture = {
+  entriesBySourceId: Record<number, Array<Record<string, string | number>>>;
+  sources: Array<Record<string, string | number>>;
+};
 
 export async function installWailsMocks(page: Page): Promise<void> {
-  await page.addInitScript(() => {
+  const dictionaryFixture: DictionaryMockFixture = {
+    entriesBySourceId: DICTIONARY_BUILDER_ENTRIES_BY_SOURCE_ID,
+    sources: DICTIONARY_BUILDER_SOURCES,
+  };
+
+  await page.addInitScript((fixture: DictionaryMockFixture) => {
+    const toLowerText = (value: unknown): string =>
+      String(value ?? '').toLowerCase();
+
+    const paginateEntries = (
+      entries: Array<Record<string, string | number>>,
+      pageNumber: number,
+      pageSize: number,
+    ) => {
+      const safePage = Number.isFinite(pageNumber) && pageNumber > 0 ? pageNumber : 1;
+      const safePageSize = Number.isFinite(pageSize) && pageSize > 0 ? pageSize : 500;
+      const start = (safePage - 1) * safePageSize;
+      const end = start + safePageSize;
+
+      return {
+        entries: entries.slice(start, end),
+        totalCount: entries.length,
+      };
+    };
+
+    const applyColumnFilters = (
+      entries: Array<Record<string, string | number>>,
+      filters: Record<string, unknown>,
+    ): Array<Record<string, string | number>> =>
+      entries.filter((entry) =>
+        Object.entries(filters).every(([key, rawFilterValue]) => {
+          const filterValue = toLowerText(rawFilterValue).trim();
+          if (filterValue.length === 0) {
+            return true;
+          }
+
+          return toLowerText(entry[key]).includes(filterValue);
+        }),
+      );
+
     const runtime = {
       EventsOnMultiple: () => () => undefined,
       EventsOff: () => undefined,
@@ -50,9 +98,36 @@ export async function installWailsMocks(page: Page): Promise<void> {
       DictDeleteEntry: async () => undefined,
       DictDeleteSource: async () => undefined,
       DictGetEntries: async () => [],
-      DictGetEntriesPaginated: async () => ({entries: [], totalCount: 0}),
-      DictGetSources: async () => [],
-      DictSearchAllEntriesPaginated: async () => ({entries: [], totalCount: 0}),
+      DictGetEntriesPaginated: async (
+        sourceId: number,
+        _query: string,
+        filters: Record<string, unknown>,
+        pageNumber: number,
+        pageSize: number,
+      ) => {
+        const baseEntries = fixture.entriesBySourceId[sourceId] ?? [];
+        const filteredEntries = applyColumnFilters(baseEntries, filters ?? {});
+        return paginateEntries(filteredEntries, pageNumber, pageSize);
+      },
+      DictGetSources: async () => fixture.sources,
+      DictSearchAllEntriesPaginated: async (
+        query: string,
+        filters: Record<string, unknown>,
+        pageNumber: number,
+        pageSize: number,
+      ) => {
+        const normalizedQuery = toLowerText(query).trim();
+        const allEntries = Object.values(fixture.entriesBySourceId).flat();
+        const queryMatchedEntries = normalizedQuery.length === 0
+          ? allEntries
+          : allEntries.filter((entry) =>
+            [entry.edid, entry.source_text, entry.dest_text]
+              .map((value) => toLowerText(value))
+              .some((value) => value.includes(normalizedQuery)),
+          );
+        const filteredEntries = applyColumnFilters(queryMatchedEntries, filters ?? {});
+        return paginateEntries(filteredEntries, pageNumber, pageSize);
+      },
       DictStartImport: async () => 'dictionary-task-e2e',
       DictUpdateEntry: async () => undefined,
       SetContext: async () => undefined,
@@ -101,5 +176,5 @@ export async function installWailsMocks(page: Page): Promise<void> {
       ...fileDialogController,
       ...(win.go.controller.FileDialogController as Record<string, unknown> | undefined),
     };
-  });
+  }, dictionaryFixture);
 }

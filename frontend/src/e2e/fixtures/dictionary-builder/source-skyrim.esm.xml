@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sstxml source="Skyrim.esm" language="en-US">
+  <entry id="MAG_Fireball">
+    <source>Cast a blazing fireball.</source>
+    <dest>灼熱のファイアボールを放つ。</dest>
+  </entry>
+  <entry id="NPC_GuardWarning">
+    <source>Halt, you have violated the law.</source>
+    <dest>待て、法を犯したな。</dest>
+  </entry>
+</sstxml>
