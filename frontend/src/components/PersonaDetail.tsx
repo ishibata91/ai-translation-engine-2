@@ -40,7 +40,7 @@ const PersonaDetail: React.FC<PersonaDetailProps> = ({ npc }) => {
                 <div className="form-control flex-1 flex flex-col min-h-0 gap-2 w-full">
                     <label className="label"><span className="label-text font-bold">生成されたペルソナ情報 (プロンプト動的注入用)</span></label>
                     <textarea
-                        className="textarea textarea-bordered flex-1 text-base leading-relaxed w-full"
+                        className="textarea textarea-bordered text-base leading-relaxed w-full min-h-[300px]"
                         value={npc.personaText}
                         readOnly
                     />

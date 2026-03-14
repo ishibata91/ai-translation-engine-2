@@ -25,7 +25,7 @@ export interface NpcRow {
 
 export const NPC_STATUS_LABEL: Record<NpcStatus, string> = {
     draft: '下書き',
-    generated: '生成済み',
+    generated: '生成済',
 };
 
 export const STATUS_BADGE: Record<NpcStatus, string> = {
