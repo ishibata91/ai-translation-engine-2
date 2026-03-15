@@ -82,6 +82,11 @@ type SaveResultsReporter interface {
 	SaveResultsWithSummary(ctx context.Context, responses []llmio.Response) (SaveResultsSummary, error)
 }
 
+// TaskArtifactCleaner optionally exposes task-scoped cleanup APIs.
+type TaskArtifactCleaner interface {
+	CleanupTaskArtifacts(ctx context.Context, taskID string) error
+}
+
 // DialogueCollector collects per-NPC dialogue data from PersonaGenInput,
 // applying importance scoring to select the top dialogues.
 type DialogueCollector interface {
@@ -114,6 +119,7 @@ type PersonaStore interface {
 	GetPersona(ctx context.Context, sourcePlugin string, speakerID string) (string, error)
 	ListNPCs(ctx context.Context) ([]PersonaNPCView, error)
 	ListDialoguesByPersonaID(ctx context.Context, personaID int64) ([]PersonaDialogueView, error)
+	CleanupTaskArtifacts(ctx context.Context, taskID string) error
 	Clear(ctx context.Context) error
 }
 

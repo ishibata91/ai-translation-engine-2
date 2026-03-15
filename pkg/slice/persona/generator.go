@@ -245,7 +245,6 @@ func (g *DefaultPersonaGenerator) SaveResultsWithSummary(
 			VoiceType:    voiceType,
 			PersonaText:  personaText,
 			SourcePlugin: sourcePlugin,
-			Status:       "success",
 		}
 
 		if err := g.Store.SavePersona(ctx, result, overwriteExisting); err != nil {
@@ -270,6 +269,17 @@ func (g *DefaultPersonaGenerator) SaveResultsWithSummary(
 		SuccessCount: successCount,
 		FailCount:    failCount,
 	}, nil
+}
+
+// CleanupTaskArtifacts removes task-scoped intermediate persona artifacts.
+func (g *DefaultPersonaGenerator) CleanupTaskArtifacts(ctx context.Context, taskID string) error {
+	if strings.TrimSpace(taskID) == "" {
+		return nil
+	}
+	if err := g.Store.CleanupTaskArtifacts(ctx, taskID); err != nil {
+		return fmt.Errorf("cleanup persona task artifacts task_id=%s: %w", taskID, err)
+	}
+	return nil
 }
 
 var personaRegex = regexp.MustCompile(`TL:\s*\|(.*?)\|`)

@@ -21,14 +21,6 @@ func Migrate(ctx context.Context, db *sql.DB) error {
 		return fmt.Errorf("create artifact schema_version: %w", err)
 	}
 
-	var currentVersion int
-	if err := db.QueryRowContext(ctx, `SELECT IFNULL(MAX(version), 0) FROM schema_version`).Scan(&currentVersion); err != nil {
-		return fmt.Errorf("read artifact schema version: %w", err)
-	}
-	if currentVersion >= artifactSchemaVersion {
-		return nil
-	}
-
 	if _, err := db.ExecContext(ctx, `
 		CREATE TABLE IF NOT EXISTS translation_input_tasks (
 			task_id TEXT PRIMARY KEY,
@@ -252,7 +244,7 @@ func Migrate(ctx context.Context, db *sql.DB) error {
 		return fmt.Errorf("create translation input artifact tables: %w", err)
 	}
 
-	if _, err := db.ExecContext(ctx, `INSERT INTO schema_version (version, applied_at) VALUES (?, ?)`, artifactSchemaVersion, time.Now().UTC()); err != nil {
+	if _, err := db.ExecContext(ctx, `INSERT OR IGNORE INTO schema_version (version, applied_at) VALUES (?, ?)`, artifactSchemaVersion, time.Now().UTC()); err != nil {
 		return fmt.Errorf("insert artifact schema version: %w", err)
 	}
 	return nil

@@ -28,7 +28,6 @@ import {
     formatUpdatedAt,
     MASTER_PERSONA_LLM_NAMESPACE,
     MASTER_PERSONA_PROMPT_NAMESPACE,
-    normalizeNpcStatus,
     normalizeProvider,
     parseTaskTimestamp,
     pickString,
@@ -72,10 +71,8 @@ export function useMasterPersona() {
     const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
     const [npcSearchInput, setNpcSearchInput] = useState<string>('');
     const [pluginFilterInput, setPluginFilterInput] = useState<string>('');
-    const [statusFilterInput, setStatusFilterInput] = useState<string>('');
     const [appliedNpcSearch, setAppliedNpcSearch] = useState<string>('');
     const [appliedPluginFilter, setAppliedPluginFilter] = useState<string>('');
-    const [appliedStatusFilter, setAppliedStatusFilter] = useState<string>('');
     const [npcPage, setNpcPage] = useState<number>(1);
     const [isGenerating, setIsGenerating] = useState<boolean>(false);
     const [jsonPath, setJsonPath] = useState<string>('');
@@ -173,12 +170,8 @@ export function useMasterPersona() {
     const filteredNpcData = useMemo(() => {
         const keyword = appliedNpcSearch.trim().toLowerCase();
         const plugin = appliedPluginFilter.trim().toLowerCase();
-        const status = appliedStatusFilter.trim().toLowerCase();
         return allNpcData.filter((row) => {
             if (plugin !== '' && row.sourcePlugin.toLowerCase() !== plugin) {
-                return false;
-            }
-            if (status !== '' && row.status !== status) {
                 return false;
             }
             if (keyword === '') {
@@ -194,7 +187,7 @@ export function useMasterPersona() {
                 row.personaText,
             ].some((value) => value.toLowerCase().includes(keyword));
         });
-    }, [allNpcData, appliedNpcSearch, appliedPluginFilter, appliedStatusFilter]);
+    }, [allNpcData, appliedNpcSearch, appliedPluginFilter]);
 
     const totalNpcPages = Math.max(1, Math.ceil(filteredNpcData.length / PERSONA_PAGE_SIZE));
     const pagedNpcData = useMemo(() => {
@@ -205,17 +198,14 @@ export function useMasterPersona() {
     const applyNPCFilters = () => {
         setAppliedNpcSearch(npcSearchInput);
         setAppliedPluginFilter(pluginFilterInput);
-        setAppliedStatusFilter(statusFilterInput);
         setNpcPage(1);
     };
 
     const clearNPCFilters = () => {
         setNpcSearchInput('');
         setPluginFilterInput('');
-        setStatusFilterInput('');
         setAppliedNpcSearch('');
         setAppliedPluginFilter('');
-        setAppliedStatusFilter('');
         setNpcPage(1);
     };
 
@@ -597,8 +587,6 @@ export function useMasterPersona() {
                     const personaID = Number(record.persona_id ?? record.PersonaID ?? 0);
                     const npcName = pickString(record.npc_name ?? record.NPCName);
                     const updatedAt = formatUpdatedAt(pickString(record.updated_at ?? record.UpdatedAt));
-                    const dialogueCount = Number(record.dialogue_count ?? record.DialogueCount ?? 0);
-                    const status = normalizeNpcStatus(record.status ?? record.Status);
                     return {
                         id: String(personaID),
                         personaId: personaID,
@@ -608,8 +596,6 @@ export function useMasterPersona() {
                         race: pickString(record.race ?? record.Race),
                         sex: pickString(record.sex ?? record.Sex),
                         voiceType: pickString(record.voice_type ?? record.VoiceType),
-                        dialogueCount: Number.isFinite(dialogueCount) ? dialogueCount : 0,
-                        status,
                         updatedAt,
                         personaText: pickString(record.persona_text ?? record.PersonaText),
                         generationRequest: pickString(record.generation_request ?? record.GenerationRequest),
@@ -883,11 +869,8 @@ export function useMasterPersona() {
         setNpcSearchInput,
         pluginFilterInput,
         setPluginFilterInput,
-        statusFilterInput,
-        setStatusFilterInput,
         appliedNpcSearch,
         appliedPluginFilter,
-        appliedStatusFilter,
         npcPage,
         setNpcPage,
         isGenerating,

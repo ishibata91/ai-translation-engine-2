@@ -5,6 +5,8 @@ import (
 	"embed"
 	"log"
 
+	dictionary_artifact "github.com/ishibata91/ai-translation-engine-2/pkg/artifact/dictionary_artifact"
+	master_persona_artifact "github.com/ishibata91/ai-translation-engine-2/pkg/artifact/master_persona_artifact"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/artifact/translationinput"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/controller"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/format/parser/skyrim"
@@ -58,6 +60,12 @@ func main() {
 	if err := translationinput.Migrate(context.Background(), artifactDB); err != nil {
 		log.Fatalf("failed to run artifact database migrations: %v", err)
 	}
+	if err := dictionary_artifact.Migrate(context.Background(), artifactDB); err != nil {
+		log.Fatalf("failed to run dictionary artifact migrations: %v", err)
+	}
+	if err := master_persona_artifact.Migrate(context.Background(), artifactDB); err != nil {
+		log.Fatalf("failed to run master persona artifact migrations: %v", err)
+	}
 
 	// 3. Setup Task Manager
 	logger, wailsLogH := telemetry.ProvideLogger()
@@ -69,17 +77,9 @@ func main() {
 	personaProgressNotifier := progress.NewWailsNotifier(logger)
 	personaProgressNotifier.SetEventName("persona:progress")
 
-	// 4. Setup Dictionary System (dictionary.db)
-	dictDB, dictDBCleanup, err := datastore.NewSQLiteDB(context.Background(), "dictionary.db")
-	if err != nil {
-		log.Fatalf("failed to initialize dictionary database: %v", err)
-	}
-	defer dictDBCleanup()
-
-	dictStore, err := dictionary2.NewDictionaryStore(dictDB)
-	if err != nil {
-		log.Fatalf("failed to initialize dictionary store: %v", err)
-	}
+	// 4. Setup Dictionary System (artifact shared store)
+	dictArtifactRepo := dictionary_artifact.NewRepository(artifactDB)
+	dictStore := dictionary2.NewDictionaryStore(dictArtifactRepo)
 	wailsNotifier := progress.NewWailsNotifier(logger)
 	wailsNotifier.SetEventName("dictionary:import_progress") // 必要に応じて変更可能
 
@@ -120,16 +120,10 @@ func main() {
 		log.Printf("failed to recover llm queue worker state: %v", err)
 	}
 
-	// Persona data is persisted in dedicated persona.db.
-	personaDB, personaDBCleanup, err := datastore.NewSQLiteDB(context.Background(), "persona.db")
-	if err != nil {
-		log.Fatalf("failed to initialize persona database: %v", err)
-	}
-	defer personaDBCleanup()
-
-	personaStore := persona.NewPersonaStore(personaDB)
+	personaArtifactRepo := master_persona_artifact.NewRepository(artifactDB)
+	personaStore := persona.NewPersonaStore(personaArtifactRepo)
 	if err := personaStore.InitSchema(context.Background()); err != nil {
-		log.Fatalf("failed to initialize persona schema: %v", err)
+		log.Fatalf("failed to initialize persona artifact store: %v", err)
 	}
 	personaGenerator := persona.NewPersonaGenerator(
 		persona.NewDefaultDialogueCollector(),

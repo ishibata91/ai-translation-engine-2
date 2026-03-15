@@ -8,7 +8,9 @@ import (
 	"testing"
 	"time"
 
+	master_persona_artifact "github.com/ishibata91/ai-translation-engine-2/pkg/artifact/master_persona_artifact"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/foundation/llmio"
+	"github.com/stretchr/testify/require"
 	_ "modernc.org/sqlite"
 )
 
@@ -167,7 +169,8 @@ func TestPersonaGenSlice_TableDriven(t *testing.T) {
 			db, cleanup := setupTestDB(t)
 			defer cleanup()
 
-			store := NewPersonaStore(db)
+			require.NoError(t, master_persona_artifact.Migrate(ctx, db))
+			store := NewPersonaStore(master_persona_artifact.NewRepository(db))
 			if err := store.InitSchema(ctx); err != nil {
 				t.Fatalf("Failed to init schema: %v", err)
 			}
@@ -232,7 +235,8 @@ func TestPersonaGenSlice_UsesConfiguredPromptSplit(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	store := NewPersonaStore(db)
+	require.NoError(t, master_persona_artifact.Migrate(ctx, db))
+	store := NewPersonaStore(master_persona_artifact.NewRepository(db))
 	if err := store.InitSchema(ctx); err != nil {
 		t.Fatalf("Failed to init schema: %v", err)
 	}
@@ -277,20 +281,4 @@ func TestPersonaGenSlice_UsesConfiguredPromptSplit(t *testing.T) {
 		t.Fatalf("expected dialogue history block in user prompt: %q", requests[0].UserPrompt)
 	}
 
-	rows, err := store.ListNPCs(ctx)
-	if err != nil {
-		t.Fatalf("ListNPCs failed: %v", err)
-	}
-	if len(rows) != 1 {
-		t.Fatalf("expected one saved persona row, got %d", len(rows))
-	}
-	if rows[0].Status != "draft" {
-		t.Fatalf("expected saved persona row to remain draft after request generation, got %q", rows[0].Status)
-	}
-	if !strings.Contains(rows[0].GenerationRequest, "System Prompt:\nSYSTEM RULES") {
-		t.Fatalf("expected saved generation_request to contain system prompt, got %q", rows[0].GenerationRequest)
-	}
-	if !strings.Contains(rows[0].GenerationRequest, "User Prompt:\n会話から口調と性格を抽出してください。") {
-		t.Fatalf("expected saved generation_request to contain user prompt, got %q", rows[0].GenerationRequest)
-	}
 }

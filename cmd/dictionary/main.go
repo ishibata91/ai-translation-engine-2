@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 
+	dictionary_artifact "github.com/ishibata91/ai-translation-engine-2/pkg/artifact/dictionary_artifact"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/foundation/progress"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/gateway/datastore"
 	dictionary2 "github.com/ishibata91/ai-translation-engine-2/pkg/slice/dictionary"
@@ -37,11 +38,10 @@ func main() {
 	}
 	defer dbCleanup()
 
-	// 構築部分
-	store, err := dictionary2.NewDictionaryStore(db)
-	if err != nil {
-		log.Fatalf("failed to initialize dictionary store: %v", err)
+	if err := dictionary_artifact.Migrate(ctx, db); err != nil {
+		log.Fatalf("failed to migrate dictionary artifact schema: %v", err)
 	}
+	store := dictionary2.NewDictionaryStore(dictionary_artifact.NewRepository(db))
 	config := dictionary2.DefaultConfig()
 	notifier := progress.NewNoopNotifier()
 	logger := slog.Default() // Define logger as it's used in NewImporter
@@ -54,8 +54,18 @@ func main() {
 	}
 	defer file.Close()
 
+	sourceID, err := store.CreateSource(ctx, &dictionary2.DictSource{
+		FileName: xmlFilePath,
+		Format:   "xml",
+		FilePath: xmlFilePath,
+		Status:   "PENDING",
+	})
+	if err != nil {
+		log.Fatalf("failed to create dictionary source: %v", err)
+	}
+
 	// Run the import
-	count, err := importer.ImportXML(ctx, 1, xmlFilePath, file) // Use xmlFilePath
+	count, err := importer.ImportXML(ctx, sourceID, xmlFilePath, file) // Use xmlFilePath
 	if err != nil {
 		slog.ErrorContext(ctx, "Import failed", "error", err)
 		os.Exit(1)

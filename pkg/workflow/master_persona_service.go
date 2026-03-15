@@ -236,15 +236,27 @@ func (s *MasterPersonaService) runPersonaExecution(ctx context.Context, currentT
 	overallTotal := state.Total
 
 	if err := s.queue.PrepareTaskResume(ctx, currentTask.ID); err != nil {
+		if cleanupErr := s.cleanupPersonaTaskArtifacts(ctx, currentTask.ID); cleanupErr != nil {
+			s.logger.WarnContext(ctx, "persona.artifacts.cleanup_failed",
+				append(telemetry2.ErrorAttrs(cleanupErr), slog.String("task_id", currentTask.ID))...)
+		}
 		return fmt.Errorf("prepare task resume task_id=%s: %w", currentTask.ID, err)
 	}
 
 	if err := s.processQueuedRequests(ctx, currentTask, state, update, baseCompleted, overallTotal, profile, processOpts, &taskMetadata); err != nil {
+		if cleanupErr := s.cleanupPersonaTaskArtifacts(ctx, currentTask.ID); cleanupErr != nil {
+			s.logger.WarnContext(ctx, "persona.artifacts.cleanup_failed",
+				append(telemetry2.ErrorAttrs(cleanupErr), slog.String("task_id", currentTask.ID))...)
+		}
 		return err
 	}
 
 	updatedState, err := s.loadUpdatedTaskState(ctx, currentTask.ID)
 	if err != nil {
+		if cleanupErr := s.cleanupPersonaTaskArtifacts(ctx, currentTask.ID); cleanupErr != nil {
+			s.logger.WarnContext(ctx, "persona.artifacts.cleanup_failed",
+				append(telemetry2.ErrorAttrs(cleanupErr), slog.String("task_id", currentTask.ID))...)
+		}
 		return err
 	}
 
@@ -324,7 +336,7 @@ func batchProgressCurrent(baseCompleted int, overallTotal int, progress float32)
 }
 
 func (s *MasterPersonaService) executeRequestPreparation(ctx context.Context, taskID string, input StartMasterPersonaInput, update func(phase string, progress float64)) error {
-	runCtx := telemetry2.WithTraceID(ctx)
+	runCtx := persona.WithTaskID(telemetry2.WithTraceID(ctx), taskID)
 	s.reportProgress(runCtx, taskID, 0, runtimeprogress.StatusInProgress, "マスターペルソナ生成タスクを開始")
 	update("loading_json", 10)
 	s.reportProgress(runCtx, taskID, 10, runtimeprogress.StatusInProgress, "JSONを読み込み中")
@@ -350,6 +362,10 @@ func (s *MasterPersonaService) executeRequestPreparation(ctx context.Context, ta
 	s.reportProgress(runCtx, taskID, 75, runtimeprogress.StatusInProgress, "リクエストを生成中")
 	requests, err := s.personaGenerator.PreparePrompts(runCtx, personaInput)
 	if err != nil {
+		if cleanupErr := s.cleanupPersonaTaskArtifacts(runCtx, taskID); cleanupErr != nil {
+			s.logger.WarnContext(runCtx, "persona.artifacts.cleanup_failed",
+				append(telemetry2.ErrorAttrs(cleanupErr), slog.String("task_id", taskID))...)
+		}
 		wrappedErr := fmt.Errorf("prepare prompts task_id=%s source_json_path=%s: %w", taskID, input.SourceJSONPath, err)
 		s.reportProgress(runCtx, taskID, 75, runtimeprogress.StatusFailed, "リクエスト生成に失敗")
 		s.logger.ErrorContext(runCtx, "persona.requests.failed",
@@ -372,6 +388,10 @@ func (s *MasterPersonaService) executeRequestPreparation(ctx context.Context, ta
 		return fmt.Errorf("request queue is not configured")
 	}
 	if err := s.queue.SubmitTaskSharedRequests(runCtx, taskID, string(task2.TypePersonaExtraction), requests); err != nil {
+		if cleanupErr := s.cleanupPersonaTaskArtifacts(runCtx, taskID); cleanupErr != nil {
+			s.logger.WarnContext(runCtx, "persona.artifacts.cleanup_failed",
+				append(telemetry2.ErrorAttrs(cleanupErr), slog.String("task_id", taskID))...)
+		}
 		wrappedErr := fmt.Errorf("submit task requests task_id=%s request_count=%d: %w", taskID, len(requests), err)
 		s.reportProgress(runCtx, taskID, 80, runtimeprogress.StatusFailed, "キュー保存に失敗")
 		s.logger.ErrorContext(runCtx, "persona.requests.queue_save_failed",
@@ -541,8 +561,15 @@ func (s *MasterPersonaService) finalizePersonaExecution(ctx context.Context, cur
 	})
 
 	if saveErr != nil {
+		if cleanupErr := s.cleanupPersonaTaskArtifacts(ctx, currentTask.ID); cleanupErr != nil {
+			s.logger.WarnContext(ctx, "persona.artifacts.cleanup_failed",
+				append(telemetry2.ErrorAttrs(cleanupErr), slog.String("task_id", currentTask.ID))...)
+		}
 		s.reportTaskPhaseProgress(ctx, currentTask.ID, currentTask.Type, phaseRequestCompleted, updatedState.Completed, updatedState.Total, runtimeprogress.StatusFailed, saveErr.Error())
 		return fmt.Errorf("persist persona responses task_id=%s: %w", currentTask.ID, saveErr)
+	}
+	if err := s.cleanupPersonaTaskArtifacts(ctx, currentTask.ID); err != nil {
+		return fmt.Errorf("cleanup persona task artifacts task_id=%s: %w", currentTask.ID, err)
 	}
 	return nil
 }
@@ -560,6 +587,7 @@ func (s *MasterPersonaService) persistPersonaResponses(ctx context.Context, curr
 
 	savedSet := metadataStringSet(currentTask.Metadata["saved_request_ids"])
 	reporter, hasReporter := s.personaGenerator.(persona.SaveResultsReporter)
+	runCtx := persona.WithTaskID(ctx, currentTask.ID)
 	for _, job := range jobs {
 		if job.RequestState != runtimequeue.RequestStateCompleted || job.ResponseJSON == nil {
 			continue
@@ -589,7 +617,7 @@ func (s *MasterPersonaService) persistPersonaResponses(ctx context.Context, curr
 		}
 
 		if hasReporter {
-			sum, saveErr := reporter.SaveResultsWithSummary(ctx, []llmio.Response{resp})
+			sum, saveErr := reporter.SaveResultsWithSummary(runCtx, []llmio.Response{resp})
 			if saveErr != nil {
 				return out, fmt.Errorf("save persona response with summary task_id=%s request_id=%s: %w", currentTask.ID, job.ID, saveErr)
 			}
@@ -601,7 +629,7 @@ func (s *MasterPersonaService) persistPersonaResponses(ctx context.Context, curr
 			continue
 		}
 
-		if err := s.personaGenerator.SaveResults(ctx, []llmio.Response{resp}); err != nil {
+		if err := s.personaGenerator.SaveResults(runCtx, []llmio.Response{resp}); err != nil {
 			return out, fmt.Errorf("save persona response task_id=%s request_id=%s: %w", currentTask.ID, job.ID, err)
 		}
 		out.Saved++
@@ -610,6 +638,17 @@ func (s *MasterPersonaService) persistPersonaResponses(ctx context.Context, curr
 
 	out.SavedRequestIDs = sortedStringSet(savedSet)
 	return out, nil
+}
+
+func (s *MasterPersonaService) cleanupPersonaTaskArtifacts(ctx context.Context, taskID string) error {
+	cleaner, ok := s.personaGenerator.(persona.TaskArtifactCleaner)
+	if !ok {
+		return nil
+	}
+	if err := cleaner.CleanupTaskArtifacts(persona.WithTaskID(ctx, taskID), taskID); err != nil {
+		return fmt.Errorf("cleanup persona task artifacts: %w", err)
+	}
+	return nil
 }
 
 func buildRequestLogPayload(requests []llmio.Request) []map[string]interface{} {

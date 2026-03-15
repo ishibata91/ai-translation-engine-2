@@ -1,7 +1,7 @@
 import React, {useState} from 'react';
 import type {NpcRow} from '../types/npc';
 
-export type DetailTab = 'persona' | 'dialogues' | 'request' | 'meta';
+type DetailTab = 'persona' | 'dialogues' | 'request' | 'meta';
 
 interface PersonaDetailProps {
     npc: NpcRow | null;
@@ -115,9 +115,6 @@ const PersonaDetail: React.FC<PersonaDetailProps> = ({ npc }) => {
 
                         <span className="font-bold">Source Plugin</span>
                         <span className="font-mono">{npc.sourcePlugin || 'UNKNOWN'}</span>
-
-                        <span className="font-bold">セリフ数</span>
-                        <span className="font-mono">{npc.dialogueCount} 行</span>
 
                         <span className="font-bold">生成日時</span>
                         <span>{npc.updatedAt}</span>

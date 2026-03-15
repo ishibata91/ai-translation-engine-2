@@ -3,6 +3,8 @@ package persona
 import (
 	"context"
 	"testing"
+
+	master_persona_artifact "github.com/ishibata91/ai-translation-engine-2/pkg/artifact/master_persona_artifact"
 )
 
 func TestPersonaStore_UpsertAndDialogues(t *testing.T) {
@@ -61,7 +63,10 @@ func TestPersonaStore_UpsertAndDialogues(t *testing.T) {
 			db, cleanup := setupTestDB(t)
 			defer cleanup()
 
-			store := NewPersonaStore(db)
+			if err := master_persona_artifact.Migrate(ctx, db); err != nil {
+				t.Fatalf("migrate master persona artifact failed: %v", err)
+			}
+			store := NewPersonaStore(master_persona_artifact.NewRepository(db))
 			if err := store.InitSchema(ctx); err != nil {
 				t.Fatalf("InitSchema failed: %v", err)
 			}
@@ -94,16 +99,6 @@ func TestPersonaStore_UpsertAndDialogues(t *testing.T) {
 			}
 			if err := store.SaveGenerationRequest(ctx, effectivePlugin, "npc-001", "System Prompt:\nbase\n\nUser Prompt:\nfirst line"); err != nil {
 				t.Fatalf("SaveGenerationRequest(first) failed: %v", err)
-			}
-			rows, err := store.ListNPCs(ctx)
-			if err != nil {
-				t.Fatalf("ListNPCs(after request) failed: %v", err)
-			}
-			if len(rows) != 1 {
-				t.Fatalf("unexpected npc count after request: got=%d want=1", len(rows))
-			}
-			if rows[0].Status != "draft" {
-				t.Fatalf("expected draft status after request generation, got=%q", rows[0].Status)
 			}
 			if err := store.SavePersona(ctx, PersonaResult{
 				SpeakerID:    "npc-001",
@@ -157,18 +152,12 @@ func TestPersonaStore_UpsertAndDialogues(t *testing.T) {
 				t.Fatalf("unexpected persona text: got=%q want=%q", personaText, tc.expectPersonaText)
 			}
 
-			rows, err = store.ListNPCs(ctx)
+			rows, err := store.ListNPCs(ctx)
 			if err != nil {
 				t.Fatalf("ListNPCs failed: %v", err)
 			}
 			if len(rows) != 1 {
 				t.Fatalf("unexpected npc count: got=%d want=1", len(rows))
-			}
-			if rows[0].DialogueCount != 1 {
-				t.Fatalf("expected aggregated dialogue count=1, got=%d", rows[0].DialogueCount)
-			}
-			if rows[0].Status != "generated" {
-				t.Fatalf("expected generated status after persona save, got=%q", rows[0].Status)
 			}
 			if tc.overwriteExisting && rows[0].GenerationRequest != "System Prompt:\nupdated\n\nUser Prompt:\nsecond line" {
 				t.Fatalf("unexpected generation request after overwrite: %q", rows[0].GenerationRequest)
@@ -190,12 +179,8 @@ func TestPersonaStore_UpsertAndDialogues(t *testing.T) {
 			if rows[0].SourcePlugin != tc.expectStoredPlugin {
 				t.Fatalf("unexpected source_plugin on npc row: got=%q want=%q", rows[0].SourcePlugin, tc.expectStoredPlugin)
 			}
-			expectedDialoguePlugin := tc.expectStoredPlugin
-			if tc.sourcePlugin == "" {
-				expectedDialoguePlugin = "UNKNOWN"
-			}
-			if dialogues[0].SourcePlugin != expectedDialoguePlugin {
-				t.Fatalf("unexpected source_plugin on dialogue row: got=%q want=%q", dialogues[0].SourcePlugin, expectedDialoguePlugin)
+			if dialogues[0].SourcePlugin != tc.expectStoredPlugin {
+				t.Fatalf("unexpected source_plugin on dialogue row: got=%q want=%q", dialogues[0].SourcePlugin, tc.expectStoredPlugin)
 			}
 		})
 	}
@@ -206,7 +191,10 @@ func TestPersonaStore_AllowsSameSpeakerAcrossPlugins(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	store := NewPersonaStore(db)
+	if err := master_persona_artifact.Migrate(ctx, db); err != nil {
+		t.Fatalf("migrate master persona artifact failed: %v", err)
+	}
+	store := NewPersonaStore(master_persona_artifact.NewRepository(db))
 	if err := store.InitSchema(ctx); err != nil {
 		t.Fatalf("InitSchema failed: %v", err)
 	}
@@ -228,6 +216,14 @@ func TestPersonaStore_AllowsSameSpeakerAcrossPlugins(t *testing.T) {
 			{Text: plugin, EnglishText: plugin, Order: 1},
 		}); err != nil {
 			t.Fatalf("ReplaceDialogues failed: %v", err)
+		}
+		if err := store.SavePersona(ctx, PersonaResult{
+			SpeakerID:    "shared-speaker",
+			NPCName:      plugin,
+			PersonaText:  plugin + " persona",
+			SourcePlugin: plugin,
+		}, true); err != nil {
+			t.Fatalf("SavePersona failed: %v", err)
 		}
 	}
 

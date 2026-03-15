@@ -1,4 +1,8 @@
-## ADDED Requirements
+# Purpose
+
+Dictionary Builder と translation flow が共有する辞書成果物の正本保存・検索境界を定義する。
+
+## Requirements
 
 ### Requirement: 共有辞書成果物は artifact の正本として保存されなければならない
 システムは、Dictionary Builder が管理する辞書ソースと辞書エントリを `pkg/artifact/dictionary_artifact` の契約を通じて `artifact` に保存しなければならない。translation flow など後続機能が再利用する辞書データを、slice ローカル DB の複製や別経路の正本として保持してはならない。
@@ -6,12 +10,12 @@
 #### Scenario: 辞書ソースを artifact に作成する
 - **WHEN** ユーザーが Dictionary Builder で新しい辞書ソースを作成する
 - **THEN** システムは `artifact` に辞書ソース行を保存しなければならない
-- **AND** source 名、説明、更新日時を後続処理が参照できる形で保持しなければならない
+- **AND** source 名、format、作成日時を後続処理が参照できる形で保持しなければならない
 
 #### Scenario: 辞書エントリを source 単位で保存する
 - **WHEN** ユーザーが特定 source に属する辞書エントリを追加または更新する
 - **THEN** システムは `artifact` 上の当該 source に対して entry を保存しなければならない
-- **AND** `record_type`、`edid`、`source_text`、`translated_text` を一貫した正本として更新しなければならない
+- **AND** `record_type`、`edid`、`source_text`、`dest_text` を一貫した正本として更新しなければならない
 
 #### Scenario: 辞書 source を削除すると配下 entry も artifact から削除される
 - **WHEN** ユーザーが辞書 source を削除する

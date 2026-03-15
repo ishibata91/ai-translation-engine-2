@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	dictionary_artifact "github.com/ishibata91/ai-translation-engine-2/pkg/artifact/dictionary_artifact"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/foundation/progress"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/assert"
@@ -54,9 +55,8 @@ func TestImporter_ImportXML(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close()
 
-	// Initialize new schema
-	store, err := NewDictionaryStore(db)
-	require.NoError(t, err)
+	require.NoError(t, dictionary_artifact.Migrate(context.Background(), db))
+	store := NewDictionaryStore(dictionary_artifact.NewRepository(db))
 
 	config := DefaultConfig()
 	notifier := progress.NewNoopNotifier()
@@ -89,7 +89,7 @@ func TestImporter_ImportXML(t *testing.T) {
 	// 0x0003 (INFO) -> Not in default config
 	// 0x0001 (BOOK:FULL)
 	// So 3 records should be inserted in total.
-	rows, err := db.Query("SELECT edid, record_type, source_text, dest_text FROM dlc_dictionary_entries ORDER BY edid, dest_text")
+	rows, err := db.Query("SELECT edid, record_type, source_text, dest_text FROM artifact_dictionary_entries ORDER BY edid, dest_text")
 	require.NoError(t, err)
 	defer rows.Close()
 

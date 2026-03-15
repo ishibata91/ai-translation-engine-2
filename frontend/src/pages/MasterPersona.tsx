@@ -3,7 +3,7 @@ import ModelSettings from '../components/ModelSettings';
 import DataTable from '../components/DataTable';
 import PersonaDetail from '../components/PersonaDetail';
 import PromptSettingCard from '../components/masterPersona/PromptSettingCard';
-import {NPC_STATUS_LABEL, type NpcRow, type NpcStatus, STATUS_BADGE} from '../types/npc';
+import {type NpcRow} from '../types/npc';
 import {useMasterPersona} from '../hooks/features/masterPersona/useMasterPersona';
 
 
@@ -24,19 +24,6 @@ const NPC_COLUMNS: ColumnDef<NpcRow, unknown>[] = [
         header: 'NPC名 (EditorID)',
     },
     {
-        accessorKey: 'dialogueCount',
-        header: 'セリフ数',
-        cell: (info) => <span className="font-mono text-right block">{info.getValue() as number}</span>,
-    },
-    {
-        accessorKey: 'status',
-        header: 'ステータス',
-        cell: (info) => {
-            const s = info.getValue() as NpcStatus;
-            return <div className={`badge badge-sm ${STATUS_BADGE[s]}`}>{NPC_STATUS_LABEL[s]}</div>;
-        },
-    },
-    {
         accessorKey: 'updatedAt',
         header: '生成日時',
     },
@@ -54,8 +41,6 @@ export default function MasterPersona() {
         setNpcSearchInput,
         pluginFilterInput,
         setPluginFilterInput,
-        statusFilterInput,
-        setStatusFilterInput,
         npcPage,
         setNpcPage,
         isGenerating,
@@ -231,15 +216,6 @@ export default function MasterPersona() {
                                     {pluginOptions.map((plugin) => (
                                         <option key={plugin} value={plugin}>{plugin}</option>
                                     ))}
-                                </select>
-                                <select
-                                    className="select select-bordered select-xs w-32"
-                                    value={statusFilterInput}
-                                    onChange={(event) => setStatusFilterInput(event.target.value)}
-                                >
-                                    <option value="">全状態</option>
-                                    <option value="draft">{NPC_STATUS_LABEL.draft}</option>
-                                    <option value="generated">{NPC_STATUS_LABEL.generated}</option>
                                 </select>
                                 <button className="btn btn-primary btn-xs" onClick={applyNPCFilters}>
                                     検索

@@ -1,4 +1,3 @@
-import type {NpcStatus} from '../../../types/npc';
 import type {FrontendTask} from '../../../types/task';
 import {
     DEFAULT_MASTER_PERSONA_LLM_CONFIG,
@@ -26,9 +25,6 @@ export const formatUpdatedAt = (raw: string): string => {
     }
     return new Date(ts).toLocaleString('ja-JP');
 };
-
-export const normalizeNpcStatus = (value: unknown): NpcStatus =>
-    value === 'generated' ? 'generated' : 'draft';
 
 export const normalizeProvider = (value: string | undefined): MasterPersonaLLMConfig['provider'] => {
     if (value === 'lmstudio' || value === 'gemini' || value === 'xai') {

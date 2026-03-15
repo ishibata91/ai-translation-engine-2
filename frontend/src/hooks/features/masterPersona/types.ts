@@ -37,14 +37,10 @@ export interface PersonaNPCRecord {
     Sex?: string;
     voice_type?: string;
     VoiceType?: string;
-    dialogue_count?: number;
-    DialogueCount?: number;
     persona_text?: string;
     PersonaText?: string;
     generation_request?: string;
     GenerationRequest?: string;
-    status?: string;
-    Status?: string;
     updated_at?: string;
     UpdatedAt?: string;
 }
