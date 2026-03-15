@@ -10,7 +10,7 @@
 
 ## 2. 基本原則
 
-- `openspec/specs/architecture.md` の Interface-First AIDD / Vertical Slice 原則に一致すること。
+- `openspec/specs/governance/architecture/spec.md` の Interface-First AIDD / Vertical Slice 原則に一致すること。
 - レビューは「動くか」だけでなく、「将来の修正・検証・障害解析が速くなるか」を見ること。
 - 観点は共通ルールのみを扱い、change ごとの個別要件は別途 `review.md` に切り出すこと。
 - change ごとの `review.md` は `openspec/review_template.md` を叩き台にして作ることを推奨する。
@@ -24,7 +24,7 @@
 
 ## 4. バックエンド専用観点
 
-`openspec/specs/backend_coding_standards.md` を基準に確認する。
+`openspec/specs/governance/backend-coding-standards/guide.md` を基準に確認する。
 
 ### 4.1 アーキテクチャ・責務
 
@@ -57,7 +57,7 @@
 
 ## 5. フロントエンド専用観点
 
-`openspec/specs/frontend_architecture.md` と `openspec/specs/frontend_coding_standards.md` を基準に確認する。
+`openspec/specs/frontend/frontend-architecture/spec.md` と `openspec/specs/frontend/frontend-coding-standards/spec.md` を基準に確認する。
 
 ### 5.1 Headless Architecture / 境界
 

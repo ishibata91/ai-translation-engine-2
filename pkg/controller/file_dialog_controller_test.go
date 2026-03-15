@@ -42,6 +42,32 @@ func TestFileDialogController_API_TableDriven(t *testing.T) {
 			},
 		},
 		{
+			name: "SelectTranslationInputFiles uses expected filter and returns files",
+			run: func(t *testing.T, controller *FileDialogController) {
+				controller.openMultipleFilesDialog = func(_ context.Context, options runtime.OpenDialogOptions) ([]string, error) {
+					assert.Equal(t, "翻訳対象JSONファイルを選択", options.Title)
+					require.Len(t, options.Filters, 2)
+					assert.Equal(t, "*.json", options.Filters[0].Pattern)
+					return []string{"input-a.json", "input-b.json"}, nil
+				}
+				files, err := controller.SelectTranslationInputFiles()
+				require.NoError(t, err)
+				assert.Equal(t, []string{"input-a.json", "input-b.json"}, files)
+			},
+		},
+		{
+			name: "SelectTranslationInputFiles wraps runtime error",
+			run: func(t *testing.T, controller *FileDialogController) {
+				controller.openMultipleFilesDialog = func(_ context.Context, _ runtime.OpenDialogOptions) ([]string, error) {
+					return nil, errors.New("translation dialog failed")
+				}
+				_, err := controller.SelectTranslationInputFiles()
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), "open translation input files dialog")
+				assert.Contains(t, err.Error(), "translation dialog failed")
+			},
+		},
+		{
 			name: "SelectJSONFile uses expected filter and returns file",
 			run: func(t *testing.T, controller *FileDialogController) {
 				controller.openFileDialog = func(_ context.Context, options runtime.OpenDialogOptions) (string, error) {

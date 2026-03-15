@@ -14,19 +14,20 @@
 - `server-filesystem` MCPが入っている｡検索､書き込み､読み取りは"""必ず"""これを利用すること｡
 - 書き込みも原則`server-filesystem`を利用すること｡
 - openspecが指定された場合は必ず従う。勝手に実装を始めない。
-- [architecture.md](openspec/specs/architecture.md) を常に参照して実装・提案を行う。
-- OpenSpec 文書の責務境界や spec の置き場を整理・提案する場合は [spec-structure/spec.md](openspec/specs/spec-structure/spec.md) を常に参照する。
-- バックエンドを触る場合は、[backend_coding_standards.md](openspec/specs/backend_coding_standards.md) を常に参照して実装・提案を行う。
-- バックエンドの品質ゲート方針は [backend-quality-gates/spec.md](openspec/specs/backend-quality-gates/spec.md) を参照する。
-- テスト設計やテスト仕様の検討では [standard_test_spec.md](openspec/specs/standard_test_spec.md) を参照する。
-- ログ設計やログ運用の検討では [log-guide.md](openspec/specs/log-guide.md) を参照する。
+- [governance/architecture/spec.md](openspec/specs/governance/architecture/spec.md) を常に参照して実装・提案を行う。
+- OpenSpec 文書の責務境界や spec の置き場を整理・提案する場合は [governance/spec-structure/spec.md](openspec/specs/governance/spec-structure/spec.md) を常に参照する。
+- バックエンドを触る場合は、[governance/backend-coding-standards/guide.md](openspec/specs/governance/backend-coding-standards/guide.md) を常に参照して実装・提案を行う。
+- バックエンドの品質ゲート方針は [governance/backend-quality-gates/spec.md](openspec/specs/governance/backend-quality-gates/spec.md) を参照する。
+- テスト設計やテスト仕様の検討では [governance/standard-test/spec.md](openspec/specs/governance/standard-test/spec.md) を参照する。
+- ログ設計やログ運用の検討では [governance/log-guide/spec.md](openspec/specs/governance/log-guide/spec.md) を参照する。
 - バックエンドを触る場合は、変更中ファイルに対して `npm run backend:lint:file -- <file...>` を逐次実行し、その結果を確認してから修正を進める。
 - バックエンドの変更では、AI は `backend:lint:file -> 修正 -> 再実行 -> 最後に lint:backend` の順で進める。
-- フロントを触る場合は、[frontend_architecture.md](openspec/specs/frontend_architecture.md) を常に参照して実装・提案を行う。
-- フロントを触る場合は、[frontend_coding_standards.md](openspec/specs/frontend_coding_standards.md) を常に参照して実装・提案を行う。
+- フロントを触る場合は、[governance/frontend-architecture/spec.md](openspec/specs/frontend/frontend-architecture/spec.md) を常に参照して実装・提案を行う。
+- フロントを触る場合は、[governance/frontend-coding-standards/spec.md](openspec/specs/frontend/frontend-coding-standards/spec.md) を常に参照して実装・提案を行う。
 - フロントを触る場合は、変更中ファイルに対して `npm run lint:file -- <file...>` を逐次実行し、その結果を確認してから修正を進める。
 - フロントの変更では、AI は `lint:file -> 修正 -> 再実行 -> typecheck -> lint:frontend -> Playwright` の順で進める。
 - フロントの変更を行ったら、作業完了前に `npm run typecheck`、`npm run lint:frontend`、Playwright E2E を必ず実行する。
+- フロントのlintはfrontend/に入らないと実行出来ない｡
 
 ## バックエンド品質ルール
 - バックエンド修正を行ったら、作業中または完了前に必ず `npm run lint:backend` を実行する。
@@ -72,4 +73,3 @@ go test ./pkg/...
 ```
 
 Wailsとは独立してバックエンドのユニットテストを実行できる。
-

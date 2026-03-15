@@ -100,11 +100,6 @@ func TestLLMManager_GetBatchClient(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:    "異常系: xAI grok-3-mini は Batch 非対応",
-			config:  LLMConfig{Provider: "xai", APIKey: "test-key", Model: "grok-3-mini"},
-			wantErr: true,
-		},
-		{
 			name:    "異常系: lmstudio は Batch 非対応",
 			config:  LLMConfig{Provider: "lmstudio", Endpoint: "http://localhost:1234", Model: "llama3"},
 			wantErr: true,

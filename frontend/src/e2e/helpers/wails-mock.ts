@@ -1,18 +1,23 @@
 import {Page} from '@playwright/test';
 import {
-  DICTIONARY_BUILDER_ENTRIES_BY_SOURCE_ID,
-  DICTIONARY_BUILDER_SOURCES,
+    DICTIONARY_BUILDER_ENTRIES_BY_SOURCE_ID,
+    DICTIONARY_BUILDER_SOURCES,
 } from '../fixtures/dictionary-builder/mock-data';
 import {
-  MASTER_PERSONA_DIALOGUES_BY_PERSONA_ID,
-  MASTER_PERSONA_LLM_CONFIG_BY_NAMESPACE,
-  MASTER_PERSONA_LLM_ROOT_CONFIG,
-  MASTER_PERSONA_MODEL_CATALOG_BY_PROVIDER,
-  MASTER_PERSONA_PROMPT_CONFIG,
-  MASTER_PERSONA_REQUIRED_NPCS,
-  MASTER_PERSONA_SELECTED_JSON_PATH,
-  MASTER_PERSONA_STARTED_TASK_ID,
+    MASTER_PERSONA_DIALOGUES_BY_PERSONA_ID,
+    MASTER_PERSONA_LLM_CONFIG_BY_NAMESPACE,
+    MASTER_PERSONA_LLM_ROOT_CONFIG,
+    MASTER_PERSONA_MODEL_CATALOG_BY_PROVIDER,
+    MASTER_PERSONA_PROMPT_CONFIG,
+    MASTER_PERSONA_REQUIRED_NPCS,
+    MASTER_PERSONA_SELECTED_JSON_PATH,
+    MASTER_PERSONA_STARTED_TASK_ID,
 } from '../fixtures/master-persona/mock-data';
+import {
+    TRANSLATION_FLOW_FILE_PAYLOADS,
+    TRANSLATION_FLOW_SELECTED_FILES,
+    TRANSLATION_FLOW_TASK_ID,
+} from '../fixtures/translation-flow/mock-data';
 
 type DictionaryMockFixture = {
   entriesBySourceId: Record<number, Array<Record<string, string | number | null>>>;
@@ -36,9 +41,30 @@ type MasterPersonaMockFixture = {
   startedTaskId: string;
 };
 
+type TranslationFlowFileFixture = {
+  file_id: number;
+  file_path: string;
+  file_name: string;
+  parse_status: string;
+  rows: Array<{
+    id: string;
+    section: string;
+    record_type: string;
+    editor_id: string;
+    source_text: string;
+  }>;
+};
+
+type TranslationFlowMockFixture = {
+  filePayloads: Record<string, TranslationFlowFileFixture>;
+  selectedFiles: string[];
+  taskId: string;
+};
+
 type WailsMockFixture = {
   dictionary: DictionaryMockFixture;
   masterPersona: MasterPersonaMockFixture;
+  translationFlow: TranslationFlowMockFixture;
 };
 
 export async function installWailsMocks(page: Page): Promise<void> {
@@ -56,6 +82,11 @@ export async function installWailsMocks(page: Page): Promise<void> {
       promptConfig: MASTER_PERSONA_PROMPT_CONFIG,
       selectedJsonPath: MASTER_PERSONA_SELECTED_JSON_PATH,
       startedTaskId: MASTER_PERSONA_STARTED_TASK_ID,
+    },
+    translationFlow: {
+      filePayloads: TRANSLATION_FLOW_FILE_PAYLOADS,
+      selectedFiles: [...TRANSLATION_FLOW_SELECTED_FILES],
+      taskId: TRANSLATION_FLOW_TASK_ID,
     },
   };
 
@@ -104,6 +135,53 @@ export async function installWailsMocks(page: Page): Promise<void> {
 
     let personaTask: Record<string, unknown> | null = null;
 
+    const translationFilesByTask = new Map<string, TranslationFlowFileFixture[]>();
+
+    const normalizePage = (page: number): number => {
+      if (!Number.isFinite(page) || page < 1) {
+        return 1;
+      }
+      return Math.floor(page);
+    };
+
+    const normalizePageSize = (pageSize: number): number => {
+      if (!Number.isFinite(pageSize) || pageSize < 1) {
+        return 50;
+      }
+      return Math.floor(pageSize);
+    };
+
+    const buildTranslationPreviewPage = (
+      file: TranslationFlowFileFixture,
+      page: number,
+      pageSize: number,
+    ) => {
+      const safePage = normalizePage(page);
+      const safePageSize = normalizePageSize(pageSize);
+      const start = (safePage - 1) * safePageSize;
+      const end = start + safePageSize;
+      return {
+        file_id: file.file_id,
+        page: safePage,
+        page_size: safePageSize,
+        total_rows: file.rows.length,
+        rows: file.rows.slice(start, end),
+      };
+    };
+
+    const buildLoadedTranslationFile = (
+      file: TranslationFlowFileFixture,
+      page: number,
+      pageSize: number,
+    ) => ({
+      file_id: file.file_id,
+      file_path: file.file_path,
+      file_name: file.file_name,
+      parse_status: file.parse_status,
+      preview_count: file.rows.length,
+      preview: buildTranslationPreviewPage(file, page, pageSize),
+    });
+
     const runtime = {
       EventsOn: () => () => undefined,
       EventsOnMultiple: () => () => undefined,
@@ -114,7 +192,52 @@ export async function installWailsMocks(page: Page): Promise<void> {
 
     const taskController = {
       GetActiveTasks: async () => [],
-      GetAllTasks: async () => [],
+      GetAllTasks: async () => ([
+        {
+          id: mockFixture.translationFlow.taskId,
+          name: 'Translation Project E2E',
+          type: 'translation_project',
+          status: 'running',
+          phase: 'load',
+          progress: 10,
+          error_msg: '',
+          metadata: {},
+          created_at: new Date('2026-01-01T00:00:00.000Z').toISOString(),
+          updated_at: new Date('2026-01-02T00:00:00.000Z').toISOString(),
+        },
+      ]),
+      ListLoadedTranslationFlowFiles: async (taskID: string) => {
+        const files = translationFilesByTask.get(taskID) ?? [];
+        return {
+          task_id: taskID,
+          files: files.map((file) => buildLoadedTranslationFile(file, 1, 50)),
+        };
+      },
+      ListTranslationFlowPreviewRows: async (fileID: number, page: number, pageSize: number) => {
+        for (const files of translationFilesByTask.values()) {
+          const file = files.find((entry) => entry.file_id === fileID);
+          if (file) {
+            return buildTranslationPreviewPage(file, page, pageSize);
+          }
+        }
+        return {
+          file_id: fileID,
+          page: normalizePage(page),
+          page_size: normalizePageSize(pageSize),
+          total_rows: 0,
+          rows: [],
+        };
+      },
+      LoadTranslationFlowFiles: async (taskID: string, filePaths: string[]) => {
+        const loadedFiles = filePaths
+          .map((path) => mockFixture.translationFlow.filePayloads[path])
+          .filter((file): file is TranslationFlowFileFixture => Boolean(file));
+        translationFilesByTask.set(taskID, loadedFiles);
+        return {
+          task_id: taskID,
+          files: loadedFiles.map((file) => buildLoadedTranslationFile(file, 1, 50)),
+        };
+      },
       ResumeTask: async () => undefined,
       CancelTask: async () => undefined,
       SetContext: async () => undefined,
@@ -248,6 +371,7 @@ export async function installWailsMocks(page: Page): Promise<void> {
     const fileDialogController = {
       SelectFiles: async () => [],
       SelectJSONFile: async () => mockFixture.masterPersona.selectedJsonPath,
+      SelectTranslationInputFiles: async () => [...mockFixture.translationFlow.selectedFiles],
       SetContext: async () => undefined,
     };
 

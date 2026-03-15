@@ -42,7 +42,7 @@
 
 ```text
 以下はスライス「TermTranslatorSlice」の実行ログファイル（logs/test_XXXXX_TermTranslatorSlice.jsonl）の内容である。
-仕様書（openspec/specs/TermTranslatorSlice/spec.md および 本テスト設計）の期待動作と比較し、乖離がある箇所を特定して修正コードを生成せよ。
+仕様書（openspec/specs/slice/terminology/spec.md および 本テスト設計）の期待動作と比較し、乖離がある箇所を特定して修正コードを生成せよ。
 
 --- 実行ログ ---
 {ログファイル内容}

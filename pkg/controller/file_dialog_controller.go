@@ -50,6 +50,21 @@ func (c *FileDialogController) SelectFiles() ([]string, error) {
 	return files, nil
 }
 
+// SelectTranslationInputFiles opens a multi-file dialog for translation input JSON files.
+func (c *FileDialogController) SelectTranslationInputFiles() ([]string, error) {
+	files, err := c.openMultipleFilesDialog(c.context(), runtime.OpenDialogOptions{
+		Title: "翻訳対象JSONファイルを選択",
+		Filters: []runtime.FileFilter{
+			{DisplayName: "JSON Files (*.json)", Pattern: "*.json"},
+			{DisplayName: "All Files (*.*)", Pattern: "*.*"},
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("open translation input files dialog: %w", err)
+	}
+	return files, nil
+}
+
 // SelectJSONFile opens a single-file dialog for JSON input.
 func (c *FileDialogController) SelectJSONFile() (string, error) {
 	path, err := c.openFileDialog(c.context(), runtime.OpenDialogOptions{

@@ -51,7 +51,7 @@
 
 ```text
 以下はスライス「Pass2TranslatorSlice」の実行ログファイル（logs/test_XXXXX_Pass2Translator.jsonl）の内容である。
-仕様書（openspec/specs/Pass2TranslatorSlice/spec.md および 本テスト設計）の期待動作と比較し、乖離がある箇所を特定して修正コードを生成せよ。
+仕様書（openspec/specs/slice/translator/spec.md および 本テスト設計）の期待動作と比較し、乖離がある箇所を特定して修正コードを生成せよ。
 
 --- 実行ログ ---
 {ログファイル内容}

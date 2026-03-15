@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -117,6 +118,62 @@ func (m *Manager) Store() *Store {
 
 func (m *Manager) GetAllTasks(ctx context.Context) ([]Task, error) {
 	return m.store.GetAllTasks(ctx)
+}
+
+// EnsureTranslationProjectTask resolves a translation-project task ID and creates one when needed.
+func (m *Manager) EnsureTranslationProjectTask(ctx context.Context, taskID string) (string, error) {
+	persistCtx := m.contextOrBackground(ctx)
+	trimmedTaskID := strings.TrimSpace(taskID)
+	allTasks, err := m.store.GetAllTasks(persistCtx)
+	if err != nil {
+		return "", fmt.Errorf("list tasks for translation project task resolution: %w", err)
+	}
+
+	if trimmedTaskID != "" {
+		for _, currentTask := range allTasks {
+			if currentTask.ID == trimmedTaskID {
+				return trimmedTaskID, nil
+			}
+		}
+		if err := m.createTranslationProjectTask(persistCtx, trimmedTaskID); err != nil {
+			return "", fmt.Errorf("create translation project task task_id=%s: %w", trimmedTaskID, err)
+		}
+		return trimmedTaskID, nil
+	}
+
+	latestCompletedTaskID := ""
+	for _, currentTask := range allTasks {
+		if currentTask.Type != TypeTranslationProject {
+			continue
+		}
+		if currentTask.Status != StatusCompleted {
+			return currentTask.ID, nil
+		}
+		if latestCompletedTaskID == "" {
+			latestCompletedTaskID = currentTask.ID
+		}
+	}
+	if latestCompletedTaskID != "" {
+		return latestCompletedTaskID, nil
+	}
+
+	newTaskID := uuid.NewString()
+	if err := m.createTranslationProjectTask(persistCtx, newTaskID); err != nil {
+		return "", fmt.Errorf("create translation project task task_id=%s: %w", newTaskID, err)
+	}
+	return newTaskID, nil
+}
+
+func (m *Manager) createTranslationProjectTask(ctx context.Context, taskID string) error {
+	return m.store.InsertTask(ctx, Task{
+		ID:       taskID,
+		Name:     "Translation Project",
+		Type:     TypeTranslationProject,
+		Status:   StatusPending,
+		Phase:    "data_load",
+		Progress: 0,
+		Metadata: TaskMetadata{},
+	})
 }
 
 func (m *Manager) Initialize(ctx context.Context) error {

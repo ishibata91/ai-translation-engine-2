@@ -5,6 +5,7 @@ import (
 	"embed"
 	"log"
 
+	"github.com/ishibata91/ai-translation-engine-2/pkg/artifact/translationinput"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/controller"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/format/parser/skyrim"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/foundation/progress"
@@ -17,6 +18,7 @@ import (
 	"github.com/ishibata91/ai-translation-engine-2/pkg/runtime/queue"
 	dictionary2 "github.com/ishibata91/ai-translation-engine-2/pkg/slice/dictionary"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/slice/persona"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/slice/translationflow"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/workflow"
 	task2 "github.com/ishibata91/ai-translation-engine-2/pkg/workflow/task"
 	"github.com/wailsapp/wails/v2"
@@ -42,9 +44,19 @@ func main() {
 	}
 	defer taskDBCleanup()
 
+	// 1.2 Initialize shared artifact DB (artifact.db)
+	artifactDB, artifactDBCleanup, err := datastore.NewSQLiteDB(context.Background(), "artifact.db")
+	if err != nil {
+		log.Fatalf("failed to initialize artifact database: %v", err)
+	}
+	defer artifactDBCleanup()
+
 	// 2. Run Migrations
 	if err := configstore.Migrate(context.Background(), db); err != nil {
 		log.Fatalf("failed to run database migrations: %v", err)
+	}
+	if err := translationinput.Migrate(context.Background(), artifactDB); err != nil {
+		log.Fatalf("failed to run artifact database migrations: %v", err)
 	}
 
 	// 3. Setup Task Manager
@@ -92,6 +104,9 @@ func main() {
 
 	// 6. Setup Persona + Parser dependencies for task bridge.
 	parserLoader := skyrim.ProvideParser()
+	translationInputRepo := translationinput.NewRepository(artifactDB)
+	translationFlowSlice := translationflow.NewService(translationInputRepo)
+	translationFlowWorkflow := workflow.NewTranslationFlowService(parserLoader, translationFlowSlice)
 	llmQueue, err := queue.NewQueue(context.Background(), "llm_queue.db", logger)
 	if err != nil {
 		log.Fatalf("failed to initialize llm queue: %v", err)
@@ -131,6 +146,7 @@ func main() {
 	taskManager.RegisterRunner(task2.TypePersonaExtraction, masterPersonaWorkflow)
 	taskManager.RegisterCompletionHook(task2.TypePersonaExtraction, masterPersonaWorkflow.CleanupCompletedTask)
 	taskController := controller.NewTaskController(taskManager)
+	taskController.SetTranslationFlowWorkflow(translationFlowWorkflow)
 	personaTaskController := controller.NewPersonaTaskController(taskManager, masterPersonaWorkflow)
 	dictionaryController := controller.NewDictionaryController(dictService)
 	fileDialogController := controller.NewFileDialogController()

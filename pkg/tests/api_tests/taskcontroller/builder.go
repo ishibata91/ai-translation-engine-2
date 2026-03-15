@@ -30,11 +30,14 @@ func (s *FakeStore) GetAllTasks(ctx context.Context) ([]task.Task, error) {
 
 // FakeManager stubs task manager behavior.
 type FakeManager struct {
-	StoreRef     *FakeStore
-	ActiveTasks  []task.Task
-	ResumeTaskID string
-	ResumeErr    error
-	CancelTaskID string
+	StoreRef             *FakeStore
+	ActiveTasks          []task.Task
+	ResumeTaskID         string
+	ResumeErr            error
+	CancelTaskID         string
+	EnsureTaskInput      string
+	EnsureTaskResolvedID string
+	EnsureTaskErr        error
 }
 
 func (m *FakeManager) GetActiveTasks() []task.Task {
@@ -56,6 +59,17 @@ func (m *FakeManager) ResumeTask(taskID string) error {
 
 func (m *FakeManager) CancelTask(taskID string) {
 	m.CancelTaskID = taskID
+}
+
+func (m *FakeManager) EnsureTranslationProjectTask(_ context.Context, taskID string) (string, error) {
+	m.EnsureTaskInput = taskID
+	if m.EnsureTaskErr != nil {
+		return "", m.EnsureTaskErr
+	}
+	if m.EnsureTaskResolvedID != "" {
+		return m.EnsureTaskResolvedID, nil
+	}
+	return taskID, nil
 }
 
 // Build creates task controller dependencies on shared testenv.
