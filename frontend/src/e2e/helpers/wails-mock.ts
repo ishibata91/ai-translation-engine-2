@@ -1,4 +1,5 @@
 import {Page} from '@playwright/test';
+import {DASHBOARD_TASKS} from '../fixtures/dashboard/mock-data';
 import {
     DICTIONARY_BUILDER_ENTRIES_BY_SOURCE_ID,
     DICTIONARY_BUILDER_SOURCES,
@@ -18,6 +19,10 @@ import {
     TRANSLATION_FLOW_SELECTED_FILES,
     TRANSLATION_FLOW_TASK_ID,
 } from '../fixtures/translation-flow/mock-data';
+
+type DashboardMockFixture = {
+  tasks: Array<Record<string, string | number | Record<string, unknown>>>;
+};
 
 type DictionaryMockFixture = {
   entriesBySourceId: Record<number, Array<Record<string, string | number | null>>>;
@@ -62,6 +67,7 @@ type TranslationFlowMockFixture = {
 };
 
 type WailsMockFixture = {
+  dashboard: DashboardMockFixture;
   dictionary: DictionaryMockFixture;
   masterPersona: MasterPersonaMockFixture;
   translationFlow: TranslationFlowMockFixture;
@@ -69,6 +75,9 @@ type WailsMockFixture = {
 
 export async function installWailsMocks(page: Page): Promise<void> {
   const fixture: WailsMockFixture = {
+    dashboard: {
+      tasks: DASHBOARD_TASKS.map((task) => ({...task})),
+    },
     dictionary: {
       entriesBySourceId: DICTIONARY_BUILDER_ENTRIES_BY_SOURCE_ID,
       sources: DICTIONARY_BUILDER_SOURCES,
@@ -135,6 +144,7 @@ export async function installWailsMocks(page: Page): Promise<void> {
 
     let personaTask: Record<string, unknown> | null = null;
 
+    const dashboardTasks = [...mockFixture.dashboard.tasks];
     const translationFilesByTask = new Map<string, TranslationFlowFileFixture[]>();
 
     const normalizePage = (page: number): number => {
@@ -191,21 +201,8 @@ export async function installWailsMocks(page: Page): Promise<void> {
     };
 
     const taskController = {
-      GetActiveTasks: async () => [],
-      GetAllTasks: async () => ([
-        {
-          id: mockFixture.translationFlow.taskId,
-          name: 'Translation Project E2E',
-          type: 'translation_project',
-          status: 'running',
-          phase: 'load',
-          progress: 10,
-          error_msg: '',
-          metadata: {},
-          created_at: new Date('2026-01-01T00:00:00.000Z').toISOString(),
-          updated_at: new Date('2026-01-02T00:00:00.000Z').toISOString(),
-        },
-      ]),
+      GetActiveTasks: async () => [...dashboardTasks],
+      GetAllTasks: async () => [...dashboardTasks],
       ListLoadedTranslationFlowFiles: async (taskID: string) => {
         const files = translationFilesByTask.get(taskID) ?? [];
         return {
@@ -240,6 +237,12 @@ export async function installWailsMocks(page: Page): Promise<void> {
       },
       ResumeTask: async () => undefined,
       CancelTask: async () => undefined,
+      DeleteTask: async (taskID: string) => {
+        const targetIndex = dashboardTasks.findIndex((task) => task.id === taskID);
+        if (targetIndex >= 0) {
+          dashboardTasks.splice(targetIndex, 1);
+        }
+      },
       SetContext: async () => undefined,
     };
 

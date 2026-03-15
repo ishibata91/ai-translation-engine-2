@@ -34,6 +34,9 @@ type FakeManager struct {
 	ActiveTasks          []task.Task
 	ResumeTaskID         string
 	ResumeErr            error
+	DeleteTaskID         string
+	DeleteTaskCtx        context.Context
+	DeleteErr            error
 	CancelTaskID         string
 	EnsureTaskInput      string
 	EnsureTaskResolvedID string
@@ -55,6 +58,12 @@ func (m *FakeManager) GetAllTasks(ctx context.Context) ([]task.Task, error) {
 func (m *FakeManager) ResumeTask(taskID string) error {
 	m.ResumeTaskID = taskID
 	return m.ResumeErr
+}
+
+func (m *FakeManager) DeleteTask(ctx context.Context, taskID string) error {
+	m.DeleteTaskCtx = ctx
+	m.DeleteTaskID = taskID
+	return m.DeleteErr
 }
 
 func (m *FakeManager) CancelTask(taskID string) {

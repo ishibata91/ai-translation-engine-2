@@ -1,8 +1,11 @@
-import { create } from 'zustand'
-import { FrontendTask } from '../types/task'
+import {create} from 'zustand'
+import {FrontendTask} from '../types/task'
 import * as Events from '../wailsjs/runtime/runtime'
-import { GetActiveTasks, GetAllTasks, ResumeTask, CancelTask } from '../wailsjs/go/controller/TaskController'
-import { ResumeTask as ResumePersonaTask, CancelTask as CancelPersonaTask } from '../wailsjs/go/controller/PersonaTaskController'
+import {CancelTask, DeleteTask, GetActiveTasks, GetAllTasks, ResumeTask} from '../wailsjs/go/controller/TaskController'
+import {
+    CancelTask as CancelPersonaTask,
+    ResumeTask as ResumePersonaTask
+} from '../wailsjs/go/controller/PersonaTaskController'
 
 interface TaskState {
     tasks: Record<string, FrontendTask>;
@@ -15,6 +18,7 @@ interface TaskState {
     fetchActiveTasks: () => Promise<void>;
     resumeTask: (task: FrontendTask) => Promise<void>;
     cancelTask: (task: FrontendTask) => Promise<void>;
+    deleteTask: (task: FrontendTask) => Promise<void>;
 }
 
 export const useTaskStore = create<TaskState>((set, get) => ({
@@ -91,6 +95,16 @@ export const useTaskStore = create<TaskState>((set, get) => ({
             await CancelTask(task.id);
         } catch (error) {
             console.error('Failed to cancel task:', error);
+            throw error;
+        }
+    },
+
+    deleteTask: async (task) => {
+        try {
+            await DeleteTask(task.id);
+            get().removeTask(task.id);
+        } catch (error) {
+            console.error('Failed to delete task:', error);
             throw error;
         }
     }

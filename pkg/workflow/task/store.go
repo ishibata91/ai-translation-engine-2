@@ -45,6 +45,21 @@ func (s *Store) UpdateTask(ctx context.Context, id string, status TaskStatus, ph
 	return nil
 }
 
+func (s *Store) DeleteTask(ctx context.Context, id string) error {
+	result, err := s.db.ExecContext(ctx, "DELETE FROM frontend_tasks WHERE id = ?", id)
+	if err != nil {
+		return fmt.Errorf("delete task id=%s: %w", id, err)
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("read delete rows affected id=%s: %w", id, err)
+	}
+	if rowsAffected == 0 {
+		return fmt.Errorf("delete task id=%s: %w", id, sql.ErrNoRows)
+	}
+	return nil
+}
+
 func (s *Store) SaveMetadata(ctx context.Context, id string, metadata TaskMetadata) error {
 	metadataJSON, err := json.Marshal(metadata)
 	if err != nil {

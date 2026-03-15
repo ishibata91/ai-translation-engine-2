@@ -18,4 +18,21 @@ export class DashboardPO extends BasePO {
     await expect(this.page.getByText('ダッシュボード (Dashboard)')).toBeVisible();
     await this.expectNoRuntimeErrors();
   }
+
+  async expectTaskVisible(taskName: string): Promise<void> {
+    await expect(this.page.getByRole('cell', {name: taskName})).toBeVisible();
+  }
+
+  async openDeleteModal(taskID: string): Promise<void> {
+    await this.page.getByTestId(`dashboard-delete-${taskID}`).click();
+    await expect(this.page.getByTestId('dashboard-delete-modal')).toBeVisible();
+  }
+
+  async confirmDelete(): Promise<void> {
+    await this.page.getByTestId('dashboard-delete-confirm').click();
+  }
+
+  async expectTaskNotVisible(taskName: string): Promise<void> {
+    await expect(this.page.getByRole('cell', {name: taskName})).toHaveCount(0);
+  }
 }

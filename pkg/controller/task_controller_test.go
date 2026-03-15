@@ -14,6 +14,7 @@ import (
 
 func TestTaskController_API_TableDriven(t *testing.T) {
 	resumeErr := errors.New("resume failed")
+	deleteErr := errors.New("delete failed")
 	storeErr := errors.New("store failed")
 
 	testCases := []struct {
@@ -62,6 +63,24 @@ func TestTaskController_API_TableDriven(t *testing.T) {
 				err := controller.ResumeTask("r2")
 				require.Error(t, err)
 				assert.ErrorIs(t, err, resumeErr)
+			},
+		},
+		{
+			name: "DeleteTask delegates task id with context",
+			run: func(t *testing.T, controller *TaskController, env *taskcontrollertest.Env) {
+				err := controller.DeleteTask("d1")
+				require.NoError(t, err)
+				assert.Equal(t, "d1", env.Manager.DeleteTaskID)
+				assert.Equal(t, env.TestEnv.Ctx, env.Manager.DeleteTaskCtx)
+			},
+		},
+		{
+			name: "DeleteTask returns manager error",
+			run: func(t *testing.T, controller *TaskController, env *taskcontrollertest.Env) {
+				env.Manager.DeleteErr = deleteErr
+				err := controller.DeleteTask("d2")
+				require.Error(t, err)
+				assert.ErrorIs(t, err, deleteErr)
 			},
 		},
 		{

@@ -119,6 +119,7 @@ func main() {
 	if err := queueWorker.Recover(context.Background()); err != nil {
 		log.Printf("failed to recover llm queue worker state: %v", err)
 	}
+	taskManager.SetTaskRequestCleaner(llmQueue)
 
 	personaArtifactRepo := master_persona_artifact.NewRepository(artifactDB)
 	personaStore := persona.NewPersonaStore(personaArtifactRepo)

@@ -12,6 +12,7 @@ type taskManager interface {
 	GetActiveTasks() []task2.Task
 	GetAllTasks(ctx context.Context) ([]task2.Task, error)
 	ResumeTask(taskID string) error
+	DeleteTask(ctx context.Context, taskID string) error
 	CancelTask(taskID string)
 	EnsureTranslationProjectTask(ctx context.Context, taskID string) (string, error)
 }
@@ -64,6 +65,11 @@ func (c *TaskController) GetAllTasks() ([]task2.Task, error) {
 // ResumeTask resumes a generic task through task manager.
 func (c *TaskController) ResumeTask(taskID string) error {
 	return c.manager.ResumeTask(taskID)
+}
+
+// DeleteTask deletes a persisted task through task manager.
+func (c *TaskController) DeleteTask(taskID string) error {
+	return c.manager.DeleteTask(c.ctx, taskID)
 }
 
 // CancelTask cancels a generic task through task manager.

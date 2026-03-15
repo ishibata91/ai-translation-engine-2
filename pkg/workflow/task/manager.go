@@ -2,6 +2,7 @@ package task
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -29,8 +30,9 @@ type Manager struct {
 	runners   map[TaskType]Runner
 	runnersMu sync.RWMutex
 
-	completionHooks   map[TaskType][]CompletionHook
-	completionHooksMu sync.RWMutex
+	completionHooks    map[TaskType][]CompletionHook
+	completionHooksMu  sync.RWMutex
+	taskRequestCleaner taskRequestCleaner
 }
 
 type Runner interface {
@@ -38,6 +40,10 @@ type Runner interface {
 }
 
 type CompletionHook func(ctx context.Context, task *Task) error
+
+type taskRequestCleaner interface {
+	DeleteTaskRequests(ctx context.Context, taskID string) error
+}
 
 func NewManager(ctx context.Context, logger *slog.Logger, store *Store) *Manager {
 	return &Manager{
@@ -62,6 +68,12 @@ func (m *Manager) RegisterCompletionHook(ttype TaskType, hook CompletionHook) {
 	m.completionHooksMu.Lock()
 	defer m.completionHooksMu.Unlock()
 	m.completionHooks[ttype] = append(m.completionHooks[ttype], hook)
+}
+
+func (m *Manager) SetTaskRequestCleaner(cleaner taskRequestCleaner) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.taskRequestCleaner = cleaner
 }
 
 func (m *Manager) ResumeTask(id string) error {
@@ -451,6 +463,49 @@ func (m *Manager) handleTaskCancellation(ctx context.Context, id string) {
 	m.emitTaskUpdate(currentTask)
 }
 
+func (m *Manager) DeleteTask(ctx context.Context, id string) error {
+	logCtx := m.newTaskContext(ctx, id)
+	defer telemetry2.StartSpan(logCtx, telemetry2.ActionTaskManagement)()
+
+	currentTask, err := m.loadTaskForDelete(logCtx, id)
+	if err != nil {
+		return fmt.Errorf("load task for delete task_id=%s: %w", id, err)
+	}
+	if currentTask.Status == StatusRunning {
+		return fmt.Errorf("task_id=%s is running; stop task before deleting", id)
+	}
+
+	persistCtx := context.WithoutCancel(m.contextOrBackground(logCtx))
+	m.mu.RLock()
+	cleaner := m.taskRequestCleaner
+	m.mu.RUnlock()
+	if cleaner != nil {
+		if err := cleaner.DeleteTaskRequests(persistCtx, id); err != nil {
+			return fmt.Errorf("delete queue requests task_id=%s: %w", id, err)
+		}
+	}
+
+	m.mu.Lock()
+	if cancel, ok := m.cancelFuncs[id]; ok {
+		cancel()
+	}
+	delete(m.activeTasks, id)
+	delete(m.cancelFuncs, id)
+	m.mu.Unlock()
+
+	m.throttleMu.Lock()
+	delete(m.lastDBUpdate, id)
+	m.throttleMu.Unlock()
+
+	if err := m.store.DeleteTask(persistCtx, id); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("task_id=%s not found", id)
+		}
+		return fmt.Errorf("delete task record task_id=%s: %w", id, err)
+	}
+	return nil
+}
+
 func (m *Manager) CancelTask(id string) {
 	m.mu.RLock()
 	cancel, ok := m.cancelFuncs[id]
@@ -503,40 +558,40 @@ func (m *Manager) newTaskContext(ctx context.Context, taskID string) context.Con
 }
 
 func (m *Manager) loadTaskForResume(ctx context.Context, id string) (*Task, error) {
-	m.mu.Lock()
+	currentTask, err := m.loadTaskForDelete(ctx, id)
+	if err != nil {
+		wrappedErr := fmt.Errorf("load task for resume task_id=%s: %w", id, err)
+		m.logger.ErrorContext(ctx, "task.resume.failed",
+			append(telemetry2.ErrorAttrs(wrappedErr), slog.String("task_id", id))...)
+		return nil, wrappedErr
+	}
+	if err := m.validateTaskForResume(ctx, currentTask); err != nil {
+		return nil, err
+	}
+	return currentTask, nil
+}
+
+func (m *Manager) loadTaskForDelete(ctx context.Context, id string) (*Task, error) {
+	m.mu.RLock()
 	currentTask, ok := m.activeTasks[id]
-	m.mu.Unlock()
+	m.mu.RUnlock()
 	if ok {
-		if err := m.validateTaskForResume(ctx, currentTask); err != nil {
-			return nil, err
-		}
-		return currentTask, nil
+		taskCopy := *currentTask
+		return &taskCopy, nil
 	}
 
 	tasks, err := m.store.GetAllTasks(ctx)
 	if err != nil {
-		wrappedErr := fmt.Errorf("load persisted tasks for task_id=%s: %w", id, err)
-		m.logger.ErrorContext(ctx, "task.resume.failed",
-			append(telemetry2.ErrorAttrs(wrappedErr), slog.String("task_id", id))...)
-		return nil, wrappedErr
+		return nil, fmt.Errorf("load persisted tasks for task_id=%s: %w", id, err)
 	}
 	for _, persistedTask := range tasks {
 		if persistedTask.ID != id {
 			continue
 		}
 		taskCopy := persistedTask
-		if err := m.validateTaskForResume(ctx, &taskCopy); err != nil {
-			return nil, err
-		}
 		return &taskCopy, nil
 	}
-
-	err = fmt.Errorf("task_id=%s not found", id)
-	m.logger.ErrorContext(ctx, "task.resume.failed",
-		slog.String("task_id", id),
-		slog.String("reason", err.Error()),
-	)
-	return nil, err
+	return nil, fmt.Errorf("task_id=%s not found", id)
 }
 
 func (m *Manager) validateTaskForResume(ctx context.Context, currentTask *Task) error {
