@@ -67,3 +67,35 @@ export const TRANSLATION_FLOW_EXPECTED_FILE_NAMES = ['Skyrim.esm.extract.json', 
 
 export const TRANSLATION_FLOW_PAGE_TWO_MARKER = 'Dialogue line 051';
 export const TRANSLATION_FLOW_SECOND_FILE_MARKER = 'Quest Objective B-01';
+
+export const TRANSLATION_FLOW_TERMINOLOGY_SUMMARY = {
+  task_id: TRANSLATION_FLOW_TASK_ID,
+  status: 'pending',
+  target_count: 0,
+  saved_count: 0,
+  failed_count: 0,
+} as const;
+
+export const TRANSLATION_FLOW_TERMINOLOGY_COMPLETED_SUMMARY = {
+  task_id: TRANSLATION_FLOW_TASK_ID,
+  status: 'completed',
+  target_count: 8,
+  saved_count: 8,
+  failed_count: 0,
+} as const;
+
+export const TRANSLATION_FLOW_TERMINOLOGY_LLM_CONFIG = {
+  provider: 'lmstudio',
+  model: 'local-terminology-model',
+  endpoint: 'http://localhost:1234',
+  api_key: '',
+  temperature: '0.2',
+  context_length: '0',
+  sync_concurrency: '2',
+  bulk_strategy: 'sync',
+} as const;
+
+export const TRANSLATION_FLOW_TERMINOLOGY_PROMPT_CONFIG = {
+  user_prompt: 'Translate the provided term.',
+  system_prompt: 'You are a translator for a Skyrim mod.',
+} as const;

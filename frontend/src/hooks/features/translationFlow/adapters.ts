@@ -1,6 +1,8 @@
 import type {
     LoadedTranslationFile,
+    TerminologyPhaseSummary,
     TranslationTargetRow,
+    WailsTerminologyPhaseResult,
     WailsTranslationLoadedFile,
     WailsTranslationLoadResult,
     WailsTranslationPreviewPage,
@@ -79,5 +81,16 @@ export const mapLoadResult = (payload: unknown): {
             .filter((entry): entry is Record<string, unknown> => entry !== null)
             .map((entry) => mapLoadedFile(entry as WailsTranslationLoadedFile))
             .filter((file) => file.fileId > 0),
+    };
+};
+
+export const mapTerminologyPhaseResult = (payload: unknown): TerminologyPhaseSummary => {
+    const resultPayload = (asRecord(payload) ?? {}) as WailsTerminologyPhaseResult;
+    return {
+        taskId: pickString(resultPayload.task_id ?? resultPayload.taskId),
+        status: pickString(resultPayload.status, 'pending'),
+        targetCount: Math.max(0, pickNumber(resultPayload.target_count ?? resultPayload.targetCount, 0)),
+        savedCount: Math.max(0, pickNumber(resultPayload.saved_count ?? resultPayload.savedCount, 0)),
+        failedCount: Math.max(0, pickNumber(resultPayload.failed_count ?? resultPayload.failedCount, 0)),
     };
 };

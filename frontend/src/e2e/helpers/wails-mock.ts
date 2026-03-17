@@ -1,23 +1,27 @@
 import {Page} from '@playwright/test';
 import {DASHBOARD_TASKS} from '../fixtures/dashboard/mock-data';
 import {
-    DICTIONARY_BUILDER_ENTRIES_BY_SOURCE_ID,
-    DICTIONARY_BUILDER_SOURCES,
+  DICTIONARY_BUILDER_ENTRIES_BY_SOURCE_ID,
+  DICTIONARY_BUILDER_SOURCES,
 } from '../fixtures/dictionary-builder/mock-data';
 import {
-    MASTER_PERSONA_DIALOGUES_BY_PERSONA_ID,
-    MASTER_PERSONA_LLM_CONFIG_BY_NAMESPACE,
-    MASTER_PERSONA_LLM_ROOT_CONFIG,
-    MASTER_PERSONA_MODEL_CATALOG_BY_PROVIDER,
-    MASTER_PERSONA_PROMPT_CONFIG,
-    MASTER_PERSONA_REQUIRED_NPCS,
-    MASTER_PERSONA_SELECTED_JSON_PATH,
-    MASTER_PERSONA_STARTED_TASK_ID,
+  MASTER_PERSONA_DIALOGUES_BY_PERSONA_ID,
+  MASTER_PERSONA_LLM_CONFIG_BY_NAMESPACE,
+  MASTER_PERSONA_LLM_ROOT_CONFIG,
+  MASTER_PERSONA_MODEL_CATALOG_BY_PROVIDER,
+  MASTER_PERSONA_PROMPT_CONFIG,
+  MASTER_PERSONA_REQUIRED_NPCS,
+  MASTER_PERSONA_SELECTED_JSON_PATH,
+  MASTER_PERSONA_STARTED_TASK_ID,
 } from '../fixtures/master-persona/mock-data';
 import {
-    TRANSLATION_FLOW_FILE_PAYLOADS,
-    TRANSLATION_FLOW_SELECTED_FILES,
-    TRANSLATION_FLOW_TASK_ID,
+  TRANSLATION_FLOW_FILE_PAYLOADS,
+  TRANSLATION_FLOW_SELECTED_FILES,
+  TRANSLATION_FLOW_TASK_ID,
+  TRANSLATION_FLOW_TERMINOLOGY_COMPLETED_SUMMARY,
+  TRANSLATION_FLOW_TERMINOLOGY_LLM_CONFIG,
+  TRANSLATION_FLOW_TERMINOLOGY_PROMPT_CONFIG,
+  TRANSLATION_FLOW_TERMINOLOGY_SUMMARY,
 } from '../fixtures/translation-flow/mock-data';
 
 type DashboardMockFixture = {
@@ -64,6 +68,10 @@ type TranslationFlowMockFixture = {
   filePayloads: Record<string, TranslationFlowFileFixture>;
   selectedFiles: string[];
   taskId: string;
+  terminologyCompletedSummary: Record<string, number | string>;
+  terminologyLLMConfig: Record<string, string>;
+  terminologyPromptConfig: Record<string, string>;
+  terminologySummary: Record<string, number | string>;
 };
 
 type WailsMockFixture = {
@@ -96,6 +104,10 @@ export async function installWailsMocks(page: Page): Promise<void> {
       filePayloads: TRANSLATION_FLOW_FILE_PAYLOADS,
       selectedFiles: [...TRANSLATION_FLOW_SELECTED_FILES],
       taskId: TRANSLATION_FLOW_TASK_ID,
+      terminologyCompletedSummary: TRANSLATION_FLOW_TERMINOLOGY_COMPLETED_SUMMARY,
+      terminologyLLMConfig: TRANSLATION_FLOW_TERMINOLOGY_LLM_CONFIG,
+      terminologyPromptConfig: TRANSLATION_FLOW_TERMINOLOGY_PROMPT_CONFIG,
+      terminologySummary: TRANSLATION_FLOW_TERMINOLOGY_SUMMARY,
     },
   };
 
@@ -137,12 +149,15 @@ export async function installWailsMocks(page: Page): Promise<void> {
     const configStore = new Map<string, Record<string, string>>();
     configStore.set('master_persona.llm', {...mockFixture.masterPersona.llmRootConfig});
     configStore.set('master_persona.prompt', {...mockFixture.masterPersona.promptConfig});
+    configStore.set('translation_flow.terminology.llm', {...mockFixture.translationFlow.terminologyLLMConfig});
+    configStore.set('translation_flow.terminology.prompt', {...mockFixture.translationFlow.terminologyPromptConfig});
 
     for (const [namespace, values] of Object.entries(mockFixture.masterPersona.llmConfigByNamespace)) {
       configStore.set(namespace, {...values});
     }
 
     let personaTask: Record<string, unknown> | null = null;
+    let terminologySummary = {...mockFixture.translationFlow.terminologySummary};
 
     const dashboardTasks = [...mockFixture.dashboard.tasks];
     const translationFilesByTask = new Map<string, TranslationFlowFileFixture[]>();
@@ -203,6 +218,7 @@ export async function installWailsMocks(page: Page): Promise<void> {
     const taskController = {
       GetActiveTasks: async () => [...dashboardTasks],
       GetAllTasks: async () => [...dashboardTasks],
+      GetTranslationFlowTerminology: async () => ({...terminologySummary}),
       ListLoadedTranslationFlowFiles: async (taskID: string) => {
         const files = translationFilesByTask.get(taskID) ?? [];
         return {
@@ -230,10 +246,21 @@ export async function installWailsMocks(page: Page): Promise<void> {
           .map((path) => mockFixture.translationFlow.filePayloads[path])
           .filter((file): file is TranslationFlowFileFixture => Boolean(file));
         translationFilesByTask.set(taskID, loadedFiles);
+        terminologySummary = {
+          ...mockFixture.translationFlow.terminologySummary,
+          task_id: taskID,
+        };
         return {
           task_id: taskID,
           files: loadedFiles.map((file) => buildLoadedTranslationFile(file, 1, 50)),
         };
+      },
+      RunTranslationFlowTerminology: async (taskID: string) => {
+        terminologySummary = {
+          ...mockFixture.translationFlow.terminologyCompletedSummary,
+          task_id: taskID,
+        };
+        return {...terminologySummary};
       },
       ResumeTask: async () => undefined,
       CancelTask: async () => undefined,
@@ -327,6 +354,16 @@ export async function installWailsMocks(page: Page): Promise<void> {
     const modelCatalogController = {
       ListModels: async (request: Record<string, unknown>) => {
         const provider = String(request.provider ?? '');
+        const namespace = String(request.namespace ?? '');
+        if (namespace === 'translation_flow.terminology' && provider === 'lmstudio') {
+          return [{
+            id: 'local-terminology-model',
+            display_name: 'local-terminology-model',
+            capability: {
+              supports_batch: false,
+            },
+          }];
+        }
         return mockFixture.masterPersona.modelCatalogByProvider[provider] ?? [];
       },
       SetContext: async () => undefined,

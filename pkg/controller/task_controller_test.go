@@ -234,19 +234,22 @@ func TestTaskController_TranslationFlowAPI_NilWorkflowGuard(t *testing.T) {
 }
 
 type fakeTranslationFlowWorkflow struct {
-	lastCtx             context.Context
-	lastLoadInput       workflow.LoadTranslationFlowInput
-	lastListTaskID      string
-	lastPreviewFileID   int64
-	lastPreviewPage     int
-	lastPreviewPageSize int
+	lastCtx              context.Context
+	lastLoadInput        workflow.LoadTranslationFlowInput
+	lastListTaskID       string
+	lastPreviewFileID    int64
+	lastPreviewPage      int
+	lastPreviewPageSize  int
+	lastTerminologyInput workflow.RunTerminologyPhaseInput
 
-	loadResult    workflow.TranslationLoadResult
-	loadErr       error
-	listResult    workflow.TranslationLoadResult
-	listErr       error
-	previewResult workflow.TranslationPreviewPage
-	previewErr    error
+	loadResult        workflow.TranslationLoadResult
+	loadErr           error
+	listResult        workflow.TranslationLoadResult
+	listErr           error
+	previewResult     workflow.TranslationPreviewPage
+	previewErr        error
+	terminologyResult workflow.TerminologyPhaseResult
+	terminologyErr    error
 }
 
 func (f *fakeTranslationFlowWorkflow) LoadFiles(ctx context.Context, input workflow.LoadTranslationFlowInput) (workflow.TranslationLoadResult, error) {
@@ -267,4 +270,16 @@ func (f *fakeTranslationFlowWorkflow) ListPreviewRows(ctx context.Context, fileI
 	f.lastPreviewPage = page
 	f.lastPreviewPageSize = pageSize
 	return f.previewResult, f.previewErr
+}
+
+func (f *fakeTranslationFlowWorkflow) RunTerminologyPhase(ctx context.Context, input workflow.RunTerminologyPhaseInput) (workflow.TerminologyPhaseResult, error) {
+	f.lastCtx = ctx
+	f.lastTerminologyInput = input
+	return f.terminologyResult, f.terminologyErr
+}
+
+func (f *fakeTranslationFlowWorkflow) GetTerminologyPhase(ctx context.Context, taskID string) (workflow.TerminologyPhaseResult, error) {
+	f.lastCtx = ctx
+	f.lastListTaskID = taskID
+	return f.terminologyResult, f.terminologyErr
 }

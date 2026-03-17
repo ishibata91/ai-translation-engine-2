@@ -6,11 +6,13 @@ import (
 	"log/slog"
 	"strings"
 
+	"github.com/ishibata91/ai-translation-engine-2/pkg/artifact/translationinput"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/foundation/llmio"
 )
 
 // TermTranslatorImpl implements Terminology.
 type TermTranslatorImpl struct {
+	inputRepo     TranslationInputRepository
 	builder       TermRequestBuilder
 	searcher      TermDictionarySearcher
 	store         ModTermStore
@@ -20,6 +22,7 @@ type TermTranslatorImpl struct {
 
 // NewTermTranslator creates a new TermTranslatorImpl.
 func NewTermTranslator(
+	inputRepo TranslationInputRepository,
 	builder TermRequestBuilder,
 	searcher TermDictionarySearcher,
 	store ModTermStore,
@@ -27,6 +30,7 @@ func NewTermTranslator(
 	logger *slog.Logger,
 ) *TermTranslatorImpl {
 	return &TermTranslatorImpl{
+		inputRepo:     inputRepo,
 		builder:       builder,
 		searcher:      searcher,
 		store:         store,
@@ -40,17 +44,33 @@ func (t *TermTranslatorImpl) ID() string {
 	return "Terminology"
 }
 
-// PreparePrompts implementation for Slice interface.
-func (t *TermTranslatorImpl) PreparePrompts(ctx context.Context, input any) ([]llmio.Request, error) {
-	typedInput, ok := input.(TerminologyInput)
-	if !ok {
-		return nil, fmt.Errorf("invalid input type for Terminology slice: %T", input)
+// PreparePrompts implementation for terminology phase.
+func (t *TermTranslatorImpl) PreparePrompts(ctx context.Context, taskID string, options PhaseOptions) ([]llmio.Request, error) {
+	artifactInput, err := t.inputRepo.LoadTerminologyInput(ctx, taskID)
+	if err != nil {
+		return nil, fmt.Errorf("load terminology artifact input task_id=%s: %w", taskID, err)
 	}
-	return t.preparePrompts(ctx, typedInput)
+	typedInput := mapArtifactInput(artifactInput)
+	requests, err := t.preparePrompts(ctx, typedInput, options)
+	if err != nil {
+		return nil, fmt.Errorf("prepare terminology prompts task_id=%s: %w", taskID, err)
+	}
+	status := "pending"
+	if len(requests) > 0 {
+		status = "running"
+	}
+	if err := t.store.UpdatePhaseSummary(ctx, PhaseSummary{
+		TaskID:      taskID,
+		Status:      status,
+		TargetCount: len(requests),
+	}); err != nil {
+		return nil, fmt.Errorf("persist terminology phase running summary task_id=%s: %w", taskID, err)
+	}
+	return requests, nil
 }
 
 // preparePrompts builds LLM requests (Phase 1).
-func (t *TermTranslatorImpl) preparePrompts(ctx context.Context, data TerminologyInput) ([]llmio.Request, error) {
+func (t *TermTranslatorImpl) preparePrompts(ctx context.Context, data TerminologyInput, options PhaseOptions) ([]llmio.Request, error) {
 	t.logger.InfoContext(ctx, "ENTER TermTranslatorImpl.PreparePrompts")
 	defer t.logger.InfoContext(ctx, "EXIT TermTranslatorImpl.PreparePrompts")
 
@@ -69,14 +89,15 @@ func (t *TermTranslatorImpl) preparePrompts(ctx context.Context, data Terminolog
 		// Fetch reference terms for LLM context
 		t.fetchReferenceTerms(ctx, &req)
 
-		prompt, err := t.promptBuilder.BuildPrompt(ctx, req)
+		prompt, err := t.buildPrompt(ctx, req, options)
 		if err != nil {
 			return nil, fmt.Errorf("failed to build prompt for %s: %w", req.SourceText, err)
 		}
 
 		llmRequests = append(llmRequests, llmio.Request{
 			SystemPrompt: prompt,
-			UserPrompt:   "Translate the provided term.",
+			UserPrompt:   userPromptOrDefault(options),
+			Temperature:  options.Request.Temperature,
 			Metadata: map[string]interface{}{
 				"source_text":   req.SourceText,
 				"form_id":       req.FormID,
@@ -92,8 +113,8 @@ func (t *TermTranslatorImpl) preparePrompts(ctx context.Context, data Terminolog
 	return llmRequests, nil
 }
 
-// SaveResults implementation for Slice interface.
-func (t *TermTranslatorImpl) SaveResults(ctx context.Context, responses []llmio.Response) error {
+// SaveResults implementation for terminology phase.
+func (t *TermTranslatorImpl) SaveResults(ctx context.Context, taskID string, responses []llmio.Response) error {
 	t.logger.InfoContext(ctx, "ENTER TermTranslatorImpl.SaveResults")
 	defer t.logger.InfoContext(ctx, "EXIT TermTranslatorImpl.SaveResults")
 
@@ -103,6 +124,7 @@ func (t *TermTranslatorImpl) SaveResults(ctx context.Context, responses []llmio.
 	}
 
 	var finalResults []TermTranslationResult
+	failedCount := 0
 	for i, res := range responses {
 		// Identify Term from metadata
 		sourceText, _ := res.Metadata["source_text"].(string)
@@ -130,6 +152,7 @@ func (t *TermTranslatorImpl) SaveResults(ctx context.Context, responses []llmio.
 				"error", res.Error)
 			translationResult.Status = "error"
 			translationResult.ErrorMessage = res.Error
+			failedCount++
 			continue
 		}
 
@@ -138,6 +161,7 @@ func (t *TermTranslatorImpl) SaveResults(ctx context.Context, responses []llmio.
 			t.logger.WarnContext(ctx, "LLM response missing expected format",
 				"index", i,
 				"term", sourceText)
+			failedCount++
 			continue
 		}
 
@@ -160,7 +184,31 @@ func (t *TermTranslatorImpl) SaveResults(ctx context.Context, responses []llmio.
 		t.logger.InfoContext(ctx, "Saved term translations to mod DB", "count", len(finalResults))
 	}
 
+	status := "completed"
+	if len(responses) == 0 {
+		status = "pending"
+	} else if failedCount > 0 && len(finalResults) == 0 {
+		status = "failed"
+	}
+	if err := t.store.UpdatePhaseSummary(ctx, PhaseSummary{
+		TaskID:      taskID,
+		Status:      status,
+		TargetCount: len(responses),
+		SavedCount:  len(finalResults),
+		FailedCount: failedCount,
+	}); err != nil {
+		return fmt.Errorf("persist terminology phase summary task_id=%s: %w", taskID, err)
+	}
 	return nil
+}
+
+// GetPhaseSummary returns the persisted terminology phase summary.
+func (t *TermTranslatorImpl) GetPhaseSummary(ctx context.Context, taskID string) (PhaseSummary, error) {
+	summary, err := t.store.GetPhaseSummary(ctx, taskID)
+	if err != nil {
+		return PhaseSummary{}, fmt.Errorf("get terminology phase summary task_id=%s: %w", taskID, err)
+	}
+	return summary, nil
 }
 
 // LegacySaveResults parses LLM responses and persists to the mod term database (Phase 2).
@@ -256,6 +304,18 @@ func (t *TermTranslatorImpl) fetchReferenceTerms(ctx context.Context, req *TermT
 	req.ReferenceTerms = contextRefs
 }
 
+func (t *TermTranslatorImpl) buildPrompt(ctx context.Context, request TermTranslationRequest, options PhaseOptions) (string, error) {
+	templateString := strings.TrimSpace(options.Prompt.SystemPrompt)
+	if templateString == "" {
+		return t.promptBuilder.BuildPrompt(ctx, request)
+	}
+	builder, err := NewTermPromptBuilder(templateString)
+	if err != nil {
+		return "", fmt.Errorf("create terminology prompt builder: %w", err)
+	}
+	return builder.BuildPrompt(ctx, request)
+}
+
 // expandResult handles NPC paired results or returns a single result.
 func (t *TermTranslatorImpl) expandResult(res TermTranslationResult, req TermTranslationRequest) []TermTranslationResult {
 	if (res.Status == "success" || res.Status == "cached") && req.RecordType == "NPC_" && req.ShortName != "" {
@@ -290,4 +350,105 @@ func (t *TermTranslatorImpl) extractTranslationFromLLMResponse(content string) s
 		return strings.TrimSpace(content[startIdx:])
 	}
 	return content
+}
+
+func userPromptOrDefault(options PhaseOptions) string {
+	if strings.TrimSpace(options.Prompt.UserPrompt) != "" {
+		return options.Prompt.UserPrompt
+	}
+	return "Translate the provided term."
+}
+
+func mapArtifactInput(input translationinput.TerminologyInput) TerminologyInput {
+	out := TerminologyInput{
+		NPCs:      make(map[string]TermNPC, len(input.NPCs)),
+		Items:     make([]TermItem, 0, len(input.Items)),
+		Magic:     make([]TermMagic, 0, len(input.Magic)),
+		Locations: make([]TermLocation, 0, len(input.Locations)),
+		Messages:  make([]TermMessage, 0, len(input.Messages)),
+		Quests:    make([]TermQuest, 0, len(input.Quests)),
+	}
+	for idx, npc := range input.NPCs {
+		key := npc.EditorID
+		if strings.TrimSpace(key) == "" {
+			key = fmt.Sprintf("npc:%d:%s", idx, npc.ID)
+		}
+		editorID := stringPtrIfPresent(npc.EditorID)
+		out.NPCs[key] = TermNPC{
+			ID:         npc.ID,
+			EditorID:   editorID,
+			Type:       normalizeRecordType(npc.RecordType),
+			Name:       npc.Name,
+			SourceFile: npc.SourceFile,
+		}
+	}
+	for _, item := range input.Items {
+		out.Items = append(out.Items, TermItem{
+			ID:         item.ID,
+			EditorID:   stringPtrIfPresent(item.EditorID),
+			Type:       normalizeRecordType(item.RecordType),
+			Name:       stringPtrIfPresent(item.Name),
+			Text:       stringPtrIfPresent(item.Text),
+			SourceFile: item.SourceFile,
+		})
+	}
+	for _, magic := range input.Magic {
+		out.Magic = append(out.Magic, TermMagic{
+			ID:         magic.ID,
+			EditorID:   stringPtrIfPresent(magic.EditorID),
+			Type:       normalizeRecordType(magic.RecordType),
+			Name:       stringPtrIfPresent(magic.Name),
+			SourceFile: magic.SourceFile,
+		})
+	}
+	for _, location := range input.Locations {
+		out.Locations = append(out.Locations, TermLocation{
+			ID:         location.ID,
+			EditorID:   stringPtrIfPresent(location.EditorID),
+			Type:       normalizeRecordType(location.RecordType),
+			Name:       stringPtrIfPresent(location.Name),
+			SourceFile: location.SourceFile,
+		})
+	}
+	for _, message := range input.Messages {
+		out.Messages = append(out.Messages, TermMessage{
+			ID:         message.ID,
+			EditorID:   stringPtrIfPresent(message.EditorID),
+			Type:       normalizeRecordType(message.RecordType),
+			Title:      stringPtrIfPresent(message.Title),
+			SourceFile: message.SourceFile,
+		})
+	}
+	for _, quest := range input.Quests {
+		out.Quests = append(out.Quests, TermQuest{
+			ID:         quest.ID,
+			EditorID:   stringPtrIfPresent(quest.EditorID),
+			Type:       normalizeRecordType(quest.RecordType),
+			Name:       stringPtrIfPresent(quest.Name),
+			SourceFile: quest.SourceFile,
+		})
+	}
+	return out
+}
+
+func normalizeRecordType(recordType string) string {
+	trimmed := strings.TrimSpace(recordType)
+	if trimmed == "" {
+		return trimmed
+	}
+	if strings.HasPrefix(trimmed, "NPC_:") {
+		return trimmed
+	}
+	if strings.Contains(trimmed, ":") {
+		return trimmed
+	}
+	return trimmed + ":FULL"
+}
+
+func stringPtrIfPresent(value string) *string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return nil
+	}
+	return &trimmed
 }

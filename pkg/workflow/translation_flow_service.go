@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	"github.com/ishibata91/ai-translation-engine-2/pkg/format/parser/skyrim"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/foundation/llmio"
+	terminologyslice "github.com/ishibata91/ai-translation-engine-2/pkg/slice/terminology"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/slice/translationflow"
 )
 
@@ -13,15 +15,28 @@ const defaultTranslationPreviewPageSize = 50
 
 // TranslationFlowService orchestrates parser execution and artifact persistence for load phase.
 type TranslationFlowService struct {
-	parser skyrim.Parser
-	store  translationflow.Service
+	parser      skyrim.Parser
+	store       translationflow.Service
+	terminology terminologyslice.Terminology
+	executor    terminologyPhaseExecutor
+}
+
+type terminologyPhaseExecutor interface {
+	Execute(ctx context.Context, config llmio.ExecutionConfig, requests []llmio.Request) ([]llmio.Response, error)
 }
 
 // NewTranslationFlowService constructs a translation-flow workflow implementation.
-func NewTranslationFlowService(parser skyrim.Parser, store translationflow.Service) *TranslationFlowService {
+func NewTranslationFlowService(
+	parser skyrim.Parser,
+	store translationflow.Service,
+	terminology terminologyslice.Terminology,
+	executor terminologyPhaseExecutor,
+) *TranslationFlowService {
 	return &TranslationFlowService{
-		parser: parser,
-		store:  store,
+		parser:      parser,
+		store:       store,
+		terminology: terminology,
+		executor:    executor,
 	}
 }
 
@@ -118,4 +133,75 @@ func mapPreviewPage(page translationflow.PreviewPage) TranslationPreviewPage {
 		TotalRows: page.TotalRows,
 		Rows:      rows,
 	}
+}
+
+// RunTerminologyPhase executes the terminology phase synchronously and returns the persisted summary.
+func (s *TranslationFlowService) RunTerminologyPhase(ctx context.Context, input RunTerminologyPhaseInput) (TerminologyPhaseResult, error) {
+	trimmedTaskID := strings.TrimSpace(input.TaskID)
+	if trimmedTaskID == "" {
+		return TerminologyPhaseResult{}, fmt.Errorf("task_id is required")
+	}
+	if strings.TrimSpace(input.Request.Model) == "" {
+		return TerminologyPhaseResult{}, fmt.Errorf("request.model is required")
+	}
+
+	requests, err := s.terminology.PreparePrompts(ctx, trimmedTaskID, terminologyslice.PhaseOptions{
+		Request: terminologyslice.RequestConfig{
+			Provider:        input.Request.Provider,
+			Model:           input.Request.Model,
+			Endpoint:        input.Request.Endpoint,
+			APIKey:          input.Request.APIKey,
+			Temperature:     input.Request.Temperature,
+			ContextLength:   input.Request.ContextLength,
+			SyncConcurrency: input.Request.SyncConcurrency,
+			BulkStrategy:    input.Request.BulkStrategy,
+		},
+		Prompt: terminologyslice.PromptConfig{
+			UserPrompt:   input.Prompt.UserPrompt,
+			SystemPrompt: input.Prompt.SystemPrompt,
+		},
+	})
+	if err != nil {
+		return TerminologyPhaseResult{}, fmt.Errorf("prepare terminology prompts task_id=%s: %w", trimmedTaskID, err)
+	}
+
+	if len(requests) > 0 {
+		responses, err := s.executor.Execute(ctx, llmio.ExecutionConfig{
+			Provider:        input.Request.Provider,
+			Model:           input.Request.Model,
+			Endpoint:        input.Request.Endpoint,
+			APIKey:          input.Request.APIKey,
+			Temperature:     input.Request.Temperature,
+			ContextLength:   input.Request.ContextLength,
+			SyncConcurrency: input.Request.SyncConcurrency,
+			BulkStrategy:    input.Request.BulkStrategy,
+		}, requests)
+		if err != nil {
+			return TerminologyPhaseResult{}, fmt.Errorf("execute terminology llm requests task_id=%s: %w", trimmedTaskID, err)
+		}
+		if err := s.terminology.SaveResults(ctx, trimmedTaskID, responses); err != nil {
+			return TerminologyPhaseResult{}, fmt.Errorf("save terminology results task_id=%s: %w", trimmedTaskID, err)
+		}
+	}
+
+	return s.GetTerminologyPhase(ctx, trimmedTaskID)
+}
+
+// GetTerminologyPhase returns the current terminology phase summary.
+func (s *TranslationFlowService) GetTerminologyPhase(ctx context.Context, taskID string) (TerminologyPhaseResult, error) {
+	trimmedTaskID := strings.TrimSpace(taskID)
+	if trimmedTaskID == "" {
+		return TerminologyPhaseResult{}, fmt.Errorf("task_id is required")
+	}
+	summary, err := s.terminology.GetPhaseSummary(ctx, trimmedTaskID)
+	if err != nil {
+		return TerminologyPhaseResult{}, fmt.Errorf("get terminology phase summary task_id=%s: %w", trimmedTaskID, err)
+	}
+	return TerminologyPhaseResult{
+		TaskID:      summary.TaskID,
+		Status:      summary.Status,
+		TargetCount: summary.TargetCount,
+		SavedCount:  summary.SavedCount,
+		FailedCount: summary.FailedCount,
+	}, nil
 }

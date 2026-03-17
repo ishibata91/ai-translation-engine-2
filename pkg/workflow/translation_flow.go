@@ -42,9 +42,45 @@ type TranslationLoadResult struct {
 	Files  []TranslationLoadedFile `json:"files"`
 }
 
+// TranslationRequestConfig is the workflow DTO for terminology request settings.
+type TranslationRequestConfig struct {
+	Provider        string  `json:"provider"`
+	Model           string  `json:"model"`
+	Endpoint        string  `json:"endpoint"`
+	APIKey          string  `json:"api_key"`
+	Temperature     float32 `json:"temperature"`
+	ContextLength   int     `json:"context_length"`
+	SyncConcurrency int     `json:"sync_concurrency"`
+	BulkStrategy    string  `json:"bulk_strategy"`
+}
+
+// TranslationPromptConfig is the workflow DTO for terminology prompt settings.
+type TranslationPromptConfig struct {
+	UserPrompt   string `json:"user_prompt"`
+	SystemPrompt string `json:"system_prompt"`
+}
+
+// RunTerminologyPhaseInput is the controller-facing DTO for terminology phase execution.
+type RunTerminologyPhaseInput struct {
+	TaskID  string                   `json:"task_id"`
+	Request TranslationRequestConfig `json:"request"`
+	Prompt  TranslationPromptConfig  `json:"prompt"`
+}
+
+// TerminologyPhaseResult is the aggregate response for terminology phase status.
+type TerminologyPhaseResult struct {
+	TaskID      string `json:"task_id"`
+	Status      string `json:"status"`
+	TargetCount int    `json:"target_count"`
+	SavedCount  int    `json:"saved_count"`
+	FailedCount int    `json:"failed_count"`
+}
+
 // TranslationFlow defines controller-facing workflow APIs for translation load phase.
 type TranslationFlow interface {
 	LoadFiles(ctx context.Context, input LoadTranslationFlowInput) (TranslationLoadResult, error)
 	ListFiles(ctx context.Context, taskID string) (TranslationLoadResult, error)
 	ListPreviewRows(ctx context.Context, fileID int64, page int, pageSize int) (TranslationPreviewPage, error)
+	RunTerminologyPhase(ctx context.Context, input RunTerminologyPhaseInput) (TerminologyPhaseResult, error)
+	GetTerminologyPhase(ctx context.Context, taskID string) (TerminologyPhaseResult, error)
 }

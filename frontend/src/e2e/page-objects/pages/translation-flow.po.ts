@@ -21,6 +21,17 @@ export class TranslationFlowPO extends BasePO {
       .first();
   }
 
+  private terminologyPanel(): Locator {
+    return this.page
+      .locator('.tab-content-panel')
+      .filter({has: this.page.getByRole('heading', {name: '単語翻訳 phase'})})
+      .first();
+  }
+
+  private terminologyModelSettings(): Locator {
+    return this.page.getByLabel('単語翻訳モデル設定');
+  }
+
   private async ensureExpanded(fileName: string): Promise<void> {
     const table = this.fileTable(fileName);
     const content = table.locator('.collapse-content').first();
@@ -120,6 +131,47 @@ export class TranslationFlowPO extends BasePO {
   async expectMarkerVisibleInFile(fileName: string, marker: string): Promise<void> {
     await this.ensureExpanded(fileName);
     await expect(this.fileTable(fileName).locator('tbody').getByText(marker, {exact: false})).toBeVisible();
+    await this.expectNoRuntimeErrors();
+  }
+
+  async proceedToTerminologyPhase(): Promise<void> {
+    await this.loadPanel().getByRole('button', {name: 'ロード完了して次へ'}).click();
+    await expect(this.page.getByRole('tab', {name: '単語翻訳'})).toHaveClass(/tab-active/);
+    await this.expectNoRuntimeErrors();
+  }
+
+  async expectTerminologyPhaseVisible(): Promise<void> {
+    const panel = this.terminologyPanel();
+    await expect(panel).toBeVisible();
+    await expect(panel.getByText('対象件数')).toBeVisible();
+    await expect(panel.getByText('保存件数')).toBeVisible();
+    await expect(panel.getByText('失敗件数')).toBeVisible();
+    await expect(panel.getByRole('button', {name: '単語翻訳を実行'})).toBeVisible();
+    await expect(this.terminologyModelSettings()).toBeVisible();
+    await expect(this.terminologyModelSettings().locator('select').nth(1)).toHaveValue('local-terminology-model');
+    await this.expectNoRuntimeErrors();
+  }
+
+  async expectTerminologySystemPromptReadOnly(): Promise<void> {
+    const textarea = this.terminologyPanel()
+      .locator('.card')
+      .filter({has: this.page.getByRole('heading', {name: 'System Prompt'})})
+      .locator('textarea');
+    await expect(textarea).toHaveAttribute('readonly', '');
+    await this.expectNoRuntimeErrors();
+  }
+
+  async runTerminologyPhase(): Promise<void> {
+    await this.terminologyPanel().getByRole('button', {name: '単語翻訳を実行'}).click();
+    await expect(this.terminologyPanel().getByText('単語翻訳完了')).toBeVisible();
+    await this.expectNoRuntimeErrors();
+  }
+
+  async expectTerminologySummary(targetCount: string, savedCount: string, failedCount: string): Promise<void> {
+    const panel = this.terminologyPanel();
+    await expect(panel.getByText('対象件数').locator('..')).toContainText(targetCount);
+    await expect(panel.getByText('保存件数').locator('..')).toContainText(savedCount);
+    await expect(panel.getByText('失敗件数').locator('..')).toContainText(failedCount);
     await this.expectNoRuntimeErrors();
   }
 }

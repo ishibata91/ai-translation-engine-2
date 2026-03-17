@@ -40,6 +40,12 @@ func (b *TermRequestBuilderImpl) BuildRequests(ctx context.Context, data Termino
 	locationRequests := b.buildLocationRequests(ctx, data)
 	requests = append(requests, locationRequests...)
 
+	messageRequests := b.buildMessageRequests(ctx, data)
+	requests = append(requests, messageRequests...)
+
+	questRequests := b.buildQuestRequests(ctx, data)
+	requests = append(requests, questRequests...)
+
 	return requests, nil
 }
 
@@ -94,7 +100,7 @@ func (b *TermRequestBuilderImpl) pairNPCRequests(npcFulls map[string]*TermNPC, n
 			RecordType:   "NPC_",
 			SourceText:   fullNpc.Name,
 			SourcePlugin: "Unknown",
-			SourceFile:   "Unknown",
+			SourceFile:   fullNpc.SourceFile,
 		}
 
 		if hasShort {
@@ -119,7 +125,7 @@ func (b *TermRequestBuilderImpl) buildOrphanNPCRequests(npcShorts map[string]*Te
 			RecordType:   shortNpc.Type,
 			SourceText:   shortNpc.Name,
 			SourcePlugin: "Unknown",
-			SourceFile:   "Unknown",
+			SourceFile:   shortNpc.SourceFile,
 		})
 	}
 
@@ -149,7 +155,7 @@ func (b *TermRequestBuilderImpl) buildItemRequests(ctx context.Context, data Ter
 			RecordType:   item.Type,
 			SourceText:   name,
 			SourcePlugin: "Unknown",
-			SourceFile:   "Unknown",
+			SourceFile:   item.SourceFile,
 		})
 	}
 
@@ -176,7 +182,7 @@ func (b *TermRequestBuilderImpl) buildMagicRequests(ctx context.Context, data Te
 			RecordType:   magic.Type,
 			SourceText:   name,
 			SourcePlugin: "Unknown",
-			SourceFile:   "Unknown",
+			SourceFile:   magic.SourceFile,
 		})
 	}
 
@@ -203,9 +209,59 @@ func (b *TermRequestBuilderImpl) buildLocationRequests(ctx context.Context, data
 			RecordType:   loc.Type,
 			SourceText:   name,
 			SourcePlugin: "Unknown",
-			SourceFile:   "Unknown",
+			SourceFile:   loc.SourceFile,
 		})
 	}
 
+	return requests
+}
+
+// buildMessageRequests creates translation requests for message records.
+func (b *TermRequestBuilderImpl) buildMessageRequests(ctx context.Context, data TerminologyInput) []TermTranslationRequest {
+	_ = ctx
+
+	var requests []TermTranslationRequest
+	for _, message := range data.Messages {
+		if !b.config.IsTarget(message.Type) {
+			continue
+		}
+		title := ""
+		if message.Title != nil {
+			title = *message.Title
+		}
+		requests = append(requests, TermTranslationRequest{
+			FormID:       message.ID,
+			EditorID:     getEditorID(message.EditorID),
+			RecordType:   message.Type,
+			SourceText:   title,
+			SourcePlugin: "Unknown",
+			SourceFile:   message.SourceFile,
+		})
+	}
+	return requests
+}
+
+// buildQuestRequests creates translation requests for quest records.
+func (b *TermRequestBuilderImpl) buildQuestRequests(ctx context.Context, data TerminologyInput) []TermTranslationRequest {
+	_ = ctx
+
+	var requests []TermTranslationRequest
+	for _, quest := range data.Quests {
+		if !b.config.IsTarget(quest.Type) {
+			continue
+		}
+		name := ""
+		if quest.Name != nil {
+			name = *quest.Name
+		}
+		requests = append(requests, TermTranslationRequest{
+			FormID:       quest.ID,
+			EditorID:     getEditorID(quest.EditorID),
+			RecordType:   quest.Type,
+			SourceText:   name,
+			SourcePlugin: "Unknown",
+			SourceFile:   quest.SourceFile,
+		})
+	}
 	return requests
 }

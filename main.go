@@ -16,10 +16,12 @@ import (
 	"github.com/ishibata91/ai-translation-engine-2/pkg/gateway/configstore"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/gateway/datastore"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/gateway/llm"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/runtime/llmexec"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/runtime/modelcatalog"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/runtime/queue"
 	dictionary2 "github.com/ishibata91/ai-translation-engine-2/pkg/slice/dictionary"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/slice/persona"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/slice/terminology"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/slice/translationflow"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/workflow"
 	task2 "github.com/ishibata91/ai-translation-engine-2/pkg/workflow/task"
@@ -52,6 +54,12 @@ func main() {
 		log.Fatalf("failed to initialize artifact database: %v", err)
 	}
 	defer artifactDBCleanup()
+
+	terminologyDB, terminologyDBCleanup, err := datastore.NewSQLiteDB(context.Background(), "terminology.db")
+	if err != nil {
+		log.Fatalf("failed to initialize terminology database: %v", err)
+	}
+	defer terminologyDBCleanup()
 
 	// 2. Run Migrations
 	if err := configstore.Migrate(context.Background(), db); err != nil {
@@ -106,7 +114,6 @@ func main() {
 	parserLoader := skyrim.ProvideParser()
 	translationInputRepo := translationinput.NewRepository(artifactDB)
 	translationFlowSlice := translationflow.NewService(translationInputRepo)
-	translationFlowWorkflow := workflow.NewTranslationFlowService(parserLoader, translationFlowSlice)
 	llmQueue, err := queue.NewQueue(context.Background(), "llm_queue.db", logger)
 	if err != nil {
 		log.Fatalf("failed to initialize llm queue: %v", err)
@@ -120,6 +127,29 @@ func main() {
 		log.Printf("failed to recover llm queue worker state: %v", err)
 	}
 	taskManager.SetTaskRequestCleaner(llmQueue)
+
+	termConfig := &terminology.TermRecordConfig{
+		TargetRecordTypes: []string{
+			"NPC_:FULL", "NPC_:SHRT",
+			"WEAP:FULL", "ARMO:FULL", "AMMO:FULL", "MISC:FULL", "KEYM:FULL", "ALCH:FULL", "BOOK:FULL", "INGR:FULL",
+			"SPEL:FULL", "MGEF:FULL", "ENCH:FULL",
+			"LCTN:FULL", "CELL:FULL", "WRLD:FULL",
+			"MESG:FULL", "QUST:FULL",
+		},
+	}
+	termBuilder := terminology.NewTermRequestBuilder(termConfig)
+	termPromptBuilder, err := terminology.NewTermPromptBuilder("")
+	if err != nil {
+		log.Fatalf("failed to initialize terminology prompt builder: %v", err)
+	}
+	termSearchStemmer := terminology.NewSnowballStemmer("english")
+	termSearcher := terminology.NewSQLiteTermDictionarySearcher(artifactDB, logger, termSearchStemmer)
+	termStore := terminology.NewSQLiteModTermStore(terminologyDB, logger)
+	if err := termStore.InitSchema(context.Background()); err != nil {
+		log.Fatalf("failed to initialize terminology store schema: %v", err)
+	}
+	termTranslator := terminology.NewTermTranslator(translationInputRepo, termBuilder, termSearcher, termStore, termPromptBuilder, logger)
+	translationFlowWorkflow := workflow.NewTranslationFlowService(parserLoader, translationFlowSlice, termTranslator, llmexec.NewSyncExecutor(llmManager))
 
 	personaArtifactRepo := master_persona_artifact.NewRepository(artifactDB)
 	personaStore := persona.NewPersonaStore(personaArtifactRepo)

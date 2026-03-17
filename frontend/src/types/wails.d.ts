@@ -44,6 +44,11 @@ declare module '*wailsjs/go/controller/TaskController' {
   export function CancelTask(taskID: string): Promise<void>;
   export function GetAllTasks(): Promise<unknown[]>;
   export function GetActiveTasks(): Promise<unknown[]>;
+  export function ListLoadedTranslationFlowFiles(taskID: string): Promise<unknown>;
+  export function ListTranslationFlowPreviewRows(fileID: number, page: number, pageSize: number): Promise<unknown>;
+  export function LoadTranslationFlowFiles(taskID: string, filePaths: string[]): Promise<unknown>;
+  export function GetTranslationFlowTerminology(taskID: string): Promise<unknown>;
+  export function RunTranslationFlowTerminology(taskID: string, input: unknown): Promise<unknown>;
 }
 
 declare module '*wailsjs/go/controller/PersonaTaskController' {

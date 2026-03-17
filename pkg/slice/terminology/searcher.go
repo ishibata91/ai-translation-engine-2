@@ -36,9 +36,9 @@ func (s *SQLiteTermDictionarySearcher) SearchExact(ctx context.Context, text str
 	}
 
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT original_en, translated_ja 
-		FROM dictionary_terms 
-		WHERE original_en = ?
+		SELECT source_text, dest_text
+		FROM artifact_dictionary_entries
+		WHERE source_text = ?
 	`, text)
 	if err != nil {
 		s.logger.ErrorContext(ctx, "exact search failed", telemetry2.ErrorAttrs(err)...)
@@ -65,33 +65,12 @@ func (s *SQLiteTermDictionarySearcher) SearchKeywords(ctx context.Context, keywo
 		return nil, nil
 	}
 
-	stemmedKeywords := s.stemKeywords(keywords)
-	matchStr := strings.Join(stemmedKeywords, " OR ")
-
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT original_en, translated_ja 
-		FROM dictionary_terms_fts 
-		WHERE original_en MATCH ?
-		LIMIT 20
-	`, matchStr)
-
+	terms, err := s.searchByKeywords(ctx, s.stemKeywords(keywords), 20, false)
 	if err != nil {
-		if strings.Contains(err.Error(), "no such table") {
-			s.logger.WarnContext(ctx, "dictionary_terms_fts table not found, falling back to exact search")
-			return nil, nil
-		}
 		s.logger.ErrorContext(ctx, "keyword search failed", telemetry2.ErrorAttrs(err)...)
 		return nil, fmt.Errorf("keyword search query failed: %w", err)
 	}
-	defer rows.Close()
-
-	terms, err := s.scanReferenceTermRows(rows)
-	if err == nil {
-		s.logger.DebugContext(ctx, "keyword search completed", slog.Int("match_count", len(terms)))
-	}
-	if err != nil {
-		return nil, fmt.Errorf("scan keyword search results: %w", err)
-	}
+	s.logger.DebugContext(ctx, "keyword search completed", slog.Int("match_count", len(terms)))
 	return terms, nil
 }
 
@@ -109,32 +88,12 @@ func (s *SQLiteTermDictionarySearcher) SearchNPCPartial(ctx context.Context, key
 		return nil, nil
 	}
 
-	matchStr := strings.Join(availableKeywords, " OR ")
-
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT dt.original_en, dt.translated_ja 
-		FROM dictionary_terms_fts fts
-		JOIN dictionary_terms dt ON fts.rowid = dt.rowid
-		WHERE fts.original_en MATCH ? AND dt.record_type LIKE 'NPC_%'
-		LIMIT 10
-	`, matchStr)
-
+	terms, err := s.searchByKeywords(ctx, availableKeywords, 10, true)
 	if err != nil {
-		if strings.Contains(err.Error(), "no such table") {
-			return nil, nil
-		}
 		s.logger.ErrorContext(ctx, "npc partial search failed", telemetry2.ErrorAttrs(err)...)
 		return nil, fmt.Errorf("npc partial search query failed: %w", err)
 	}
-	defer rows.Close()
-
-	terms, err := s.scanReferenceTermRows(rows)
-	if err == nil {
-		s.logger.DebugContext(ctx, "npc partial search completed", slog.Int("match_count", len(terms)))
-	}
-	if err != nil {
-		return nil, fmt.Errorf("scan npc partial search results: %w", err)
-	}
+	s.logger.DebugContext(ctx, "npc partial search completed", slog.Int("match_count", len(terms)))
 	return terms, nil
 }
 
@@ -219,5 +178,63 @@ func (s *SQLiteTermDictionarySearcher) scanReferenceTermRows(rows *sql.Rows) ([]
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate reference term rows: %w", err)
 	}
+	return results, nil
+}
+
+func (s *SQLiteTermDictionarySearcher) searchByKeywords(ctx context.Context, keywords []string, limit int, npcOnly bool) ([]ReferenceTerm, error) {
+	results := make([]ReferenceTerm, 0)
+	seen := make(map[string]struct{})
+
+	for _, keyword := range keywords {
+		trimmed := strings.TrimSpace(keyword)
+		if trimmed == "" {
+			continue
+		}
+
+		args := []any{"%" + trimmed + "%"}
+		args = append(args, limit)
+
+		query := `
+			SELECT source_text, dest_text
+			FROM artifact_dictionary_entries
+			WHERE source_text LIKE ?
+			LIMIT ?
+		`
+		if npcOnly {
+			query = `
+				SELECT source_text, dest_text
+				FROM artifact_dictionary_entries
+				WHERE source_text LIKE ? AND record_type LIKE 'NPC_%'
+				LIMIT ?
+			`
+		}
+
+		rows, err := s.db.QueryContext(ctx, query, args...)
+		if err != nil {
+			return nil, fmt.Errorf("query keyword=%q: %w", trimmed, err)
+		}
+
+		terms, scanErr := s.scanReferenceTermRows(rows)
+		closeErr := rows.Close()
+		if scanErr != nil {
+			return nil, fmt.Errorf("scan keyword=%q: %w", trimmed, scanErr)
+		}
+		if closeErr != nil {
+			return nil, fmt.Errorf("close keyword=%q rows: %w", trimmed, closeErr)
+		}
+
+		for _, term := range terms {
+			key := term.Source + "\x00" + term.Translation
+			if _, exists := seen[key]; exists {
+				continue
+			}
+			seen[key] = struct{}{}
+			results = append(results, term)
+			if len(results) >= limit {
+				return results, nil
+			}
+		}
+	}
+
 	return results, nil
 }

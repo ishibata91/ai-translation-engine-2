@@ -61,7 +61,23 @@ export default function TranslationFlow() {
                         onPreviewPageChange={actions.handlePreviewPageChange}
                         onNext={actions.handleAdvanceFromLoad}
                     />
-                    <TerminologyPanel isActive={state.activeTab === 1} onNext={() => actions.handleTabChange(2)} />
+                    <TerminologyPanel
+                        isActive={state.activeTab === 1}
+                        taskId={state.taskId}
+                        summary={state.terminologySummary}
+                        statusLabel={state.terminologyStatusLabel}
+                        errorMessage={state.terminologyErrorMessage}
+                        isRunning={state.isTerminologyRunning}
+                        llmConfig={state.terminologyConfig}
+                        promptConfig={state.terminologyPromptConfig}
+                        isConfigHydrated={state.isTerminologyConfigHydrated}
+                        isPromptHydrated={state.isTerminologyPromptHydrated}
+                        onConfigChange={actions.handleTerminologyConfigChange}
+                        onPromptChange={actions.handleTerminologyPromptChange}
+                        onRun={actions.handleRunTerminologyPhase}
+                        onRefresh={actions.handleRefreshTerminologyPhase}
+                        onNext={actions.handleAdvanceFromTerminology}
+                    />
                     <PersonaPanel isActive={state.activeTab === 2} onNext={() => actions.handleTabChange(3)} />
                     <SummaryPanel isActive={state.activeTab === 3} onNext={() => actions.handleTabChange(4)} />
                     <TranslationPanel isActive={state.activeTab === 4} onNext={() => actions.handleTabChange(5)} />

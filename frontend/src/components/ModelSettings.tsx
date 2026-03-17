@@ -26,7 +26,29 @@ interface Props {
     enabled?: boolean;
     namespace: string;
     locked?: boolean;
+    collapsible?: boolean;
+    labels?: Partial<{
+        provider: string;
+        model: string;
+        executionProfile: string;
+        temperature: string;
+        endpoint: string;
+        apiKey: string;
+        contextLength: string;
+        syncConcurrency: string;
+    }>;
 }
+
+const DEFAULT_LABELS = {
+    provider: 'AIプロバイダ',
+    model: 'モデル',
+    executionProfile: '実行方式',
+    temperature: 'Temperature',
+    endpoint: 'エンドポイント',
+    apiKey: 'API Key',
+    contextLength: 'コンテキスト長',
+    syncConcurrency: '同期並列数',
+} as const;
 
 /**
  * LLMモデルの設定を行うコンポーネント。
@@ -41,7 +63,7 @@ interface Props {
  * @param props.enabled - モデル一覧取得の有効/無効
  * @param props.namespace - モデル設定の名前空間
  */
-const ModelSettings: React.FC<Props> = ({ title = 'モデル設定', value, onChange, enabled = true, namespace, locked = false }) => {
+const ModelSettings: React.FC<Props> = ({ title = 'モデル設定', value, onChange, enabled = true, namespace, locked = false, collapsible = true, labels }) => {
     const [draftTemperature, setDraftTemperature] = useState<number>(value.temperature);
     const [draftEndpoint, setDraftEndpoint] = useState<string>(value.endpoint);
     const [draftApiKey, setDraftApiKey] = useState<string>(value.apiKey);
@@ -61,6 +83,7 @@ const ModelSettings: React.FC<Props> = ({ title = 'モデル設定', value, onCh
         selectedModelCapability,
         selectedModelValue,
     } = useModelSettings({ value, onChange, enabled, namespace });
+    const resolvedLabels = {...DEFAULT_LABELS, ...labels};
 
     useEffect(() => {
         setDraftTemperature(value.temperature);
@@ -108,13 +131,8 @@ const ModelSettings: React.FC<Props> = ({ title = 'モデル設定', value, onCh
     };
 
 
-    return (
-        <details className="collapse collapse-arrow bg-base-100 border border-base-200 shadow-sm" open>
-            <summary className="collapse-title text-base font-bold min-h-0 py-3 border-b border-base-200">
-                {title}
-            </summary>
-            <div className="collapse-content pt-4">
-                <div className="flex flex-col gap-6">
+    const content = (
+        <div className="flex flex-col gap-6">
                     {controlsDisabled && (
                         <div className="alert alert-warning py-2 text-sm">
                             <span>再開対象タスクがあるため、モデル設定は固定されています。</span>
@@ -124,7 +142,7 @@ const ModelSettings: React.FC<Props> = ({ title = 'モデル設定', value, onCh
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                         <div className="flex flex-col gap-1">
                             <label className="label pb-0">
-                                <span className="label-text font-bold">AIプロバイダ</span>
+                                <span className="label-text font-bold">{resolvedLabels.provider}</span>
                             </label>
                             <select
                                 className="select select-bordered select-sm w-full"
@@ -140,7 +158,7 @@ const ModelSettings: React.FC<Props> = ({ title = 'モデル設定', value, onCh
 
                         <div className="flex flex-col gap-1">
                             <label className="label pb-0">
-                                <span className="label-text font-bold">モデル</span>
+                                <span className="label-text font-bold">{resolvedLabels.model}</span>
                             </label>
                             <select
                                 className="select select-bordered select-sm w-full"
@@ -159,7 +177,7 @@ const ModelSettings: React.FC<Props> = ({ title = 'モデル設定', value, onCh
 
                         <div className="flex flex-col gap-1">
                             <label className="label pb-0">
-                                <span className="label-text font-bold">実行方式</span>
+                                <span className="label-text font-bold">{resolvedLabels.executionProfile}</span>
                             </label>
                             <select
                                 className="select select-bordered select-sm w-full"
@@ -177,7 +195,7 @@ const ModelSettings: React.FC<Props> = ({ title = 'モデル設定', value, onCh
                     <div className="grid grid-cols-1 gap-4">
                         <div className="flex flex-col gap-1">
                             <div className="flex justify-between items-center">
-                                <label className="label-text font-bold text-sm">Temperature</label>
+                                    <label className="label-text font-bold text-sm">{resolvedLabels.temperature}</label>
                                 <span className="badge badge-ghost badge-sm font-mono">{draftTemperature.toFixed(2)}</span>
                             </div>
                             <input
@@ -204,7 +222,7 @@ const ModelSettings: React.FC<Props> = ({ title = 'モデル設定', value, onCh
                     <div className={`grid gap-4 ${isLMStudio ? 'grid-cols-1' : 'grid-cols-2'}`}>
                         <div className="flex flex-col gap-1">
                             <label className="label pb-0">
-                                <span className="label-text font-bold">エンドポイント</span>
+                                    <span className="label-text font-bold">{resolvedLabels.endpoint}</span>
                             </label>
                             <input
                                 type="text"
@@ -221,7 +239,7 @@ const ModelSettings: React.FC<Props> = ({ title = 'モデル設定', value, onCh
                         {!isLMStudio && (
                             <div className="flex flex-col gap-1">
                                 <label className="label pb-0">
-                                    <span className="label-text font-bold">API Key</span>
+                                    <span className="label-text font-bold">{resolvedLabels.apiKey}</span>
                                 </label>
                                 <input
                                     type="password"
@@ -241,7 +259,7 @@ const ModelSettings: React.FC<Props> = ({ title = 'モデル設定', value, onCh
                         <div className="grid grid-cols-1 gap-4">
                             <div className="flex flex-col gap-1">
                                 <label className="label pb-0">
-                                    <span className="label-text font-bold">コンテキスト長</span>
+                                    <span className="label-text font-bold">{resolvedLabels.contextLength}</span>
                                 </label>
                                 <div className="flex flex-wrap gap-2 mb-2">
                                     {CONTEXT_LENGTH_PRESETS.map((preset) => (
@@ -279,7 +297,7 @@ const ModelSettings: React.FC<Props> = ({ title = 'モデル設定', value, onCh
                         <div className="grid grid-cols-1 gap-4">
                             <div className="flex flex-col gap-1">
                                 <div className="flex justify-between items-center">
-                                    <label className="label-text font-bold text-sm">同期並列数</label>
+                                    <label className="label-text font-bold text-sm">{resolvedLabels.syncConcurrency}</label>
                                     <span className="badge badge-ghost badge-sm font-mono">{draftSyncConcurrency}</span>
                                 </div>
                                 <input
@@ -302,6 +320,26 @@ const ModelSettings: React.FC<Props> = ({ title = 'モデル設定', value, onCh
                         </div>
                     )}
                 </div>
+    );
+
+    if (!collapsible) {
+        return (
+            <section className="bg-base-100 border border-base-200 shadow-sm rounded-box p-4" aria-label={title}>
+                <div className="border-b border-base-200 pb-3 mb-4">
+                    <h3 className="text-base font-bold">{title}</h3>
+                </div>
+                {content}
+            </section>
+        );
+    }
+
+    return (
+        <details className="collapse collapse-arrow bg-base-100 border border-base-200 shadow-sm" open>
+            <summary className="collapse-title text-base font-bold min-h-0 py-3 border-b border-base-200">
+                {title}
+            </summary>
+            <div className="collapse-content pt-4">
+                {content}
             </div>
         </details>
     );

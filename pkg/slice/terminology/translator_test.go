@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ishibata91/ai-translation-engine-2/pkg/artifact/translationinput"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/foundation/llmio"
 	_ "modernc.org/sqlite"
 )
@@ -22,18 +23,13 @@ func setupTestDB(t *testing.T) (*sql.DB, *sql.DB, func()) {
 
 	// Create dictionary schema and populate some data
 	_, err = dictDB.Exec(`
-		CREATE TABLE dictionary_terms (
-			original_en TEXT PRIMARY KEY,
-			translated_ja TEXT,
+		CREATE TABLE artifact_dictionary_entries (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			source_text TEXT,
+			dest_text TEXT,
 			record_type TEXT
 		);
-		CREATE VIRTUAL TABLE dictionary_terms_fts USING fts5(
-			original_en,
-			translated_ja,
-			content='dictionary_terms',
-			content_rowid='rowid'
-		);
-		INSERT INTO dictionary_terms (original_en, translated_ja, record_type) VALUES ('Iron Sword', '鉄の剣', 'WEAP');
+		INSERT INTO artifact_dictionary_entries (source_text, dest_text, record_type) VALUES ('Iron Sword', '鉄の剣', 'WEAP:FULL');
 	`)
 	if err != nil {
 		t.Fatalf("failed to init dict db: %v", err)
@@ -156,6 +152,7 @@ func TestTermTranslatorSlice(t *testing.T) {
 			dictDB, modDB, cleanup := setupTestDB(t)
 			defer cleanup()
 
+			repo := &fakeTranslationInputRepository{input: toArtifactInput(tc.input)}
 			builder := NewTermRequestBuilder(&tc.config)
 			stemmer := NewSnowballStemmer("english")
 			searcher := NewSQLiteTermDictionarySearcher(dictDB, logger, stemmer)
@@ -166,6 +163,7 @@ func TestTermTranslatorSlice(t *testing.T) {
 			}
 
 			translator := NewTermTranslator(
+				repo,
 				builder,
 				searcher,
 				store,
@@ -174,7 +172,7 @@ func TestTermTranslatorSlice(t *testing.T) {
 			)
 
 			// Phase 1: Prepare Prompts
-			llmRequests, err := translator.PreparePrompts(ctx, tc.input)
+			llmRequests, err := translator.PreparePrompts(ctx, "task-1", PhaseOptions{})
 			if err != nil {
 				t.Fatalf("PreparePrompts failed: %v", err)
 			}
@@ -194,7 +192,7 @@ func TestTermTranslatorSlice(t *testing.T) {
 			}
 
 			// Phase 2: Save Results
-			err = translator.SaveResults(ctx, llmResponses)
+			err = translator.SaveResults(ctx, "task-1", llmResponses)
 			if err != nil {
 				t.Fatalf("SaveResults failed: %v", err)
 			}
@@ -220,6 +218,59 @@ func TestTermTranslatorSlice(t *testing.T) {
 			}
 		})
 	}
+}
+
+type fakeTranslationInputRepository struct {
+	input translationinput.TerminologyInput
+}
+
+func (f *fakeTranslationInputRepository) LoadTerminologyInput(ctx context.Context, taskID string) (translationinput.TerminologyInput, error) {
+	_ = ctx
+	_ = taskID
+	return f.input, nil
+}
+
+func toArtifactInput(input TerminologyInput) translationinput.TerminologyInput {
+	out := translationinput.TerminologyInput{
+		TaskID:    "task-1",
+		FileNames: []string{"test_mod.json"},
+	}
+	for _, npc := range input.NPCs {
+		out.NPCs = append(out.NPCs, translationinput.TerminologyNPC{
+			ID:         npc.ID,
+			EditorID:   getEditorID(npc.EditorID),
+			RecordType: npc.Type,
+			Name:       npc.Name,
+			SourceFile: "test_mod.json",
+		})
+	}
+	for _, item := range input.Items {
+		out.Items = append(out.Items, translationinput.TerminologyItem{
+			ID:         item.ID,
+			EditorID:   getEditorID(item.EditorID),
+			RecordType: normalizeRecordType(item.Type),
+			Name:       deref(item.Name),
+			Text:       deref(item.Text),
+			SourceFile: "test_mod.json",
+		})
+	}
+	for _, magic := range input.Magic {
+		out.Magic = append(out.Magic, translationinput.TerminologyMagic{
+			ID:         magic.ID,
+			EditorID:   getEditorID(magic.EditorID),
+			RecordType: normalizeRecordType(magic.Type),
+			Name:       deref(magic.Name),
+			SourceFile: "test_mod.json",
+		})
+	}
+	return out
+}
+
+func deref(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
 }
 
 func stringPtr(s string) *string {

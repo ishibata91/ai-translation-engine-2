@@ -259,6 +259,53 @@ func (r *sqliteRepository) ListPreviewRows(ctx context.Context, fileID int64, pa
 	}, nil
 }
 
+// LoadTerminologyInput projects terminology-phase targets from saved translation input rows.
+func (r *sqliteRepository) LoadTerminologyInput(ctx context.Context, taskID string) (TerminologyInput, error) {
+	trimmedTaskID := strings.TrimSpace(taskID)
+	if trimmedTaskID == "" {
+		return TerminologyInput{}, fmt.Errorf("task_id is required")
+	}
+
+	files, err := r.ListFiles(ctx, trimmedTaskID)
+	if err != nil {
+		return TerminologyInput{}, fmt.Errorf("list terminology source files task_id=%s: %w", trimmedTaskID, err)
+	}
+	input := TerminologyInput{
+		TaskID:    trimmedTaskID,
+		FileNames: make([]string, 0, len(files)),
+		NPCs:      make([]TerminologyNPC, 0),
+		Items:     make([]TerminologyItem, 0),
+		Magic:     make([]TerminologyMagic, 0),
+		Locations: make([]TerminologyLocation, 0),
+		Messages:  make([]TerminologyMessage, 0),
+		Quests:    make([]TerminologyQuest, 0),
+	}
+	for _, file := range files {
+		input.FileNames = append(input.FileNames, file.SourceFileName)
+	}
+
+	if err := r.loadTerminologyNPCs(ctx, trimmedTaskID, &input); err != nil {
+		return TerminologyInput{}, fmt.Errorf("load terminology npcs task_id=%s: %w", trimmedTaskID, err)
+	}
+	if err := r.loadTerminologyItems(ctx, trimmedTaskID, &input); err != nil {
+		return TerminologyInput{}, fmt.Errorf("load terminology items task_id=%s: %w", trimmedTaskID, err)
+	}
+	if err := r.loadTerminologyMagic(ctx, trimmedTaskID, &input); err != nil {
+		return TerminologyInput{}, fmt.Errorf("load terminology magic task_id=%s: %w", trimmedTaskID, err)
+	}
+	if err := r.loadTerminologyLocations(ctx, trimmedTaskID, &input); err != nil {
+		return TerminologyInput{}, fmt.Errorf("load terminology locations task_id=%s: %w", trimmedTaskID, err)
+	}
+	if err := r.loadTerminologyMessages(ctx, trimmedTaskID, &input); err != nil {
+		return TerminologyInput{}, fmt.Errorf("load terminology messages task_id=%s: %w", trimmedTaskID, err)
+	}
+	if err := r.loadTerminologyQuests(ctx, trimmedTaskID, &input); err != nil {
+		return TerminologyInput{}, fmt.Errorf("load terminology quests task_id=%s: %w", trimmedTaskID, err)
+	}
+
+	return input, nil
+}
+
 func (r *sqliteRepository) findExistingFile(ctx context.Context, tx *sql.Tx, taskID string, sourceHash string) (int64, bool, error) {
 	var fileID int64
 	err := tx.QueryRowContext(ctx, `
@@ -662,6 +709,172 @@ func previewUnionArgs(fileID int64) []any {
 		args = append(args, fileID)
 	}
 	return args
+}
+
+func (r *sqliteRepository) loadTerminologyNPCs(ctx context.Context, taskID string, input *TerminologyInput) error {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT n.source_record_id, COALESCE(n.editor_id, ''), n.record_type, COALESCE(n.name, ''), f.source_file_name
+		FROM translation_input_npcs n
+		JOIN translation_input_files f ON f.id = n.file_id
+		WHERE f.task_id = ? AND TRIM(COALESCE(n.name, '')) <> ''
+		ORDER BY f.id, n.id
+	`, taskID)
+	if err != nil {
+		return fmt.Errorf("load terminology npcs task_id=%s: %w", taskID, err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var target TerminologyNPC
+		if err := rows.Scan(&target.ID, &target.EditorID, &target.RecordType, &target.Name, &target.SourceFile); err != nil {
+			return fmt.Errorf("scan terminology npc task_id=%s: %w", taskID, err)
+		}
+		input.NPCs = append(input.NPCs, target)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate terminology npcs task_id=%s: %w", taskID, err)
+	}
+	return nil
+}
+
+func (r *sqliteRepository) loadTerminologyItems(ctx context.Context, taskID string, input *TerminologyInput) error {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT i.source_record_id, COALESCE(i.editor_id, ''), i.record_type, COALESCE(i.name, ''), COALESCE(i.text, ''), f.source_file_name
+		FROM translation_input_items i
+		JOIN translation_input_files f ON f.id = i.file_id
+		WHERE f.task_id = ? AND (TRIM(COALESCE(i.name, '')) <> '' OR TRIM(COALESCE(i.text, '')) <> '')
+		ORDER BY f.id, i.id
+	`, taskID)
+	if err != nil {
+		return fmt.Errorf("load terminology items task_id=%s: %w", taskID, err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var target TerminologyItem
+		if err := rows.Scan(&target.ID, &target.EditorID, &target.RecordType, &target.Name, &target.Text, &target.SourceFile); err != nil {
+			return fmt.Errorf("scan terminology item task_id=%s: %w", taskID, err)
+		}
+		input.Items = append(input.Items, target)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate terminology items task_id=%s: %w", taskID, err)
+	}
+	return nil
+}
+
+func (r *sqliteRepository) loadTerminologyMagic(ctx context.Context, taskID string, input *TerminologyInput) error {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT m.source_record_id, COALESCE(m.editor_id, ''), m.record_type, COALESCE(m.name, ''), f.source_file_name
+		FROM translation_input_magic m
+		JOIN translation_input_files f ON f.id = m.file_id
+		WHERE f.task_id = ? AND TRIM(COALESCE(m.name, '')) <> ''
+		ORDER BY f.id, m.id
+	`, taskID)
+	if err != nil {
+		return fmt.Errorf("load terminology magic task_id=%s: %w", taskID, err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var target TerminologyMagic
+		if err := rows.Scan(&target.ID, &target.EditorID, &target.RecordType, &target.Name, &target.SourceFile); err != nil {
+			return fmt.Errorf("scan terminology magic task_id=%s: %w", taskID, err)
+		}
+		input.Magic = append(input.Magic, target)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate terminology magic task_id=%s: %w", taskID, err)
+	}
+	return nil
+}
+
+func (r *sqliteRepository) loadTerminologyLocations(ctx context.Context, taskID string, input *TerminologyInput) error {
+	queries := []string{
+		`SELECT l.source_record_id, COALESCE(l.editor_id, ''), l.record_type, COALESCE(l.name, ''), f.source_file_name
+		 FROM translation_input_locations l
+		 JOIN translation_input_files f ON f.id = l.file_id
+		 WHERE f.task_id = ? AND TRIM(COALESCE(l.name, '')) <> ''
+		 ORDER BY f.id, l.id`,
+		`SELECT c.source_record_id, COALESCE(c.editor_id, ''), c.record_type, COALESCE(c.name, ''), f.source_file_name
+		 FROM translation_input_cells c
+		 JOIN translation_input_files f ON f.id = c.file_id
+		 WHERE f.task_id = ? AND TRIM(COALESCE(c.name, '')) <> ''
+		 ORDER BY f.id, c.id`,
+	}
+	for _, query := range queries {
+		rows, err := r.db.QueryContext(ctx, query, taskID)
+		if err != nil {
+			return fmt.Errorf("load terminology locations task_id=%s: %w", taskID, err)
+		}
+		for rows.Next() {
+			var target TerminologyLocation
+			if err := rows.Scan(&target.ID, &target.EditorID, &target.RecordType, &target.Name, &target.SourceFile); err != nil {
+				if closeErr := rows.Close(); closeErr != nil {
+					return fmt.Errorf("close terminology location rows after scan failure task_id=%s: %w", taskID, closeErr)
+				}
+				return fmt.Errorf("scan terminology location task_id=%s: %w", taskID, err)
+			}
+			input.Locations = append(input.Locations, target)
+		}
+		if err := rows.Err(); err != nil {
+			if closeErr := rows.Close(); closeErr != nil {
+				return fmt.Errorf("close terminology location rows after iteration failure task_id=%s: %w", taskID, closeErr)
+			}
+			return fmt.Errorf("iterate terminology locations task_id=%s: %w", taskID, err)
+		}
+		if err := rows.Close(); err != nil {
+			return fmt.Errorf("close terminology location rows task_id=%s: %w", taskID, err)
+		}
+	}
+	return nil
+}
+
+func (r *sqliteRepository) loadTerminologyMessages(ctx context.Context, taskID string, input *TerminologyInput) error {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT m.source_record_id, COALESCE(m.editor_id, ''), m.record_type, COALESCE(m.title, ''), f.source_file_name
+		FROM translation_input_messages m
+		JOIN translation_input_files f ON f.id = m.file_id
+		WHERE f.task_id = ? AND TRIM(COALESCE(m.title, '')) <> ''
+		ORDER BY f.id, m.id
+	`, taskID)
+	if err != nil {
+		return fmt.Errorf("load terminology messages task_id=%s: %w", taskID, err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var target TerminologyMessage
+		if err := rows.Scan(&target.ID, &target.EditorID, &target.RecordType, &target.Title, &target.SourceFile); err != nil {
+			return fmt.Errorf("scan terminology message task_id=%s: %w", taskID, err)
+		}
+		input.Messages = append(input.Messages, target)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate terminology messages task_id=%s: %w", taskID, err)
+	}
+	return nil
+}
+
+func (r *sqliteRepository) loadTerminologyQuests(ctx context.Context, taskID string, input *TerminologyInput) error {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT q.source_record_id, COALESCE(q.editor_id, ''), q.record_type, COALESCE(q.name, ''), f.source_file_name
+		FROM translation_input_quests q
+		JOIN translation_input_files f ON f.id = q.file_id
+		WHERE f.task_id = ? AND TRIM(COALESCE(q.name, '')) <> ''
+		ORDER BY f.id, q.id
+	`, taskID)
+	if err != nil {
+		return fmt.Errorf("load terminology quests task_id=%s: %w", taskID, err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var target TerminologyQuest
+		if err := rows.Scan(&target.ID, &target.EditorID, &target.RecordType, &target.Name, &target.SourceFile); err != nil {
+			return fmt.Errorf("scan terminology quest task_id=%s: %w", taskID, err)
+		}
+		input.Quests = append(input.Quests, target)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate terminology quests task_id=%s: %w", taskID, err)
+	}
+	return nil
 }
 
 const previewUnionSQL = `

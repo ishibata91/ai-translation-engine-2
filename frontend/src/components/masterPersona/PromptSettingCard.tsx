@@ -7,6 +7,7 @@ interface PromptSettingCardProps {
     onChange?: (value: string) => void;
     readOnly?: boolean;
     badgeLabel: string;
+    footerText?: string;
 }
 
 const PromptSettingCard: React.FC<PromptSettingCardProps> = ({
@@ -16,6 +17,7 @@ const PromptSettingCard: React.FC<PromptSettingCardProps> = ({
     onChange,
     readOnly = false,
     badgeLabel,
+    footerText,
 }) => (
     <div className="card bg-base-100 border border-base-200 shadow-sm h-full">
         <div className="card-body gap-3">
@@ -35,7 +37,7 @@ const PromptSettingCard: React.FC<PromptSettingCardProps> = ({
                 onChange={readOnly || !onChange ? undefined : (event) => onChange(event.target.value)}
             />
             <span className="text-xs text-base-content/60">
-                {readOnly ? 'このカードは送信時の system prompt をそのまま表示します。' : '変更内容は自動保存され、次回表示時にも復元されます。'}
+                {footerText ?? (readOnly ? 'このカードは送信時の system prompt をそのまま表示します。' : '変更内容は自動保存され、次回表示時にも復元されます。')}
             </span>
         </div>
     </div>
