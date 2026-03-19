@@ -11,6 +11,7 @@ description: AI Translation Engine 2 専用。frontend change を実装する。
 - `ui.md` や `scenarios.md` に沿って frontend を実装したい
 - `frontend/src` 配下の task を進めたい
 - typecheck、lint、Playwright まで完了させたい
+- 実装後に `implementation-review-guard` と修正ループを回したい
 
 ## 必読 spec
 - `docs/frontend/frontend-architecture/spec.md`
@@ -24,7 +25,15 @@ description: AI Translation Engine 2 専用。frontend change を実装する。
 4. 小さな変更単位で実装する。
 5. `lint:file -> 修正 -> 再実行` を回す。
 6. `typecheck -> lint:frontend -> Playwright` を実行する。
-7. 未完了、仕様差分、確認結果を整理する。
+7. `aite2-implementation-review-guard` で実装レビューを行う。
+8. finding があれば同じ skill で修正し、再度 `aite2-implementation-review-guard` を呼ぶ。
+9. 未完了、仕様差分、確認結果を整理する。
+
+## レビュー修正ループ
+- 実装後の自己確認で止めず、`aite2-implementation-review-guard` を必ず後続に置く
+- `review-guard` から重大 / 中程度 finding が返ったら修正する
+- 修正後に再レビューを行い、指摘ゼロまで繰り返す
+- 同一論点が 2 周以上解消しない場合はユーザーへ確認する
 
 ## 参照資料
 - 実装メモの雛形は `references/templates.md` を使う。
