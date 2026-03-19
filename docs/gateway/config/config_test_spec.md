@@ -1,4 +1,4 @@
-# 設定・レイアウト保存インフラ テスト設計 (Config Test Spec)
+# 設定保存 テスト仕様
 
 本設計は `standard_test_spec.md` と `log-guide.md` に厳密に準拠し、個別関数の細粒度なユニットテストを作成せず、Vertical Slice の Contract に対する網羅的なパラメタライズドテスト（Table-Driven Test）を定義する。
 
@@ -95,7 +95,7 @@ for _, tc := range testCases {
 **デバッグ時AI投入定型プロンプト**:
 ```text
 以下は ConfigStoreSlice の実行ログファイル（logs/test_XXXX_ConfigStore.jsonl）の内容である。
-仕様書（openspec/specs/gateway/config/spec.md および テスト仕様書）の期待動作と比較し、乖離がある箇所を特定して修正コードを生成せよ。
+仕様書（docs/gateway/config/spec.md および テスト仕様書）の期待動作と比較し、乖離がある箇所を特定して修正コードを生成せよ。
 
 TraceID を手掛かりに、特定のユースケースにおける Entry/Exit ログの args (引数) および result (戻り値) の変遷に着目すること。
 

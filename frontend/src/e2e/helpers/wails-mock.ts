@@ -1,27 +1,27 @@
 import {Page} from '@playwright/test';
 import {DASHBOARD_TASKS} from '../fixtures/dashboard/mock-data';
 import {
-  DICTIONARY_BUILDER_ENTRIES_BY_SOURCE_ID,
-  DICTIONARY_BUILDER_SOURCES,
+    DICTIONARY_BUILDER_ENTRIES_BY_SOURCE_ID,
+    DICTIONARY_BUILDER_SOURCES,
 } from '../fixtures/dictionary-builder/mock-data';
 import {
-  MASTER_PERSONA_DIALOGUES_BY_PERSONA_ID,
-  MASTER_PERSONA_LLM_CONFIG_BY_NAMESPACE,
-  MASTER_PERSONA_LLM_ROOT_CONFIG,
-  MASTER_PERSONA_MODEL_CATALOG_BY_PROVIDER,
-  MASTER_PERSONA_PROMPT_CONFIG,
-  MASTER_PERSONA_REQUIRED_NPCS,
-  MASTER_PERSONA_SELECTED_JSON_PATH,
-  MASTER_PERSONA_STARTED_TASK_ID,
+    MASTER_PERSONA_DIALOGUES_BY_PERSONA_ID,
+    MASTER_PERSONA_LLM_CONFIG_BY_NAMESPACE,
+    MASTER_PERSONA_LLM_ROOT_CONFIG,
+    MASTER_PERSONA_MODEL_CATALOG_BY_PROVIDER,
+    MASTER_PERSONA_PROMPT_CONFIG,
+    MASTER_PERSONA_REQUIRED_NPCS,
+    MASTER_PERSONA_SELECTED_JSON_PATH,
+    MASTER_PERSONA_STARTED_TASK_ID,
 } from '../fixtures/master-persona/mock-data';
 import {
-  TRANSLATION_FLOW_FILE_PAYLOADS,
-  TRANSLATION_FLOW_SELECTED_FILES,
-  TRANSLATION_FLOW_TASK_ID,
-  TRANSLATION_FLOW_TERMINOLOGY_COMPLETED_SUMMARY,
-  TRANSLATION_FLOW_TERMINOLOGY_LLM_CONFIG,
-  TRANSLATION_FLOW_TERMINOLOGY_PROMPT_CONFIG,
-  TRANSLATION_FLOW_TERMINOLOGY_SUMMARY,
+    TRANSLATION_FLOW_FILE_PAYLOADS,
+    TRANSLATION_FLOW_SELECTED_FILES,
+    TRANSLATION_FLOW_TASK_ID,
+    TRANSLATION_FLOW_TERMINOLOGY_COMPLETED_SUMMARY,
+    TRANSLATION_FLOW_TERMINOLOGY_LLM_CONFIG,
+    TRANSLATION_FLOW_TERMINOLOGY_PROMPT_CONFIG,
+    TRANSLATION_FLOW_TERMINOLOGY_SUMMARY,
 } from '../fixtures/translation-flow/mock-data';
 
 type DashboardMockFixture = {
@@ -255,7 +255,11 @@ export async function installWailsMocks(page: Page): Promise<void> {
           files: loadedFiles.map((file) => buildLoadedTranslationFile(file, 1, 50)),
         };
       },
-      RunTranslationFlowTerminology: async (taskID: string) => {
+      RunTranslationFlowTerminology: async (taskID: string, request: Record<string, unknown>) => {
+        const model = String(request.model ?? '').trim();
+        if (model.length === 0) {
+          throw new Error('terminology model is required');
+        }
         terminologySummary = {
           ...mockFixture.translationFlow.terminologyCompletedSummary,
           task_id: taskID,

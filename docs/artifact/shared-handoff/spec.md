@@ -1,4 +1,4 @@
-# Purpose
+# 共有ハンドオフ
 
 slice 間で受け渡す共有データ、中間成果物、resume 用状態の保存・検索境界を定義し、workflow 主導の handoff を成立させる。
 

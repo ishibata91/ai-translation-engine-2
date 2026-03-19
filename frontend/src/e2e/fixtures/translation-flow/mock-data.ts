@@ -86,7 +86,7 @@ export const TRANSLATION_FLOW_TERMINOLOGY_COMPLETED_SUMMARY = {
 
 export const TRANSLATION_FLOW_TERMINOLOGY_LLM_CONFIG = {
   provider: 'lmstudio',
-  model: 'local-terminology-model',
+  model: '',
   endpoint: 'http://localhost:1234',
   api_key: '',
   temperature: '0.2',

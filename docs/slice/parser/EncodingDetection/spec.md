@@ -1,4 +1,4 @@
-# EncodingDetection Spec
+# 文字コード検出
 
 ## Requirements
 

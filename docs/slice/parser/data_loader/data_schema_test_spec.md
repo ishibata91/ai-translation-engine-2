@@ -1,4 +1,4 @@
-# データスキーマ & ローダー テスト仕様書
+# データスキーマ・ローダー テスト仕様
 
 > Interface-First テスト設計
 > Phase 1: Data Foundation

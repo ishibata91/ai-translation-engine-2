@@ -1,4 +1,4 @@
-# フロントエンド アーキテクチャ (UI Architecture)
+# フロントエンド アーキテクチャ
 
 > **Frontend Headless Architecture v1 準拠**
 > Wails + React 環境における、ロジックとUI表示の完全分離戦略

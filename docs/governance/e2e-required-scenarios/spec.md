@@ -1,4 +1,4 @@
-# Spec: e2e-required-scenarios
+# E2E 必須シナリオ
 
 ## Overview
 

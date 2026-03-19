@@ -1,4 +1,4 @@
-# Spec: wails-frontend-placeholder
+# Wails フロントエンド プレースホルダ
 
 ## Overview
 

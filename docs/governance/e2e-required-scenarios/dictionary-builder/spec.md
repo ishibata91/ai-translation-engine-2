@@ -1,4 +1,4 @@
-# Spec: e2e-required-scenarios/dictionary-builder
+# 辞書DB作成 E2E 必須シナリオ
 
 ## Overview
 

@@ -1,4 +1,4 @@
-# UI画面一覧 (UI Screen List)
+# UI 画面一覧
 
 Skyrim Mod Translation Engine (v2.0) のReactフロントエンドにおける画面一覧と、それぞれの主要機能および対応するスライスの定義です。
 

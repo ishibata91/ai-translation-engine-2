@@ -1,12 +1,12 @@
 # バックエンド標準コーディング規約
 
-本規約は `openspec/specs/governance/architecture/spec.md` と `openspec/specs/governance/standard-test/spec.md` に準拠し、`pkg/` を中心とするバックエンド実装とそのレビュー基準を固定する。
+本規約は `docs/governance/architecture/spec.md` と `docs/governance/standard-test/spec.md` に準拠し、`pkg/` を中心とするバックエンド実装とそのレビュー基準を固定する。
 
 ## 1. 適用範囲
 
 - 対象は `pkg/**` と `cmd/**` を中心とする。
 - `app.go` / `main.go` など Wails エントリポイントは参考準拠とし、標準品質ゲートの必須判定対象には含めない。
-- フロントエンド固有の実装規約は `openspec/specs/frontend/frontend-architecture/spec.md` を参照する。
+- フロントエンド固有の実装規約は `docs/frontend/frontend-architecture/spec.md` を参照する。
 - 本規約における `MUST` は必須、`SHOULD` は正当な理由がある場合のみ例外を認める推奨事項とする。
 
 ## 2. 共通規約
@@ -19,7 +19,7 @@
 - ログ出力は `slog.*Context` を使用し、構造化フィールドで slice 名・入力件数・識別子などの分析可能な情報を記録すること。
 - 公開メソッドは 1 つの責務に保ち、複雑な分岐や処理列は同一ファイル内のプライベートメソッドへ分割すること。
 - doc コメント必須の対象は公開型、公開関数、公開メソッドに限定し、非公開シンボルには必須化しないこと。
-- テストは `openspec/specs/governance/standard-test/spec.md` に整合し、Table-Driven Test を主軸にすること。
+- テストは `docs/governance/standard-test/spec.md` に整合し、Table-Driven Test を主軸にすること。
 - テストおよび本番コードのデバッグは構造化ログ前提で行い、問題解析のために `context.Context` を途切れさせないこと。
 
 ### 2.2 SHOULD

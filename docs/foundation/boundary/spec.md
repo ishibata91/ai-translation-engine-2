@@ -1,4 +1,4 @@
-## ADDED Requirements
+# 境界基盤
 
 ### Requirement: foundation は横断基盤専用の責務区分でなければならない
 システムは、`telemetry` と `progress` のように複数責務区分から利用される横断基盤を `foundation` 区分として扱わなければならない。foundation は `controller`、`workflow`、`slice`、`runtime`、`gateway` から参照できなければならない。

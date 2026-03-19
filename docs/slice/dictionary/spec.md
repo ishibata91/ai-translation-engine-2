@@ -1,4 +1,4 @@
-# 辞書DB作成機能 (Dictionary Slice) 仕様書
+# 辞書DB作成スライス
 
 ## 概要
 xtranslator形式のXMLファイルから用語と翻訳データを読み込み、SQLiteベースの辞書DBへ登録する機能である。

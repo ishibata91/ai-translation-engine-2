@@ -1,8 +1,8 @@
-# Spec: spec-structure
+# Spec 構成ルール
 
 ## Overview
 
-OpenSpec 文書群の責務境界と canonical path を定義する共通 spec である。`architecture` の実装責務区分と `openspec/specs` の物理配置を一致させ、AI と人間が同じ入口から文書を辿れる状態を維持する。
+OpenSpec 文書群の責務境界と canonical path を定義する共通 spec である。`architecture` の実装責務区分と `docs/` の物理配置を一致させ、AI と人間が同じ入口から文書を辿れる状態を維持する。
 
 ## Document Boundaries
 
@@ -111,7 +111,17 @@ graph TD
 
 ## Current Layout
 
-物理配置の正本は `openspec/specs/<zone>/<capability>/spec.md` とする。補助文書は同じ capability ディレクトリ配下へ同居させる。`openspec/specs` root 直下の単独 `.md` は正本として扱わない。
+物理配置の正本は `docs/<zone>/<capability>/spec.md` とする。補助文書は同じ capability ディレクトリ配下へ同居させる。`docs/` root 直下の単独 `.md` は正本として扱わない。
+
+## Title Naming
+
+文書タイトルは日本語中心で統一し、1 行目の見出しと Starlight の表示タイトルを一致させる。
+
+- タイトルは「対象 + 責務」を基本にする
+- `仕様書`、`仕様`、`Spec` のような冗長な接尾辞は原則付けない
+- `UI`、`API`、`DTO`、`LLM`、`Wails` などの定着済み英略語は残してよい
+- zone 直下の overview は短い zone 名に寄せる
+- capability spec は他文書と区別できる具体名にする
 
 ## Requirements
 
@@ -148,12 +158,21 @@ spec の置き場は、機能名や画面名ではなく、その文書が最終
 - **AND** `slice` 区分へ置いてはならない
 
 ### Requirement: canonical path は zone/capability 配下へ統一されなければならない
-spec の正本は `openspec/specs/<zone>/<capability>/spec.md` に配置しなければならない。補助文書は同じ capability ディレクトリへ同居させなければならない。
+spec の正本は `docs/<zone>/<capability>/spec.md` に配置しなければならない。補助文書は同じ capability ディレクトリへ同居させなければならない。
 
 #### Scenario: 新しい capability spec を追加する
 - **WHEN** 開発者が新しい capability spec を追加する
-- **THEN** 文書は `openspec/specs/<zone>/<capability>/spec.md` に配置されなければならない
+- **THEN** 文書は `docs/<zone>/<capability>/spec.md` に配置されなければならない
 - **AND** root 直下へ単独 `.md` を追加してはならない
+
+### Requirement: browse/render 層は正本を複製してはならない
+Starlight などの browser generator は、`docs/` の正本を直接読み込む browse/render 層として構成しなければならない。site 用に同一内容の Markdown を別ディレクトリへ複製してはならない。
+
+#### Scenario: spec をブラウザで閲覧可能にする
+- **WHEN** 開発者が `docs/` 配下の spec を Starlight 等でブラウズ可能にしたい
+- **THEN** browse/render 層は `docs/` を content source として直接読み込まなければならない
+- **AND** `docs-site/` のような site ワークスペースは renderer とルーティングだけを持たなければならない
+- **AND** 正本の Markdown を site 専用ディレクトリへ重複配置してはならない
 
 #### Scenario: 補助文書を追加する
 - **WHEN** capability が test scope や interface note を持つ

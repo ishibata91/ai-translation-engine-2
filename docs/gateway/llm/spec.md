@@ -1,4 +1,4 @@
-# LLM (LM Studio) 仕様書
+# LLM ゲートウェイ
 
 ## 1. 概要
 本ドキュメントは `pkg/infrastructure/llm` のうち、**LM Studio プロバイダ実行に必要な契約とライフサイクル**を定義する。  

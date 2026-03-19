@@ -1,4 +1,4 @@
-# Master Persona API Test Scope
+# Master Persona API テスト範囲
 
 `api-test` capability における Master Persona 系 controller API テストの対象と観点を定義する。
 

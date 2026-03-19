@@ -1,4 +1,4 @@
-# Spec: e2e-required-scenarios/master-persona
+# Master Persona E2E 必須シナリオ
 
 ## Overview
 

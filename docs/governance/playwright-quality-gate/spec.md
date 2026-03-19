@@ -1,4 +1,4 @@
-# Spec: playwright-quality-gate
+# Playwright 品質ゲート
 
 ## Overview
 

@@ -11,11 +11,11 @@
 
 この文書が扱わないものは、専用 spec に委譲する。
 
-- バックエンドの実装規約: `openspec/specs/governance/backend-coding-standards/guide.md`
-- 品質ゲートと lint 導線: `openspec/specs/governance/backend-quality-gates/spec.md`
-- テスト設計標準: `openspec/specs/governance/standard-test/spec.md`
-- ログ設計詳細: `openspec/specs/governance/log-guide/spec.md`
-- フロントエンド構造: `openspec/specs/frontend/frontend-architecture/spec.md`
+- バックエンドの実装規約: `docs/governance/backend-coding-standards/guide.md`
+- 品質ゲートと lint 導線: `docs/governance/backend-quality-gates/spec.md`
+- テスト設計標準: `docs/governance/standard-test/spec.md`
+- ログ設計詳細: `docs/governance/log-guide/spec.md`
+- フロントエンド構造: `docs/frontend/frontend-architecture/spec.md`
 
 ---
 
@@ -77,7 +77,7 @@
 - 他 slice が必要とするデータを、ある slice の内部保存物として直接参照してはならない
 - slice 間の受け渡しは、workflow が artifact 識別子や検索条件を束ねて実現する
 - artifact は保存・検索の責務だけを持ち、業務判断や進行決定を持たない
-- 永続化の配置詳細は `openspec/specs/governance/database-erd/spec.md` に従い、slice ローカル DB と shared artifact ストアを明示的に分離する
+- 永続化の配置詳細は `docs/governance/database-erd/spec.md` に従い、slice ローカル DB と shared artifact ストアを明示的に分離する
 
 ---
 

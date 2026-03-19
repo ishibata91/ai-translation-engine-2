@@ -9,7 +9,10 @@
     "backend:check": "go run ./tools/backendquality check",
     "backend:watch": "go run ./tools/backendquality watch",
     "backend:watch:lint": "go run ./tools/backendquality watch --lint",
-    "backend:vuln": "go run ./tools/backendquality vuln"
+    "backend:vuln": "go run ./tools/backendquality vuln",
+    "docs:dev": "npm --prefix docs-site run dev",
+    "docs:build": "npm --prefix docs-site run build",
+    "docs:preview": "npm --prefix docs-site run preview"
   },
   "devDependencies": {
     "@fission-ai/openspec": "^1.2.0",

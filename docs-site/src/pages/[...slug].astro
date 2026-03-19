@@ -1,0 +1,49 @@
+---
+import { getCollection, render } from 'astro:content';
+import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro';
+import { buildSidebar, getDocDescription, getDocTitle, getRouteSegments, type SiteEntry } from '../lib/docs';
+
+type Props = {
+  entry: SiteEntry;
+};
+
+export async function getStaticPaths() {
+  const [docsEntries, changeEntries, skillEntries] = await Promise.all([
+    getCollection('docs'),
+    getCollection('changes'),
+    getCollection('skills'),
+  ]);
+  const entries = [...docsEntries, ...changeEntries, ...skillEntries];
+  const sidebar = buildSidebar(entries);
+
+  return entries.map((entry) => {
+    const segments = getRouteSegments(entry);
+
+    return {
+      params: {
+        slug: segments.length === 0 ? undefined : segments.join('/'),
+      },
+      props: {
+        entry,
+        sidebar,
+      },
+    };
+  });
+}
+
+const { entry, sidebar } = Astro.props as Props & { sidebar: ReturnType<typeof buildSidebar> };
+const { Content, headings } = await render(entry);
+const description = getDocDescription(entry);
+---
+
+<StarlightPage
+  frontmatter={{
+    title: getDocTitle(entry),
+    ...(description ? { description } : {}),
+    head: [],
+  }}
+  sidebar={sidebar}
+  headings={headings}
+>
+  <Content />
+</StarlightPage>

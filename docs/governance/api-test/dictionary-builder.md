@@ -1,4 +1,4 @@
-# Dictionary Builder API Test Scope
+# 辞書DB作成 API テスト範囲
 
 `api-test` capability における Dictionary Builder 系 controller API テストの対象と観点を定義する。
 

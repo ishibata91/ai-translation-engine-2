@@ -1,4 +1,4 @@
-# ParallelParsing Spec
+# 並列パース
 
 ## Requirements
 

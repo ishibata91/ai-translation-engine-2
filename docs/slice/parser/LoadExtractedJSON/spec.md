@@ -1,4 +1,4 @@
-# LoadExtractedJSON Spec
+# 抽出済み JSON 読み込み
 
 ## Requirements
 

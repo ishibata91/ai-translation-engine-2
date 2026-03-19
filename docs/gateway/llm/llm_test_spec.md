@@ -1,4 +1,4 @@
-# LLMクライアント テスト設計 (LLMClient Test Spec)
+# LLM テスト仕様
 
 本設計は `standard_test_spec.md` と `log-guide.md` に厳密に準拠し、個別関数の細粒度なユニットテストを作成せず、Vertical Slice の Contract に対する網羅的なパラメタライズドテスト（Table-Driven Test）を定義する。
 
@@ -63,7 +63,7 @@ xAI Batch API は OpenAI Batch API と非互換のため、独自のフォーマ
 
 ```text
 以下はスライス「LLMClient」の実行ログファイル（logs/test_XXXXX_LLMClient.jsonl）の内容である。
-仕様書（openspec/specs/gateway/llm/llm_interface.md および 本テスト設計）の期待動作と比較し、乖離がある箇所を特定して修正コードを生成せよ。
+仕様書（docs/gateway/llm/llm_interface.md および 本テスト設計）の期待動作と比較し、乖離がある箇所を特定して修正コードを生成せよ。
 
 --- 実行ログ ---
 {ログファイル内容}

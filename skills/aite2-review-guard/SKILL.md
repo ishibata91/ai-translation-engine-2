@@ -1,41 +1,29 @@
 ---
 name: aite2-review-guard
-description: AI Translation Engine 2 専用。change 文書、仕様差分、実装差分を突き合わせ、バグ、責務逸脱、仕様未反映、仕様差分未同期、テスト不足をレビューする。レビュー依頼や自己点検時に使う。
+description: AI Translation Engine 2 専用。change と実装をレビューする。「レビューして」「仕様と実装のズレを見て」と言われたときに起動する。
 ---
 
 # AITE2 Review Guard
 
-この skill はレビュー用。
-目的は、設計文書と実装のズレを種類ごとに切り分け、重大な欠陥から優先して指摘すること。
+この skill は change 文書、`docs/` 正本、実装差分を照合し、重大な欠陥から順に指摘するための review skill。
 
 ## 使う場面
-- 実装後の自己レビュー
-- PR 相当の差分レビュー
-- 設計はあるが実装がそれに沿っているか不安
+- 実装後の自己レビューをしたい
+- PR 相当の差分レビューをしたい
+- 設計と実装が揃っているか確認したい
 - UI / シナリオ / ロジックの取りこぼしを見たい
 
-## 入力
-- `docs/` の関連仕様
-- 実装差分
-- `changes/<id>/ui.md`
-- `changes/<id>/scenarios.md`
-- `changes/<id>/logic.md`
-- 必要なら `tasks.md`
+## 手順
+1. 関連する `changes/` 文書、`docs/` 正本、実装差分を集める。
+2. バグ、退行、責務逸脱、仕様未反映、未同期、テスト不足の観点で見る。
+3. Findings を重大度順に並べる。
+4. 根拠となる文書または差分位置を結び付ける。
+5. Open Questions と Residual Risks を分けて整理する。
 
-## 出力
-- Findings
-- Open Questions
-- Residual Risks
-
-## 観点
-- バグや退行
-- 責務境界違反
-- 仕様差分の未確認
-- `changes/` と `docs/` の未同期
-- UI Contract 未反映
-- シナリオ抜け
-- テスト不足
-- 品質ゲート不足
+## 参照資料
+- レビュー記録の雛形は `references/templates.md` を使う。
+- 指摘の例は `references/examples.md` を読む。
+- 観点漏れ防止は `references/review-checklist.md` を使う。
 
 ## 原則
 - 作業は対話内でタスク化し、常に 1 ステップずつ進める

@@ -1,4 +1,4 @@
-# Spec: wails-app-shell
+# Wails アプリシェル
 
 ## Overview
 

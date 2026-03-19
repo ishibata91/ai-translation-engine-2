@@ -1,4 +1,4 @@
-# Spec: e2e-page-object-architecture
+# E2E ページオブジェクト設計
 
 ## Purpose
 

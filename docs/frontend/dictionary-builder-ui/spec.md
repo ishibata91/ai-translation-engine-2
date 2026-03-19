@@ -1,4 +1,4 @@
-# Delta Specs
+# 辞書DB作成 UI
 ## MODIFIED Requirements
 ### Requirement: Dictionary Builder UI Components Integrity
 Dictionary Builder UI components MUST preserve existing UX while extracting page logic into a feature hook.

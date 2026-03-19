@@ -52,6 +52,7 @@ const modelOptionListSchema = z.array(modelOptionSchema);
 
 const DEFAULT_MODEL_CAPABILITY: MasterPersonaModelCapability = { supportsBatch: false };
 const DEFAULT_CLOUD_MODEL_CAPABILITY: MasterPersonaModelCapability = { supportsBatch: true };
+const MODEL_UNAVAILABLE_ID = '(model-unavailable)';
 
 interface UseModelSettingsArgs {
     value: MasterPersonaLLMConfig;
@@ -168,6 +169,45 @@ export function useModelSettings({ value, onChange, enabled, namespace }: UseMod
         () => normalizeExecutionProfiles(selectedModelCapability),
         [selectedModelCapability],
     );
+
+    useEffect(() => {
+        if (!enabled) {
+            return;
+        }
+        if (currentModel === selectedModelValue) {
+            return;
+        }
+
+        const hasMatchingCurrentModel = selectableModelOptions.some(
+            (option) => option.id === currentModel || option.label === currentModel,
+        );
+        if (hasMatchingCurrentModel) {
+            return;
+        }
+        if (selectedModelValue.trim() === '' || selectedModelValue === MODEL_UNAVAILABLE_ID) {
+            return;
+        }
+
+        const nextCapability = resolveModelCapability(
+            provider,
+            selectedModelValue,
+            dynamicOptionsByProvider,
+        );
+        onChange({
+            ...value,
+            model: selectedModelValue,
+            bulkStrategy: nextCapability.supportsBatch ? value.bulkStrategy : 'sync',
+        });
+    }, [
+        currentModel,
+        dynamicOptionsByProvider,
+        enabled,
+        onChange,
+        provider,
+        selectableModelOptions,
+        selectedModelValue,
+        value,
+    ]);
 
     useEffect(() => {
         if (value.provider === provider) {

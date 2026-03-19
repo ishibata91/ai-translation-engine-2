@@ -1,4 +1,4 @@
-# Spec: frontend-code-quality-guardrails
+# フロントエンド コード品質ガードレール
 
 ## Overview
 

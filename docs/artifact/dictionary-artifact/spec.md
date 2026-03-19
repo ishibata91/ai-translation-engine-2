@@ -1,4 +1,4 @@
-# Purpose
+# 辞書アーティファクト
 
 Dictionary Builder と translation flow が共有する辞書成果物の正本保存・検索境界を定義する。
 

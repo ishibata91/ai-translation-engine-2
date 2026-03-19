@@ -1,4 +1,4 @@
-# Spec: format
+# フォーマット境界
 
 ## Purpose
 

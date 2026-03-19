@@ -1,4 +1,4 @@
-# NPCペルソナ生成 テスト設計 (PersonaGenSlice Test Spec)
+# NPC ペルソナ生成 テスト仕様
 
 本設計は `standard_test_spec.md` と `log-guide.md` に厳密に準拠し、個別関数の細粒度なユニットテストを作成せず、Vertical Slice の Contract に対する網羅的なパラメタライズドテスト（Table-Driven Test）を定義する。
 
@@ -49,7 +49,7 @@
 
 ```text
 以下はスライス「PersonaGenSlice」の実行ログファイル（logs/test_XXXXX_PersonaGenSlice.jsonl）の内容である。
-仕様書（openspec/specs/slice/persona/spec.md および 本テスト設計）の期待動作と比較し、乖離がある箇所を特定して修正コードを生成せよ。
+仕様書（docs/slice/persona/spec.md および 本テスト設計）の期待動作と比較し、乖離がある箇所を特定して修正コードを生成せよ。
 
 --- 実行ログ ---
 {ログファイル内容}

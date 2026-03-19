@@ -1,4 +1,4 @@
-# Master Persona Execution Flow 仕様
+# Master Persona 実行フロー
 
 ## Purpose
 MasterPersona 実行を `request enqueue -> request execute -> persona save` の段階で追跡し、execution profile ベースで再開可能なフローを定義する。

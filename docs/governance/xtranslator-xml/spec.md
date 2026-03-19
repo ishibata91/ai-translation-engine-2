@@ -1,4 +1,4 @@
-# xTranslator XML (SSTXMLRessources) 仕様メモ
+# xTranslator XML 仕様メモ
 
 xTranslator が出力・使用する XML ベースの辞書/翻訳リソースファイルについての仕様メモです。
 スカイリムなどのゲームMod翻訳において、文字列のインポート/エクスポートファイルとして利用されます。

@@ -1,4 +1,4 @@
-# Purpose
+# ワークフロー コア
 
 controller から usecase slice と runtime を接続する workflow capability の責務と要件を定義する。
 

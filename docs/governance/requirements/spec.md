@@ -1,4 +1,4 @@
-# Skyrim Mod Translation Engine (v2.0) 要件定義書
+# 全体要件定義
 
 ## 1. はじめに
 

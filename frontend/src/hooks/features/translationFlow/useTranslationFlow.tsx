@@ -132,12 +132,24 @@ const toTaskIDFromRoute = (value: unknown): string => {
     return value.trim();
 };
 
-const resolveTaskID = async (routeTaskID: string): Promise<string> => {
-    if (routeTaskID !== '') {
-        return routeTaskID;
+const hasTaskID = (payload: unknown, taskID: string): boolean => {
+    if (taskID === '' || !Array.isArray(payload)) {
+        return false;
     }
 
+    return payload.some((entry) => {
+        if (!entry || typeof entry !== 'object') {
+            return false;
+        }
+        return typeof (entry as {id?: unknown}).id === 'string' && (entry as {id: string}).id.trim() === taskID;
+    });
+};
+
+const resolveTaskID = async (routeTaskID: string): Promise<string> => {
     const allTasks = await GetAllTasks();
+    if (hasTaskID(allTasks, routeTaskID)) {
+        return routeTaskID;
+    }
     return resolveTranslationProjectTaskID(allTasks);
 };
 
@@ -201,6 +213,7 @@ export function useTranslationFlow(): UseTranslationFlowResult {
     const routeTaskID = useMemo(() => toTaskIDFromRoute(navState?.taskId), [navState?.taskId]);
 
     const [taskId, setTaskID] = useState(routeTaskID);
+    const [isTaskIDResolved, setIsTaskIDResolved] = useState(false);
     const [activeTab, setActiveTab] = useState(0);
     const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
     const [loadedFiles, setLoadedFiles] = useState<UseTranslationFlowResult['state']['loadedFiles']>([]);
@@ -219,6 +232,7 @@ export function useTranslationFlow(): UseTranslationFlowResult {
 
     useEffect(() => {
         let active = true;
+        setIsTaskIDResolved(false);
 
         const run = async () => {
             try {
@@ -227,6 +241,7 @@ export function useTranslationFlow(): UseTranslationFlowResult {
                     return;
                 }
                 setTaskID(resolved);
+                setIsTaskIDResolved(true);
                 if (resolved === '') {
                     setErrorMessage('');
                     return;
@@ -237,6 +252,7 @@ export function useTranslationFlow(): UseTranslationFlowResult {
                     return;
                 }
                 setErrorMessage(toErrorMessage(error, TO_TASK_RESOLVE_ERROR));
+                setIsTaskIDResolved(true);
             }
         };
 
@@ -332,16 +348,16 @@ export function useTranslationFlow(): UseTranslationFlowResult {
     }, [isTerminologyPromptHydrated, terminologyPromptConfig]);
 
     const handleRefreshTerminologyPhase = useCallback(async () => {
-        if (taskId === '') {
-            setTerminologySummary(EMPTY_TERMINOLOGY_SUMMARY);
-            return;
-        }
         try {
             const payload = await GetTranslationFlowTerminology(taskId);
             const summary = mapTerminologyPhaseResult(payload);
+            const nextTaskID = summary.taskId || taskId;
+            if (nextTaskID !== '' && nextTaskID !== taskId) {
+                setTaskID(nextTaskID);
+            }
             setTerminologySummary({
                 ...summary,
-                taskId: summary.taskId || taskId,
+                taskId: nextTaskID,
             });
         } catch (error) {
             setTerminologyErrorMessage(toErrorMessage(error, '単語翻訳の状態取得に失敗しました'));
@@ -349,10 +365,6 @@ export function useTranslationFlow(): UseTranslationFlowResult {
     }, [taskId]);
 
     const handleReloadFiles = useCallback(async () => {
-        if (taskId === '') {
-            setLoadedFiles([]);
-            return;
-        }
         setIsLoading(true);
         setErrorMessage('');
         try {
@@ -370,9 +382,12 @@ export function useTranslationFlow(): UseTranslationFlowResult {
     }, [taskId]);
 
     useEffect(() => {
+        if (!isTaskIDResolved) {
+            return;
+        }
         void handleReloadFiles();
         void handleRefreshTerminologyPhase();
-    }, [handleRefreshTerminologyPhase, handleReloadFiles]);
+    }, [handleRefreshTerminologyPhase, handleReloadFiles, isTaskIDResolved]);
 
     const handleSelectFiles = useCallback(async () => {
         setErrorMessage('');
@@ -392,7 +407,7 @@ export function useTranslationFlow(): UseTranslationFlowResult {
     }, []);
 
     const handleLoadSelectedFiles = useCallback(async () => {
-        if (selectedFiles.length === 0 || taskId === '') {
+        if (selectedFiles.length === 0) {
             return;
         }
 

@@ -162,7 +162,9 @@ export class TranslationFlowPO extends BasePO {
   }
 
   async runTerminologyPhase(): Promise<void> {
-    await this.terminologyPanel().getByRole('button', {name: '単語翻訳を実行'}).click();
+    const runButton = this.terminologyPanel().getByRole('button', {name: '単語翻訳を実行'});
+    await expect(runButton).toBeEnabled();
+    await runButton.click();
     await expect(this.terminologyPanel().getByText('単語翻訳完了')).toBeVisible();
     await this.expectNoRuntimeErrors();
   }

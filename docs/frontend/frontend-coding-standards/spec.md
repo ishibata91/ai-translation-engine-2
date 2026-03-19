@@ -1,9 +1,9 @@
-# フロントエンド コーディング規約
+# フロントエンド コーディング標準
 
 ## 1. 目的
 
 - フロントエンドの品質を安定化し、リファクタ時のデグレを抑える。
-- `openspec/specs/governance/architecture/spec.md` と `openspec/specs/frontend/frontend-architecture/spec.md` の方針に沿って、責務分離と保守性を担保する。
+- `docs/governance/architecture/spec.md` と `docs/frontend/frontend-architecture/spec.md` の方針に沿って、責務分離と保守性を担保する。
 
 ## 2. 適用範囲
 

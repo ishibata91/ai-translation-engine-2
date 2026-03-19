@@ -1,4 +1,4 @@
-# Purpose
+# 翻訳フロー データ読み込み
 
 翻訳フローのデータロード工程における phase 順序と artifact handoff を定義する。
 

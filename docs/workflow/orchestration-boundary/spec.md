@@ -1,4 +1,4 @@
-# workflow-orchestration-boundary Specification
+# オーケストレーション境界
 
 ## Purpose
 TBD - created by archiving change fix-workflow-boundary-dependencies. Update Purpose after archive.
@@ -25,4 +25,3 @@ TBD - created by archiving change fix-workflow-boundary-dependencies. Update Pur
 #### Scenario: workflow配下のテストで境界違反を追加する
 - **WHEN** 開発者が `pkg/workflow/**` 配下の test code で controller または gateway への直接依存を追加する
 - **THEN** 品質ゲートは workflow 境界違反として報告しなければならない
-

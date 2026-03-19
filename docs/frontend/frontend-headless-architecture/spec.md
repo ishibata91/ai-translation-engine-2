@@ -1,4 +1,4 @@
-# Spec: frontend-headless-architecture
+# フロントエンド ヘッドレスアーキテクチャ
 
 ## Overview
 

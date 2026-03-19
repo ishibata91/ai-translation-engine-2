@@ -1,4 +1,4 @@
-# Parser Slice アーキテクチャ
+# パーサースライス アーキテクチャ
 > Interface-First AIDD: Parser 垂直スライス
 
 ## 目的

@@ -1,0 +1,19 @@
+{
+  "name": "aite2-docs-site",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview"
+  },
+  "dependencies": {
+    "@astrojs/starlight": "^0.38.1",
+    "astro-mermaid": "^1.3.1",
+    "astro": "^6.0.6",
+    "mermaid": "^11.12.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}

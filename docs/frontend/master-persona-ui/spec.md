@@ -1,4 +1,4 @@
-# Master Persona UI 仕様書
+# Master Persona 画面UI
 
 ## Purpose
 Master Persona 画面における UI 表示責務と feature hook 境界を定義し、実行方式選択と進捗表示を provider 非依存で扱う。

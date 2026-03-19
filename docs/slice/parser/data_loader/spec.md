@@ -1,4 +1,4 @@
-# Data parser
+# データローダー
 > Responsible for Phase 1 Data Foundation and domain models.
 
 ## Purpose

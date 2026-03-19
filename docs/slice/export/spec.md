@@ -1,4 +1,4 @@
-# XMLエクスポート (Export) 仕様書
+# XML エクスポート
 
 ## 概要
 Terminology Slice (Pass 1) の用語翻訳結果と、Pass 2 Translator Slice (Pass 2) の本文翻訳結果を統合し、xTranslator エディタで読み込み可能なXML形式（SSTXMLRessources）として出力する機能である。

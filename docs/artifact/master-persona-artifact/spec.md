@@ -1,4 +1,4 @@
-# Purpose
+# Master Persona アーティファクト
 
 MasterPersona の final 成果物と task 中間生成物の保存境界を定義する。
 

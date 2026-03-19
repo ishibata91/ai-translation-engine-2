@@ -1,4 +1,4 @@
-# Persona Request Preview 仕様書
+# Persona Request プレビュー
 
 ## 概要
 `MasterPersona` 画面からペルソナ生成Phase 1（リクエスト生成）を起動し、タスク状態と既存ログビューアで結果確認できるようにする機能。
