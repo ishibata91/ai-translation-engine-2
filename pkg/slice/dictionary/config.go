@@ -1,5 +1,7 @@
 package dictionary
 
+import "github.com/ishibata91/ai-translation-engine-2/pkg/foundation"
+
 // Config holds the configuration for the DictionaryBuilderSlice.
 type Config struct {
 	// AllowedRECTypes contains the list of REC types (e.g., "BOOK:FULL", "NPC_:FULL")
@@ -11,24 +13,7 @@ type Config struct {
 // suitable for typical Skyrim Mod Translation.
 func DefaultConfig() Config {
 	return Config{
-		AllowedRECTypes: []string{
-			"BOOK:FULL",
-			"NPC_:FULL",
-			"NPC_:SHRT",
-			"ARMO:FULL",
-			"WEAP:FULL",
-			"LCTN:FULL",
-			"CELL:FULL",
-			"CONT:FULL",
-			"MISC:FULL",
-			"ALCH:FULL",
-			"FURN:FULL",
-			"DOOR:FULL",
-			"RACE:FULL",
-			"INGR:FULL",
-			"FLOR:FULL",
-			"SHOU:FULL",
-		},
+		AllowedRECTypes: append([]string(nil), foundation.DictionaryImportRECTypes...),
 	}
 }
 

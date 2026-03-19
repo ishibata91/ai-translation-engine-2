@@ -12,15 +12,17 @@ import (
 
 func TestRepository_SaveAndPreview_TableDriven(t *testing.T) {
 	testCases := []struct {
-		name                string
-		buildOutput         func() *skyrim.ParserOutput
-		expectedPreviewRows int
-		verify              func(t *testing.T, db *sql.DB, repo Repository, file InputFile)
+		name                       string
+		buildOutput                func() *skyrim.ParserOutput
+		expectedPreviewRows        int
+		expectedTerminologyEntries int
+		verify                     func(t *testing.T, db *sql.DB, repo Repository, file InputFile)
 	}{
 		{
-			name:                "all sections are saved and projected into preview",
-			buildOutput:         buildAllSectionOutput,
-			expectedPreviewRows: 16,
+			name:                       "all sections are saved and projected into preview",
+			buildOutput:                buildAllSectionOutput,
+			expectedPreviewRows:        19,
+			expectedTerminologyEntries: 9,
 			verify: func(t *testing.T, db *sql.DB, repo Repository, file InputFile) {
 				t.Helper()
 				assertQueryCount(t, db, `SELECT COUNT(1) FROM translation_input_dialogue_groups WHERE file_id = ?`, file.ID, 1)
@@ -61,12 +63,30 @@ func TestRepository_SaveAndPreview_TableDriven(t *testing.T) {
 						t.Fatalf("section %s was not projected in preview", section)
 					}
 				}
+				terminologyInput, err := repo.LoadTerminologyInput(context.Background(), "task-translation-1")
+				if err != nil {
+					t.Fatalf("LoadTerminologyInput failed: %v", err)
+				}
+				if len(terminologyInput.Entries) != 9 {
+					t.Fatalf("unexpected terminology entry count: got=%d want=9", len(terminologyInput.Entries))
+				}
+				foundWEAP := false
+				for _, entry := range terminologyInput.Entries {
+					if entry.RecordType == "WEAP:FULL" && entry.SourceText == "Weapon Name" {
+						foundWEAP = true
+						break
+					}
+				}
+				if !foundWEAP {
+					t.Fatalf("expected WEAP:FULL terminology entry to be preserved")
+				}
 			},
 		},
 		{
-			name:                "editor_id is projected from source_record_id fallback when empty",
-			buildOutput:         buildOutputWithoutEditorID,
-			expectedPreviewRows: 1,
+			name:                       "editor_id is projected from source_record_id fallback when empty",
+			buildOutput:                buildOutputWithoutEditorID,
+			expectedPreviewRows:        1,
+			expectedTerminologyEntries: 1,
 			verify: func(t *testing.T, _ *sql.DB, repo Repository, file InputFile) {
 				t.Helper()
 				preview, err := repo.ListPreviewRows(context.Background(), file.ID, 1, 50)
@@ -79,12 +99,20 @@ func TestRepository_SaveAndPreview_TableDriven(t *testing.T) {
 				if preview.Rows[0].EditorID != "item-no-edid" {
 					t.Fatalf("unexpected editor_id fallback: got=%q want=%q", preview.Rows[0].EditorID, "item-no-edid")
 				}
+				terminologyInput, err := repo.LoadTerminologyInput(context.Background(), "task-translation-1")
+				if err != nil {
+					t.Fatalf("LoadTerminologyInput failed: %v", err)
+				}
+				if len(terminologyInput.Entries) != 1 {
+					t.Fatalf("unexpected terminology entry count: got=%d want=1", len(terminologyInput.Entries))
+				}
 			},
 		},
 		{
-			name:                "preview paging uses 50-row boundaries",
-			buildOutput:         func() *skyrim.ParserOutput { return buildDialogueOnlyOutput(55) },
-			expectedPreviewRows: 55,
+			name:                       "preview paging uses 50-row boundaries",
+			buildOutput:                func() *skyrim.ParserOutput { return buildDialogueOnlyOutput(55) },
+			expectedPreviewRows:        55,
+			expectedTerminologyEntries: 0,
 			verify: func(t *testing.T, _ *sql.DB, repo Repository, file InputFile) {
 				t.Helper()
 				firstPage, err := repo.ListPreviewRows(context.Background(), file.ID, 1, 50)
@@ -113,6 +141,13 @@ func TestRepository_SaveAndPreview_TableDriven(t *testing.T) {
 				}
 				if firstPage.Rows[0].ID == secondPage.Rows[0].ID {
 					t.Fatalf("page1 and page2 must not start from the same row")
+				}
+				terminologyInput, err := repo.LoadTerminologyInput(context.Background(), "task-translation-1")
+				if err != nil {
+					t.Fatalf("LoadTerminologyInput failed: %v", err)
+				}
+				if len(terminologyInput.Entries) != 0 {
+					t.Fatalf("unexpected terminology entry count: got=%d want=0", len(terminologyInput.Entries))
 				}
 			},
 		},
@@ -143,6 +178,14 @@ func TestRepository_SaveAndPreview_TableDriven(t *testing.T) {
 			}
 			if files[0].PreviewRowCount != tc.expectedPreviewRows {
 				t.Fatalf("unexpected listed preview row count: got=%d want=%d", files[0].PreviewRowCount, tc.expectedPreviewRows)
+			}
+
+			terminologyInput, err := repo.LoadTerminologyInput(context.Background(), "task-translation-1")
+			if err != nil {
+				t.Fatalf("LoadTerminologyInput failed: %v", err)
+			}
+			if len(terminologyInput.Entries) != tc.expectedTerminologyEntries {
+				t.Fatalf("unexpected terminology entry count: got=%d want=%d", len(terminologyInput.Entries), tc.expectedTerminologyEntries)
 			}
 
 			if tc.verify != nil {
@@ -209,6 +252,10 @@ func buildAllSectionOutput() *skyrim.ParserOutput {
 	itemText := "Item Text"
 	itemTypeHint := "Book"
 	itemSource := "item-source"
+	weaponName := "Weapon Name"
+	weaponDescription := "Weapon Description"
+	weaponText := "Weapon Text"
+	weaponSource := "weapon-source"
 
 	magicName := "Magic Name"
 	magicDescription := "Magic Description"
@@ -298,6 +345,12 @@ func buildAllSectionOutput() *skyrim.ParserOutput {
 			Text:                &itemText,
 			TypeHint:            &itemTypeHint,
 			Source:              &itemSource,
+		}, {
+			BaseExtractedRecord: skyrim.BaseExtractedRecord{ID: "item-2", EditorID: &editorID, Type: "WEAP", SourceJSON: sourcePath},
+			Name:                &weaponName,
+			Description:         &weaponDescription,
+			Text:                &weaponText,
+			Source:              &weaponSource,
 		}},
 		Magic: []skyrim.Magic{{
 			BaseExtractedRecord: skyrim.BaseExtractedRecord{ID: "magic-1", EditorID: &editorID, Type: "SPEL", SourceJSON: sourcePath},

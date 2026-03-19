@@ -9,61 +9,20 @@ import (
 
 // TerminologyInput is the input data required for term translation.
 type TerminologyInput struct {
-	NPCs      map[string]TermNPC
-	Items     []TermItem
-	Magic     []TermMagic
-	Locations []TermLocation
-	Messages  []TermMessage
-	Quests    []TermQuest
+	TaskID    string
+	FileNames []string
+	Entries   []TerminologyEntry
 }
 
-type TermNPC struct {
+// TerminologyEntry represents one normalized terminology target row.
+type TerminologyEntry struct {
 	ID         string
-	EditorID   *string
-	Type       string
-	Name       string
+	EditorID   string
+	RecordType string
+	SourceText string
 	SourceFile string
-}
-
-type TermItem struct {
-	ID         string
-	EditorID   *string
-	Type       string
-	Name       *string
-	Text       *string
-	SourceFile string
-}
-
-type TermMagic struct {
-	ID         string
-	EditorID   *string
-	Type       string
-	Name       *string
-	SourceFile string
-}
-
-type TermLocation struct {
-	ID         string
-	EditorID   *string
-	Type       string
-	Name       *string
-	SourceFile string
-}
-
-type TermMessage struct {
-	ID         string
-	EditorID   *string
-	Type       string
-	Title      *string
-	SourceFile string
-}
-
-type TermQuest struct {
-	ID         string
-	EditorID   *string
-	Type       string
-	Name       *string
-	SourceFile string
+	PairKey    string
+	Variant    string
 }
 
 // RequestConfig stores runtime request settings passed from workflow/UI.

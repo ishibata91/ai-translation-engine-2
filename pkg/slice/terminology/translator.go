@@ -50,8 +50,8 @@ func (t *TermTranslatorImpl) PreparePrompts(ctx context.Context, taskID string, 
 	if err != nil {
 		return nil, fmt.Errorf("load terminology artifact input task_id=%s: %w", taskID, err)
 	}
-	typedInput := mapArtifactInput(artifactInput)
-	requests, err := t.preparePrompts(ctx, typedInput, options)
+	input := toTerminologyInput(artifactInput)
+	requests, err := t.preparePrompts(ctx, input, options)
 	if err != nil {
 		return nil, fmt.Errorf("prepare terminology prompts task_id=%s: %w", taskID, err)
 	}
@@ -285,7 +285,7 @@ func (t *TermTranslatorImpl) LegacySaveResults(ctx context.Context, data Termino
 
 // fetchReferenceTerms retrieves context reference terms based on the record type.
 func (t *TermTranslatorImpl) fetchReferenceTerms(ctx context.Context, req *TermTranslationRequest) {
-	keywords := strings.Split(req.SourceText, " ")
+	keywords := strings.Fields(req.SourceText)
 	isNPC := strings.HasPrefix(req.RecordType, "NPC")
 
 	var contextRefs []ReferenceTerm
@@ -359,96 +359,23 @@ func userPromptOrDefault(options PhaseOptions) string {
 	return "Translate the provided term."
 }
 
-func mapArtifactInput(input translationinput.TerminologyInput) TerminologyInput {
-	out := TerminologyInput{
-		NPCs:      make(map[string]TermNPC, len(input.NPCs)),
-		Items:     make([]TermItem, 0, len(input.Items)),
-		Magic:     make([]TermMagic, 0, len(input.Magic)),
-		Locations: make([]TermLocation, 0, len(input.Locations)),
-		Messages:  make([]TermMessage, 0, len(input.Messages)),
-		Quests:    make([]TermQuest, 0, len(input.Quests)),
-	}
-	for idx, npc := range input.NPCs {
-		key := npc.EditorID
-		if strings.TrimSpace(key) == "" {
-			key = fmt.Sprintf("npc:%d:%s", idx, npc.ID)
-		}
-		editorID := stringPtrIfPresent(npc.EditorID)
-		out.NPCs[key] = TermNPC{
-			ID:         npc.ID,
-			EditorID:   editorID,
-			Type:       normalizeRecordType(npc.RecordType),
-			Name:       npc.Name,
-			SourceFile: npc.SourceFile,
-		}
-	}
-	for _, item := range input.Items {
-		out.Items = append(out.Items, TermItem{
-			ID:         item.ID,
-			EditorID:   stringPtrIfPresent(item.EditorID),
-			Type:       normalizeRecordType(item.RecordType),
-			Name:       stringPtrIfPresent(item.Name),
-			Text:       stringPtrIfPresent(item.Text),
-			SourceFile: item.SourceFile,
+func toTerminologyInput(input translationinput.TerminologyInput) TerminologyInput {
+	entries := make([]TerminologyEntry, 0, len(input.Entries))
+	for _, entry := range input.Entries {
+		entries = append(entries, TerminologyEntry{
+			ID:         entry.ID,
+			EditorID:   entry.EditorID,
+			RecordType: entry.RecordType,
+			SourceText: entry.SourceText,
+			SourceFile: entry.SourceFile,
+			PairKey:    entry.PairKey,
+			Variant:    entry.Variant,
 		})
 	}
-	for _, magic := range input.Magic {
-		out.Magic = append(out.Magic, TermMagic{
-			ID:         magic.ID,
-			EditorID:   stringPtrIfPresent(magic.EditorID),
-			Type:       normalizeRecordType(magic.RecordType),
-			Name:       stringPtrIfPresent(magic.Name),
-			SourceFile: magic.SourceFile,
-		})
-	}
-	for _, location := range input.Locations {
-		out.Locations = append(out.Locations, TermLocation{
-			ID:         location.ID,
-			EditorID:   stringPtrIfPresent(location.EditorID),
-			Type:       normalizeRecordType(location.RecordType),
-			Name:       stringPtrIfPresent(location.Name),
-			SourceFile: location.SourceFile,
-		})
-	}
-	for _, message := range input.Messages {
-		out.Messages = append(out.Messages, TermMessage{
-			ID:         message.ID,
-			EditorID:   stringPtrIfPresent(message.EditorID),
-			Type:       normalizeRecordType(message.RecordType),
-			Title:      stringPtrIfPresent(message.Title),
-			SourceFile: message.SourceFile,
-		})
-	}
-	for _, quest := range input.Quests {
-		out.Quests = append(out.Quests, TermQuest{
-			ID:         quest.ID,
-			EditorID:   stringPtrIfPresent(quest.EditorID),
-			Type:       normalizeRecordType(quest.RecordType),
-			Name:       stringPtrIfPresent(quest.Name),
-			SourceFile: quest.SourceFile,
-		})
-	}
-	return out
-}
 
-func normalizeRecordType(recordType string) string {
-	trimmed := strings.TrimSpace(recordType)
-	if trimmed == "" {
-		return trimmed
+	return TerminologyInput{
+		TaskID:    input.TaskID,
+		FileNames: append([]string(nil), input.FileNames...),
+		Entries:   entries,
 	}
-	if strings.HasPrefix(trimmed, "NPC_:") {
-		return trimmed
-	}
-	if strings.Contains(trimmed, ":") {
-		return trimmed
-	}
-	return trimmed + ":FULL"
-}
-
-func stringPtrIfPresent(value string) *string {
-	trimmed := strings.TrimSpace(value)
-	if trimmed == "" {
-		return nil
-	}
-	return &trimmed
 }

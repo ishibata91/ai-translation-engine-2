@@ -39,67 +39,18 @@ type PreviewPage struct {
 type TerminologyInput struct {
 	TaskID    string
 	FileNames []string
-	NPCs      []TerminologyNPC
-	Items     []TerminologyItem
-	Magic     []TerminologyMagic
-	Locations []TerminologyLocation
-	Messages  []TerminologyMessage
-	Quests    []TerminologyQuest
+	Entries   []TerminologyEntry
 }
 
-// TerminologyNPC represents one NPC row projected for terminology phase.
-type TerminologyNPC struct {
+// TerminologyEntry represents one normalized terminology target row.
+type TerminologyEntry struct {
 	ID         string
 	EditorID   string
 	RecordType string
-	Name       string
+	SourceText string
 	SourceFile string
-}
-
-// TerminologyItem represents one item row projected for terminology phase.
-type TerminologyItem struct {
-	ID         string
-	EditorID   string
-	RecordType string
-	Name       string
-	Text       string
-	SourceFile string
-}
-
-// TerminologyMagic represents one magic row projected for terminology phase.
-type TerminologyMagic struct {
-	ID         string
-	EditorID   string
-	RecordType string
-	Name       string
-	SourceFile string
-}
-
-// TerminologyLocation represents one location/cell/world row projected for terminology phase.
-type TerminologyLocation struct {
-	ID         string
-	EditorID   string
-	RecordType string
-	Name       string
-	SourceFile string
-}
-
-// TerminologyMessage represents one message row projected for terminology phase.
-type TerminologyMessage struct {
-	ID         string
-	EditorID   string
-	RecordType string
-	Title      string
-	SourceFile string
-}
-
-// TerminologyQuest represents one quest row projected for terminology phase.
-type TerminologyQuest struct {
-	ID         string
-	EditorID   string
-	RecordType string
-	Name       string
-	SourceFile string
+	PairKey    string
+	Variant    string
 }
 
 // Repository defines artifact persistence operations for translation-flow input data.

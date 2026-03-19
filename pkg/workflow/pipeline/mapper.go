@@ -3,58 +3,8 @@ package pipeline
 import (
 	"github.com/ishibata91/ai-translation-engine-2/pkg/format/parser/skyrim"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/slice/persona"
-	"github.com/ishibata91/ai-translation-engine-2/pkg/slice/terminology"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/slice/translator"
 )
-
-// ToTermTranslatorInput maps ParserOutput to TerminologyInput.
-func ToTermTranslatorInput(out *skyrim.ParserOutput) terminology.TerminologyInput {
-	input := terminology.TerminologyInput{
-		NPCs:      make(map[string]terminology.TermNPC),
-		Items:     make([]terminology.TermItem, len(out.Items)),
-		Magic:     make([]terminology.TermMagic, len(out.Magic)),
-		Locations: make([]terminology.TermLocation, len(out.Locations)),
-	}
-
-	for id, npc := range out.NPCs {
-		input.NPCs[id] = terminology.TermNPC{
-			ID:       npc.ID,
-			EditorID: npc.EditorID,
-			Type:     npc.Type,
-			Name:     npc.Name,
-		}
-	}
-
-	for i, item := range out.Items {
-		input.Items[i] = terminology.TermItem{
-			ID:       item.ID,
-			EditorID: item.EditorID,
-			Type:     item.Type,
-			Name:     item.Name,
-			Text:     item.Text,
-		}
-	}
-
-	for i, magic := range out.Magic {
-		input.Magic[i] = terminology.TermMagic{
-			ID:       magic.ID,
-			EditorID: magic.EditorID,
-			Type:     magic.Type,
-			Name:     magic.Name,
-		}
-	}
-
-	for i, loc := range out.Locations {
-		input.Locations[i] = terminology.TermLocation{
-			ID:       loc.ID,
-			EditorID: loc.EditorID,
-			Type:     loc.Type,
-			Name:     loc.Name,
-		}
-	}
-
-	return input
-}
 
 // ToPersonaGenInput maps ParserOutput to PersonaGenInput.
 func ToPersonaGenInput(out *skyrim.ParserOutput) persona.PersonaGenInput {

@@ -240,6 +240,21 @@ func Migrate(ctx context.Context, db *sql.DB) error {
 			FOREIGN KEY (file_id) REFERENCES translation_input_files(id) ON DELETE CASCADE
 		);
 		CREATE INDEX IF NOT EXISTS idx_translation_input_npcs_file_id ON translation_input_npcs(file_id);
+
+		CREATE TABLE IF NOT EXISTS translation_input_terminology_entries (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			file_id INTEGER NOT NULL,
+			source_record_id TEXT NOT NULL,
+			editor_id TEXT,
+			record_type TEXT NOT NULL,
+			source_text TEXT NOT NULL,
+			source_file_name TEXT NOT NULL,
+			pair_key TEXT,
+			variant TEXT NOT NULL,
+			created_at DATETIME NOT NULL,
+			FOREIGN KEY (file_id) REFERENCES translation_input_files(id) ON DELETE CASCADE
+		);
+		CREATE INDEX IF NOT EXISTS idx_translation_input_terminology_entries_file_id ON translation_input_terminology_entries(file_id);
 	`); err != nil {
 		return fmt.Errorf("create translation input artifact tables: %w", err)
 	}

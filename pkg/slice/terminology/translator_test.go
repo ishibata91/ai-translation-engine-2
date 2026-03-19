@@ -9,19 +9,19 @@ import (
 	"time"
 
 	"github.com/ishibata91/ai-translation-engine-2/pkg/artifact/translationinput"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/foundation"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/foundation/llmio"
 	_ "modernc.org/sqlite"
 )
 
-// setupTestDB creates in-memory SQLite DBs for testing
 func setupTestDB(t *testing.T) (*sql.DB, *sql.DB, func()) {
-	// Dictionary DB
+	t.Helper()
+
 	dictDB, err := sql.Open("sqlite", "file:dict?mode=memory&cache=shared")
 	if err != nil {
 		t.Fatalf("failed to open dict db: %v", err)
 	}
 
-	// Create dictionary schema and populate some data
 	_, err = dictDB.Exec(`
 		CREATE TABLE artifact_dictionary_entries (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -29,21 +29,22 @@ func setupTestDB(t *testing.T) (*sql.DB, *sql.DB, func()) {
 			dest_text TEXT,
 			record_type TEXT
 		);
-		INSERT INTO artifact_dictionary_entries (source_text, dest_text, record_type) VALUES ('Iron Sword', '鉄の剣', 'WEAP:FULL');
+		INSERT INTO artifact_dictionary_entries (source_text, dest_text, record_type) VALUES
+			('Iron Sword', '鉄の剣', 'BOOK:FULL'),
+			('Uthgerd the Unbroken', '不屈のウスガルド', 'NPC_:FULL');
 	`)
 	if err != nil {
 		t.Fatalf("failed to init dict db: %v", err)
 	}
 
-	// Mod Term DB
 	modDB, err := sql.Open("sqlite", "file:mod?mode=memory&cache=shared")
 	if err != nil {
 		t.Fatalf("failed to open mod db: %v", err)
 	}
 
 	return dictDB, modDB, func() {
-		dictDB.Close()
-		modDB.Close()
+		_ = dictDB.Close()
+		_ = modDB.Close()
 	}
 }
 
@@ -56,94 +57,112 @@ func TestTermTranslatorSlice(t *testing.T) {
 	tests := []struct {
 		name          string
 		input         TerminologyInput
-		config        TermRecordConfig
-		mockLLMOutput []string // Resulting LLM content for each request
+		mockLLMOutput []string
 		expectedTerms map[string]string
+		expectedReqs  int
 	}{
 		{
-			name: "Two-Phase Translation: Item and magic",
+			name: "allowed recs and npc pair are translated",
 			input: TerminologyInput{
-				Items: []TermItem{
+				TaskID: "task-1",
+				Entries: []TerminologyEntry{
 					{
-						ID:   "001",
-						Type: "WEAP",
-						Name: stringPtr("Iron Sword"),
+						ID:         "001",
+						EditorID:   "EditorA",
+						RecordType: "BOOK:FULL",
+						SourceText: "Iron Sword",
+						SourceFile: "test_mod.json",
+						Variant:    "single",
 					},
 					{
-						ID:   "002",
-						Type: "ARMO",
-						Name: stringPtr("Steel Armor"),
+						ID:         "002",
+						EditorID:   "EditorA",
+						RecordType: "ARMO:FULL",
+						SourceText: "Steel Armor",
+						SourceFile: "test_mod.json",
+						Variant:    "single",
+					},
+					{
+						ID:         "101",
+						EditorID:   "EditorID1",
+						RecordType: "NPC_:FULL",
+						SourceText: "Uthgerd the Unbroken",
+						SourceFile: "test_mod.json",
+						PairKey:    "EditorID1",
+						Variant:    "full",
+					},
+					{
+						ID:         "102",
+						EditorID:   "EditorID1",
+						RecordType: "NPC_:SHRT",
+						SourceText: "Uthgerd",
+						SourceFile: "test_mod.json",
+						PairKey:    "EditorID1",
+						Variant:    "short",
+					},
+					{
+						ID:         "900",
+						EditorID:   "EditorA",
+						RecordType: "SPEL:FULL",
+						SourceText: "Fireball",
+						SourceFile: "test_mod.json",
+						Variant:    "single",
 					},
 				},
-				Magic: []TermMagic{
-					{
-						ID:   "003",
-						Type: "SPEL",
-						Name: stringPtr("Fireball"),
-					},
-				},
-			},
-			config: TermRecordConfig{
-				TargetRecordTypes: []string{"WEAP", "ARMO", "SPEL"},
 			},
 			mockLLMOutput: []string{
-				"TL: |鉄の剣|", // Actually matches dict, but PreparePrompts will still generate a request
+				"TL: |鉄の剣|",
 				"TL: |鋼鉄の鎧|",
-				"TL: |ファイアボール|",
-			},
-			expectedTerms: map[string]string{
-				"Iron Sword":  "鉄の剣",
-				"Steel Armor": "鋼鉄の鎧",
-				"Fireball":    "ファイアボール",
-			},
-		},
-		{
-			name: "Two-Phase Translation: Paired NPCs",
-			input: TerminologyInput{
-				NPCs: map[string]TermNPC{
-					"npc1": {
-						ID:       "101",
-						EditorID: stringPtr("EditorID1"),
-						Type:     "NPC_:FULL",
-						Name:     "Uthgerd the Unbroken",
-					},
-					"npc2": {
-						ID:       "102",
-						EditorID: stringPtr("EditorID1"),
-						Type:     "NPC_:SHRT",
-						Name:     "Uthgerd",
-					},
-				},
-			},
-			config: TermRecordConfig{
-				TargetRecordTypes: []string{"NPC_:FULL", "NPC_:SHRT"},
-			},
-			mockLLMOutput: []string{
 				"TL: |不屈のウスガルド 不屈|",
 			},
+			expectedReqs: 3,
 			expectedTerms: map[string]string{
+				"Iron Sword":           "鉄の剣",
+				"Steel Armor":          "鋼鉄の鎧",
 				"Uthgerd the Unbroken": "不屈のウスガルド 不屈",
 				"Uthgerd":              "不屈のウスガルド",
 			},
 		},
 		{
-			name: "Error handling: Invalid format LLM response",
+			name: "duplicate record text is collapsed into one request",
 			input: TerminologyInput{
-				Items: []TermItem{
+				TaskID: "task-2",
+				Entries: []TerminologyEntry{
 					{
-						ID:   "004",
-						Type: "WEAP",
-						Name: stringPtr("Rusty Dagger"),
+						ID:         "201",
+						EditorID:   "EditorB",
+						RecordType: "BOOK:FULL",
+						SourceText: "Iron Sword",
+						SourceFile: "mod_a.json",
+						Variant:    "single",
+					},
+					{
+						ID:         "202",
+						EditorID:   "EditorC",
+						RecordType: "BOOK:FULL",
+						SourceText: "Iron Sword",
+						SourceFile: "mod_b.json",
+						Variant:    "single",
+					},
+					{
+						ID:         "203",
+						EditorID:   "EditorB",
+						RecordType: "ARMO:FULL",
+						SourceText: "Steel Armor",
+						SourceFile: "mod_a.json",
+						Variant:    "single",
 					},
 				},
 			},
-			config: TermRecordConfig{
-				TargetRecordTypes: []string{"WEAP"},
-			},
 			mockLLMOutput: []string{
-				"I can't translate this.", // Missing TL: |...|
+				"TL: |鉄の剣|",
+				"TL: |鋼鉄の鎧|",
 			},
-			expectedTerms: map[string]string{}, // Should not be saved
+			expectedReqs: 2,
+			expectedTerms: map[string]string{
+				"Iron Sword":  "鉄の剣",
+				"Steel Armor": "鋼鉄の鎧",
+			},
 		},
 	}
 
@@ -152,8 +171,8 @@ func TestTermTranslatorSlice(t *testing.T) {
 			dictDB, modDB, cleanup := setupTestDB(t)
 			defer cleanup()
 
-			repo := &fakeTranslationInputRepository{input: toArtifactInput(tc.input)}
-			builder := NewTermRequestBuilder(&tc.config)
+			repo := &fakeTranslationInputRepository{input: tc.input}
+			builder := NewTermRequestBuilder(&TermRecordConfig{TargetRecordTypes: append([]string(nil), foundation.DictionaryImportRECTypes...)})
 			stemmer := NewSnowballStemmer("english")
 			searcher := NewSQLiteTermDictionarySearcher(dictDB, logger, stemmer)
 			store := NewSQLiteModTermStore(modDB, logger)
@@ -162,26 +181,16 @@ func TestTermTranslatorSlice(t *testing.T) {
 				t.Fatalf("failed to create prompt builder: %v", err)
 			}
 
-			translator := NewTermTranslator(
-				repo,
-				builder,
-				searcher,
-				store,
-				promptBuilder,
-				logger,
-			)
+			translator := NewTermTranslator(repo, builder, searcher, store, promptBuilder, logger)
 
-			// Phase 1: Prepare Prompts
-			llmRequests, err := translator.PreparePrompts(ctx, "task-1", PhaseOptions{})
+			llmRequests, err := translator.PreparePrompts(ctx, tc.input.TaskID, PhaseOptions{})
 			if err != nil {
 				t.Fatalf("PreparePrompts failed: %v", err)
 			}
-
-			if len(llmRequests) != len(tc.mockLLMOutput) {
-				t.Fatalf("PreparePrompts generated %d requests, but mock has %d outputs", len(llmRequests), len(tc.mockLLMOutput))
+			if len(llmRequests) != tc.expectedReqs {
+				t.Fatalf("PreparePrompts generated %d requests, want %d", len(llmRequests), tc.expectedReqs)
 			}
 
-			// Simulate JobQueue/Pipeline calling LLM
 			llmResponses := make([]llmio.Response, 0, len(llmRequests))
 			for i, content := range tc.mockLLMOutput {
 				llmResponses = append(llmResponses, llmio.Response{
@@ -191,88 +200,57 @@ func TestTermTranslatorSlice(t *testing.T) {
 				})
 			}
 
-			// Phase 2: Save Results
-			err = translator.SaveResults(ctx, "task-1", llmResponses)
-			if err != nil {
+			if err := translator.SaveResults(ctx, tc.input.TaskID, llmResponses); err != nil {
 				t.Fatalf("SaveResults failed: %v", err)
 			}
 
-			// Verify in DB
 			for originalEN, expectedJA := range tc.expectedTerms {
 				translatedJA, err := store.GetTerm(ctx, originalEN)
 				if err != nil {
-					t.Fatalf("Failed to get term %s: %v", originalEN, err)
+					t.Fatalf("GetTerm(%s) failed: %v", originalEN, err)
 				}
 				if translatedJA != expectedJA {
-					t.Errorf("Expected translation for %s to be '%s', got '%s'", originalEN, expectedJA, translatedJA)
+					t.Fatalf("unexpected translation for %s: got=%q want=%q", originalEN, translatedJA, expectedJA)
 				}
 			}
 
-			// Verify records NOT in expectedTerms are NOT in DB
-			if len(tc.expectedTerms) == 0 {
-				// Simple check for Rusty Dagger in the error case
-				translatedJA, _ := store.GetTerm(ctx, "Rusty Dagger")
-				if translatedJA != "" {
-					t.Errorf("Expected 'Rusty Dagger' NOT to be in DB, but got '%s'", translatedJA)
-				}
+			phaseSummary, err := store.GetPhaseSummary(ctx, tc.input.TaskID)
+			if err != nil {
+				t.Fatalf("GetPhaseSummary failed: %v", err)
+			}
+			if phaseSummary.TargetCount != tc.expectedReqs {
+				t.Fatalf("unexpected target count: got=%d want=%d", phaseSummary.TargetCount, tc.expectedReqs)
 			}
 		})
 	}
 }
 
 type fakeTranslationInputRepository struct {
-	input translationinput.TerminologyInput
+	input TerminologyInput
 }
 
 func (f *fakeTranslationInputRepository) LoadTerminologyInput(ctx context.Context, taskID string) (translationinput.TerminologyInput, error) {
 	_ = ctx
 	_ = taskID
-	return f.input, nil
+	return toArtifactInput(f.input), nil
 }
 
 func toArtifactInput(input TerminologyInput) translationinput.TerminologyInput {
-	out := translationinput.TerminologyInput{
-		TaskID:    "task-1",
-		FileNames: []string{"test_mod.json"},
-	}
-	for _, npc := range input.NPCs {
-		out.NPCs = append(out.NPCs, translationinput.TerminologyNPC{
-			ID:         npc.ID,
-			EditorID:   getEditorID(npc.EditorID),
-			RecordType: npc.Type,
-			Name:       npc.Name,
-			SourceFile: "test_mod.json",
+	entries := make([]translationinput.TerminologyEntry, 0, len(input.Entries))
+	for _, entry := range input.Entries {
+		entries = append(entries, translationinput.TerminologyEntry{
+			ID:         entry.ID,
+			EditorID:   entry.EditorID,
+			RecordType: entry.RecordType,
+			SourceText: entry.SourceText,
+			SourceFile: entry.SourceFile,
+			PairKey:    entry.PairKey,
+			Variant:    entry.Variant,
 		})
 	}
-	for _, item := range input.Items {
-		out.Items = append(out.Items, translationinput.TerminologyItem{
-			ID:         item.ID,
-			EditorID:   getEditorID(item.EditorID),
-			RecordType: normalizeRecordType(item.Type),
-			Name:       deref(item.Name),
-			Text:       deref(item.Text),
-			SourceFile: "test_mod.json",
-		})
+	return translationinput.TerminologyInput{
+		TaskID:    input.TaskID,
+		FileNames: append([]string(nil), input.FileNames...),
+		Entries:   entries,
 	}
-	for _, magic := range input.Magic {
-		out.Magic = append(out.Magic, translationinput.TerminologyMagic{
-			ID:         magic.ID,
-			EditorID:   getEditorID(magic.EditorID),
-			RecordType: normalizeRecordType(magic.Type),
-			Name:       deref(magic.Name),
-			SourceFile: "test_mod.json",
-		})
-	}
-	return out
-}
-
-func deref(value *string) string {
-	if value == nil {
-		return ""
-	}
-	return *value
-}
-
-func stringPtr(s string) *string {
-	return &s
 }
