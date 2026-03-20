@@ -1,3 +1,3 @@
 display_name: fix-direction
-short_description: bugfix flow の入口整理と agent 選定を担う
-default_prompt: Use $fix-direction at skills/fix-direction to orchestrate bugfix work through $fix-distill, $fix-trace, $fix-analysis, $fix-work, and $fix-review, with `plan-sync` as an optional docs handoff.
+short_description: ユーザー入口として fix lane だけを受け、下流 bugfix 作業を直接せずに routing と conflict 停止を担う
+default_prompt: Use $fix-direction at skills/fix-direction as an orchestration-only user entry for bug reports, reproduction, triage, and bugfix routing. If the request is actually planning or normal implementation work, stop immediately and return a handoff to the correct direction skill instead of doing downstream work directly.

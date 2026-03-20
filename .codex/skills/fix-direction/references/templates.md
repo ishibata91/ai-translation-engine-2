@@ -62,3 +62,13 @@
 - 確定した観測事実:
 - 次に起動する skill:
 ```
+
+## conflict 応答
+```md
+### Conflict Handoff
+- reason:
+- detected_intent:
+- why_this_direction_is_wrong:
+- recommended_direction:
+- next_prompt: `Use $<direction-skill> at skills/<direction-skill> to continue this request.`
+```

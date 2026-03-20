@@ -13,3 +13,13 @@
 ## 分割して扱う例
 - `画面と API の両方を実装して`
 - まず frontend task と backend task に分ける
+
+## plan 依頼の誤投入
+- 依頼: `新しい設定画面の仕様を決めたい`
+- 挙動: `impl-direction` では処理を進めず停止する
+- handoff 先: `plan-direction`
+
+## bugfix 依頼の誤投入
+- 依頼: `再開後に進捗表示が消えた原因を調べて`
+- 挙動: `impl-direction` では処理を進めず停止する
+- handoff 先: `fix-direction`

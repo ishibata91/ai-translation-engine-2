@@ -40,3 +40,13 @@ Inputs:
 - promotion_candidates:
 - must_read:
 ```
+
+## conflict 応答
+```md
+### Conflict Handoff
+- reason:
+- detected_intent:
+- why_this_direction_is_wrong:
+- recommended_direction:
+- next_prompt: `Use $<direction-skill> at skills/<direction-skill> to continue this request.`
+```

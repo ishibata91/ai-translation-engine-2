@@ -11,6 +11,16 @@
 - `Master Persona のシナリオを整理して`
 - `docs/ のタイトルを見直して`
 
+## plan 依頼の誤投入
+- 依頼: `新しい翻訳設定画面の仕様を決めたい`
+- 挙動: `fix-direction` では処理を進めず停止する
+- handoff 先: `plan-direction`
+
+## impl 依頼の誤投入
+- 依頼: `TerminologyPanel.tsx の state を React に反映して`
+- 挙動: `fix-direction` では処理を進めず停止する
+- handoff 先: `impl-direction`
+
 ## UI バグの例
 依頼:
 `バグ: 実行中に Cancel を押してもボタンが disabled のままで戻らない`

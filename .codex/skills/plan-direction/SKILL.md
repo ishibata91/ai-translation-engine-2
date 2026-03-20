@@ -1,11 +1,12 @@
 ---
 name: plan-direction
-description: AI Translation Engine 2 専用。設計依頼の入口整理、routing、次に起動する agent と plan skill の決定を行う。差分仕様、UI 振る舞い、シナリオ、ロジック、設計レビュー、docs 同期の入口を決めたいときに使う。
+description: AI Translation Engine 2 専用。設計依頼、仕様補完、docs 同期の入口整理だけを行うユーザー向け direction skill。差分仕様、UI 振る舞い、シナリオ、ロジック、設計レビューの lane 判定と次に起動する agent / skill の決定に使い、下流の設計作成や実装は直接行わない。自由文の意図が実装や bugfix なら停止して適切な direction skill へ handoff するときにも使う。
 ---
 
 # Plan Direction
 
 この skill は plan 系作業の入口指揮を担当する。
+ユーザー向け入口として使ってよい direction skill の 1 つであり、`orchestration-only` で動作する。
 自分では設計 artifact を作らず、依頼の整理、artifact 充足確認、次に使う skill と agent の決定だけを行う。
 
 ## 使う場面
@@ -14,9 +15,16 @@ description: AI Translation Engine 2 専用。設計依頼の入口整理、rout
 - UI、シナリオ、ロジックのどこを先に確定すべきか決めたい
 - 設計レビューや docs 同期まで含めた順番を決めたい
 
-## 必読 spec
-- `docs/governance/spec-structure/spec.md`
-- `docs/governance/architecture/spec.md`
+## 入口制約
+- ユーザーから直接受けてよいのは設計、仕様補完、docs 同期、artifact 不足整理だけとする。
+- `plan-ui` `plan-scenario` `plan-logic` `plan-review` `plan-sync` のような non-direction skill の直指定は受け付けず、`plan-direction` へ戻す handoff を返して停止する。
+- 自由文が実装、UI 反映、コード修正、bugfix、再現、原因調査を要求している場合は conflict として扱い、処理を進めず適切な direction skill を返して停止する。
+
+## Conflict Policy
+- `plan-direction` の正当入力 lane は `設計 / 仕様補完 / docs 同期 / artifact 不足整理` とする。
+- 自由文の意図に `実装 / UI 反映 / task 着手` が含まれる場合は `impl-direction` へ handoff する。
+- 自由文の意図に `不具合 / 再現 / 原因切り分け / 修正方針整理` が含まれる場合は `fix-direction` へ handoff する。
+- conflict を検出したら downstream skill を起動せず、`references/templates.md` の conflict template で返答して終了する。
 
 ## agent / skill 対応
 - 判断材料の蒸留は `ctx_loader` に `plan-distill` を使わせる
@@ -25,10 +33,10 @@ description: AI Translation Engine 2 専用。設計依頼の入口整理、rout
 - docs 同期は `spec_syncer` に `plan-sync` を使わせる
 
 ## 手順
-1. `docs/governance/spec-structure/spec.md` で文書の置き場と責務区分を確認する。
-2. `docs/governance/architecture/spec.md` で責務境界を確認する。
-3. `plan-distill` を起動し、要求、既存 artifact、関連 spec、未確定論点を planning packet に蒸留させる。
-4. 依頼が新規設計、設計補完、既存 UI 調整、docs 同期のどれかを分類する。
+1. 依頼が plan lane に属するかを先に判定する。non-direction skill の直指定や impl / fix lane の要求が含まれるなら conflict として停止する。
+2. `plan-distill` を起動し、要求、既存 artifact、関連 spec、未確定論点を planning packet に蒸留させる。
+3. `plan-distill` を起動した後は packet を待つ。返却前に自分で追加走査、追加読解、下流 skill の先行判断を始めない。
+4. planning packet を読んで、依頼が新規設計、設計補完、docs 同期のどれかを分類する。
 5. UI、シナリオ、ロジックのうち先に確定すべき層を 1 つ決める。
 6. 必要な `plan-*` skill を順番に並べる。
 7. 設計 artifact が揃ったら `plan-review` を挟む。
@@ -38,11 +46,11 @@ description: AI Translation Engine 2 専用。設計依頼の入口整理、rout
 - UI を含む新規設計: `plan-distill` -> `plan-ui` -> `plan-scenario` -> `plan-logic` -> `plan-review` -> `plan-sync`
 - UI を含まない責務設計: `plan-distill` -> `plan-logic` -> `plan-review` -> `plan-sync`
 - docs だけを更新したい: `plan-distill` -> `plan-sync`
-- 既存 UI の見た目修正: `plan-distill` -> `aite2-ui-polish-orchestrate`
 
 ## 終了条件
 - 必要な plan artifact と review 結果が揃い、次に進む skill が一意に決まっている
 - 実装へ進む場合は `impl-direction` へ渡す handoff を明示して終える
+- conflict の場合は downstream work を始めず、正しい direction skill を明示した handoff を返して終える
 
 ## 参照資料
 - 振り分け例は `references/routing-examples.md` を読む。
@@ -50,7 +58,11 @@ description: AI Translation Engine 2 専用。設計依頼の入口整理、rout
 - `scripts/init-change-design-docs.ps1` の使いどころは `references/doc-init-notes.md` を読む。
 
 ## 原則
-- 指揮役は orchestration 以外を行わない
+- 指揮役は `orchestration-only` として振る舞い、設計 artifact 作成や実装判断へ進まない
 - agent 選択は `.codex/agents` を正本にする
 - plan artifact が不足したまま implementation へ進めない
 - 各 handoff で確定事項、未確定事項、次の 1 手を明示する
+- spec、コード、changes の読解は `plan-distill` に委譲し、自分では packet 前に読まない
+- distill 起動後は packet を待ち、自分で追加走査、追加読解、下流 skill 起動を行わない
+- 追加読解が必要なら自分で読まず、同じ distill skill を再実行する
+- conflict を検出したら自動補正や自動続行を行わず、停止して handoff だけを返す
