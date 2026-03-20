@@ -793,7 +793,7 @@ end;
 
 procedure ExtractItem(item: IInterface);
 var
-  itemID, itemName, itemDesc, itemText, typeHint, sig, itemEntry: string;
+  itemID, itemName, itemDesc, itemText, typeHint, sig, itemEntry, itemBodyEntry: string;
 begin
   sig := Signature(item);
   itemID := HexFormID(item);
@@ -804,7 +804,11 @@ begin
   
   if sig = 'WEAP' then typeHint := GetElementValue(item, 'DNAM\Animation Type')
   else if sig = 'ARMO' then typeHint := GetElementValue(item, 'BODT\Armor Type')
-  else if sig = 'BOOK' then itemText := GetElementValue(item, 'DESC'); 
+  else if sig = 'BOOK' then
+  begin
+    itemText := itemDesc;
+    itemDesc := '';
+  end;
   
   if (itemName <> '') then
   begin
@@ -819,11 +823,20 @@ begin
     if typeHint <> '' then
        itemEntry := itemEntry + ',' + #13#10 + JsonField('type_hint', JsonString(typeHint));
        
-    if itemText <> '' then
-       itemEntry := itemEntry + ',' + #13#10 + JsonField('text', JsonString(itemText));
-      
     itemEntry := itemEntry + #13#10 + '  }';
     itemList.Add(itemEntry);
+  end;
+
+  if (sig = 'BOOK') and (itemText <> '') then
+  begin
+    itemBodyEntry := '  {' + #13#10 +
+                     JsonField('id', JsonString(itemID)) + ',' + #13#10 +
+                     JsonField('editor_id', JsonString(GetElementEditValues(MasterOrSelf(item), 'EDID'))) + ',' + #13#10 +
+                     JsonField('type', JsonString('BOOK DESC')) + ',' + #13#10 +
+                     JsonField('source', JsonString(GetMasterFileName(item))) + ',' + #13#10 +
+                     JsonField('text', JsonString(itemText)) + #13#10 +
+                     '  }';
+    itemList.Add(itemBodyEntry);
   end;
 end;
 
