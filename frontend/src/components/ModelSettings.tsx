@@ -324,7 +324,7 @@ const ModelSettings: React.FC<Props> = ({ title = 'モデル設定', value, onCh
 
     if (!collapsible) {
         return (
-            <section className="bg-base-100 border border-base-200 shadow-sm rounded-box p-4" aria-label={title}>
+            <section className="shrink-0 bg-base-100 border border-base-200 shadow-sm rounded-box p-4" aria-label={title}>
                 <div className="border-b border-base-200 pb-3 mb-4">
                     <h3 className="text-base font-bold">{title}</h3>
                 </div>
@@ -334,7 +334,7 @@ const ModelSettings: React.FC<Props> = ({ title = 'モデル設定', value, onCh
     }
 
     return (
-        <details className="collapse collapse-arrow bg-base-100 border border-base-200 shadow-sm" open>
+        <details className="collapse collapse-arrow shrink-0 bg-base-100 border border-base-200 shadow-sm" open>
             <summary className="collapse-title text-base font-bold min-h-0 py-3 border-b border-base-200">
                 {title}
             </summary>
