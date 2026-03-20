@@ -16,6 +16,10 @@ description: AI Translation Engine 2 専用。bugfix flow で debugger 専用ロ
 - 再現時の観測出力
 - context board
 
+## subagent 実行前提
+- この skill は bugfix 指揮者から subagent として起動される前提で使う
+- subagent 起動時は `agents/openai.yaml` の profile 設定を使う
+
 ## 手順
 1. ログと観測出力を読む。
 2. 時系列と重要イベントを抽出する。

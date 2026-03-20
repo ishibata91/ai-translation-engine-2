@@ -19,6 +19,10 @@ description: AI Translation Engine 2 専用。bugfix 調査で原因仮説を立
 - 再現条件
 - 構造化された観測事実
 
+## subagent 実行前提
+- この skill は bugfix 指揮者から subagent として起動される前提で使う
+- subagent 起動時は `agents/openai.yaml` の profile 設定を使う
+
 ## 手順
 1. context board から既知の症状と再現条件を読む。
 2. 原因仮説と優先調査箇所を整理する。

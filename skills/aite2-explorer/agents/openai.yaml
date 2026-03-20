@@ -1,0 +1,4 @@
+display_name: AITE2 Explorer
+profile: context_manager
+short_description: bugfix や実装入口で関連文脈を圧縮して handoff を作る
+default_prompt: Use $aite2-explorer at skills/aite2-explorer when a subagent should gather only the minimum relevant docs, code, repro conditions, and observations, then return a compact context packet and handoff for the next skill.
