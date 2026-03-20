@@ -23,6 +23,14 @@
 ### Verification
 - 修正前の観測:
 - 修正後の観測:
-- Playwright 確認:
 - 実行した品質ゲート:
+```
+
+## Context Board Entry
+```md
+### UI Refine Handoff
+- 固定した見た目の問題:
+- 修正方針:
+- 触らない範囲:
+- 次に読むべき board:
 ```

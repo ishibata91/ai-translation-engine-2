@@ -1,0 +1,3 @@
+display_name: AITE2 Log Parser
+short_description: bugfix ログを構造化 JSON と事実要約へ圧縮する
+default_prompt: Use $aite2-log-parser at skills/aite2-log-parser when bugfix work needs debugger logs or repro outputs to be converted into structured facts without adding root-cause speculation.

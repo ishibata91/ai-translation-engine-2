@@ -1,0 +1,58 @@
+[0;92mExecuting: go mod tidy[0m
+2026/03/20 11:03:25 [0;33m2026/03/20 11:03:25 INFO database connection opened and configured path="F:\\ai translation engine 2\\db\\config.db"
+2026/03/20 11:03:25 INFO database connection opened and configured path="F:\\ai translation engine 2\\db\\task.db"
+2026/03/20 11:03:25 INFO database connection opened and configured path="F:\\ai translation engine 2\\db\\artifact.db"
+2026/03/20 11:03:25 INFO database connection opened and configured path="F:\\ai translation engine 2\\db\\terminology.db"
+KnownStructs: dictionary.DictSource	dictionary.DictTerm	dictionary.DictTermPage	modelcatalog.ListModelsInput	modelcatalog.ModelCapability	modelcatalog.ModelOption	persona.PersonaDialogueView	persona.PersonaNPCView	queue.JobRequest	queue.TaskRequestState	task.StartMasterPersonTaskInput	task.Task	workflow.TerminologyPhaseResult	workflow.TranslationLoadResult	workflow.TranslationLoadedFile	workflow.TranslationPreviewPage	workflow.TranslationPreviewRow	workflow.TranslationPromptConfig	workflow.TranslationRequestConfig
+Not found: time.Time
+KnownStructs: dictionary.DictSource	dictionary.DictTerm	dictionary.DictTermPage	modelcatalog.ListModelsInput	modelcatalog.ModelCapability	modelcatalog.ModelOption	persona.PersonaDialogueView	persona.PersonaNPCView	queue.JobRequest	queue.TaskRequestState	task.StartMasterPersonTaskInput	task.Task	workflow.TerminologyPhaseResult	workflow.TranslationLoadResult	workflow.TranslationLoadedFile	workflow.TranslationPreviewPage	workflow.TranslationPreviewRow	workflow.TranslationPromptConfig	workflow.TranslationRequestConfig
+Not found: time.Time
+KnownStructs: dictionary.DictSource	dictionary.DictTerm	dictionary.DictTermPage	modelcatalog.ListModelsInput	modelcatalog.ModelCapability	modelcatalog.ModelOption	persona.PersonaDialogueView	persona.PersonaNPCView	queue.JobRequest	queue.TaskRequestState	task.StartMasterPersonTaskInput	task.Task	workflow.TerminologyPhaseResult	workflow.TranslationLoadResult	workflow.TranslationLoadedFile	workflow.TranslationPreviewPage	workflow.TranslationPreviewRow	workflow.TranslationPromptConfig	workflow.TranslationRequestConfig
+Not found: time.Time
+KnownStructs: dictionary.DictSource	dictionary.DictTerm	dictionary.DictTermPage	modelcatalog.ListModelsInput	modelcatalog.ModelCapability	modelcatalog.ModelOption	persona.PersonaDialogueView	persona.PersonaNPCView	queue.JobRequest	queue.TaskRequestState	task.StartMasterPersonTaskInput	task.Task	workflow.TerminologyPhaseResult	workflow.TranslationLoadResult	workflow.TranslationLoadedFile	workflow.TranslationPreviewPage	workflow.TranslationPreviewRow	workflow.TranslationPromptConfig	workflow.TranslationRequestConfig
+Not found: time.Time
+KnownStructs: dictionary.DictSource	dictionary.DictTerm	dictionary.DictTermPage	modelcatalog.ListModelsInput	modelcatalog.ModelCapability	modelcatalog.ModelOption	persona.PersonaDialogueView	persona.PersonaNPCView	queue.JobRequest	queue.TaskRequestState	task.StartMasterPersonTaskInput	task.Task	workflow.TerminologyPhaseResult	workflow.TranslationLoadResult	workflow.TranslationLoadedFile	workflow.TranslationPreviewPage	workflow.TranslationPreviewRow	workflow.TranslationPromptConfig	workflow.TranslationRequestConfig
+Not found: time.Time
+KnownStructs: dictionary.DictSource	dictionary.DictTerm	dictionary.DictTermPage	modelcatalog.ListModelsInput	modelcatalog.ModelCapability	modelcatalog.ModelOption	persona.PersonaDialogueView	persona.PersonaNPCView	queue.JobRequest	queue.TaskRequestState	task.StartMasterPersonTaskInput	task.Task	workflow.TerminologyPhaseResult	workflow.TranslationLoadResult	workflow.TranslationLoadedFile	workflow.TranslationPreviewPage	workflow.TranslationPreviewRow	workflow.TranslationPromptConfig	workflow.TranslationRequestConfig
+Not found: time.Time
+[0m
+[31merror when starting dev server:
+Error: Port 5173 is already in use
+    at Server.onError (file:///F:/ai%20translation%20engine%202/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:45596:18)
+    at Server.emit (node:events:508:28)
+    at emitErrorNT (node:net:1976:8)
+    at process.processTicksAndRejections (node:internal/process/task_queues:89:21)[39m
+[0;92mRunning frontend DevWatcher command: 'npm run dev'[0m
+2026/03/20 11:03:40 [0;33m2026/03/20 11:03:40 INFO database connection opened and configured path="F:\\ai translation engine 2\\db\\config.db"
+2026/03/20 11:03:40 INFO database connection opened and configured path="F:\\ai translation engine 2\\db\\task.db"
+2026/03/20 11:03:40 INFO database connection opened and configured path="F:\\ai translation engine 2\\db\\artifact.db"
+2026/03/20 11:03:40 INFO database connection opened and configured path="F:\\ai translation engine 2\\db\\terminology.db"
+KnownStructs: dictionary.DictSource	dictionary.DictTerm	dictionary.DictTermPage	modelcatalog.ListModelsInput	modelcatalog.ModelCapability	modelcatalog.ModelOption	persona.PersonaDialogueView	persona.PersonaNPCView	queue.JobRequest	queue.TaskRequestState	task.StartMasterPersonTaskInput	task.Task	workflow.TerminologyPhaseResult	workflow.TranslationLoadResult	workflow.TranslationLoadedFile	workflow.TranslationPreviewPage	workflow.TranslationPreviewRow	workflow.TranslationPromptConfig	workflow.TranslationRequestConfig
+Not found: time.Time
+KnownStructs: dictionary.DictSource	dictionary.DictTerm	dictionary.DictTermPage	modelcatalog.ListModelsInput	modelcatalog.ModelCapability	modelcatalog.ModelOption	persona.PersonaDialogueView	persona.PersonaNPCView	queue.JobRequest	queue.TaskRequestState	task.StartMasterPersonTaskInput	task.Task	workflow.TerminologyPhaseResult	workflow.TranslationLoadResult	workflow.TranslationLoadedFile	workflow.TranslationPreviewPage	workflow.TranslationPreviewRow	workflow.TranslationPromptConfig	workflow.TranslationRequestConfig
+Not found: time.Time
+KnownStructs: dictionary.DictSource	dictionary.DictTerm	dictionary.DictTermPage	modelcatalog.ListModelsInput	modelcatalog.ModelCapability	modelcatalog.ModelOption	persona.PersonaDialogueView	persona.PersonaNPCView	queue.JobRequest	queue.TaskRequestState	task.StartMasterPersonTaskInput	task.Task	workflow.TerminologyPhaseResult	workflow.TranslationLoadResult	workflow.TranslationLoadedFile	workflow.TranslationPreviewPage	workflow.TranslationPreviewRow	workflow.TranslationPromptConfig	workflow.TranslationRequestConfig
+Not found: time.Time
+KnownStructs: dictionary.DictSource	dictionary.DictTerm	dictionary.DictTermPage	modelcatalog.ListModelsInput	modelcatalog.ModelCapability	modelcatalog.ModelOption	persona.PersonaDialogueView	persona.PersonaNPCView	queue.JobRequest	queue.TaskRequestState	task.StartMasterPersonTaskInput	task.Task	workflow.TerminologyPhaseResult	workflow.TranslationLoadResult	workflow.TranslationLoadedFile	workflow.TranslationPreviewPage	workflow.TranslationPreviewRow	workflow.TranslationPromptConfig	workflow.TranslationRequestConfig
+Not found: time.Time
+KnownStructs: dictionary.DictSource	dictionary.DictTerm	dictionary.DictTermPage	modelcatalog.ListModelsInput	modelcatalog.ModelCapability	modelcatalog.ModelOption	persona.PersonaDialogueView	persona.PersonaNPCView	queue.JobRequest	queue.TaskRequestState	task.StartMasterPersonTaskInput	task.Task	workflow.TerminologyPhaseResult	workflow.TranslationLoadResult	workflow.TranslationLoadedFile	workflow.TranslationPreviewPage	workflow.TranslationPreviewRow	workflow.TranslationPromptConfig	workflow.TranslationRequestConfig
+Not found: time.Time
+KnownStructs: dictionary.DictSource	dictionary.DictTerm	dictionary.DictTermPage	modelcatalog.ListModelsInput	modelcatalog.ModelCapability	modelcatalog.ModelOption	persona.PersonaDialogueView	persona.PersonaNPCView	queue.JobRequest	queue.TaskRequestState	task.StartMasterPersonTaskInput	task.Task	workflow.TerminologyPhaseResult	workflow.TranslationLoadResult	workflow.TranslationLoadedFile	workflow.TranslationPreviewPage	workflow.TranslationPreviewRow	workflow.TranslationPromptConfig	workflow.TranslationRequestConfig
+Not found: time.Time
+[0m
+
+[0;92mUsing DevServer URL: http://localhost:34115[0m
+[0;92mUsing Frontend DevServer URL: http://localhost:5173[0m
+[0;92mUsing reload debounce setting of 100 milliseconds[0m
+2026/03/20 11:03:44 INFO database connection opened and configured path="F:\\ai translation engine 2\\db\\config.db"
+2026/03/20 11:03:44 INFO database connection opened and configured path="F:\\ai translation engine 2\\db\\task.db"
+2026/03/20 11:03:44 INFO database connection opened and configured path="F:\\ai translation engine 2\\db\\artifact.db"
+2026/03/20 11:03:44 INFO database connection opened and configured path="F:\\ai translation engine 2\\db\\terminology.db"
+INF | Serving assets from frontend DevServer URL: http://localhost:5173
+ERR | listen tcp 127.0.0.1:34115: bind: Only one usage of each socket address (protocol/network address/port) is normally permitted.
+[0;92mWatching (sub)/directory: F:\ai translation engine 2[0m
+[0;92m
+
+To develop in the browser and call your bound Go methods from Javascript, navigate to: http://localhost:34115[0m
+[0;92mAdded new directory to watcher: F:\ai translation engine 2\frontend\src\bootstrap[0m
+[0;92mDevelopment mode exited[0m

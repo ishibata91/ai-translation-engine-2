@@ -34,3 +34,12 @@
 
 ## Risks
 崩れやすい点、未確定点
+
+## Context Board Entry
+```md
+### Logic Design Handoff
+- 確定した責務境界:
+- docs 昇格候補:
+- review で見たい論点:
+- 未確定事項:
+```

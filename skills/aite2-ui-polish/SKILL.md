@@ -5,7 +5,7 @@ description: AI Translation Engine 2 専用。既存 UI の見た目を整える
 
 # AITE2 UI Polish
 
-この skill は既存 UI の見た目だけを対象に、観測、最小修正、実画面確認の順でデザイン差分を直すための skill。
+この skill は ui-refine 系の実務担当として、既存 UI の見た目だけを対象に、観測、最小修正、board handoff の順でデザイン差分を直すための skill。
 
 ## 使う場面
 - 「余白を直して」と既存 UI の見た目修正を依頼された
@@ -16,14 +16,20 @@ description: AI Translation Engine 2 専用。既存 UI の見た目を整える
 - `docs/frontend/ui-rules/spec.md`
 - 補助: `docs/frontend/frontend-coding-standards/spec.md`
 
+## handoff 前提
+- change が無い場合は `scripts/init-change-ui-refine-docs.ps1` で `changes/<id>/context_board/` を作る
+- `context_manager` が初期観測を整理した board を読む
+- 修正方針と変更結果は board に残して次の role へ渡す
+- ロジック変更は board に明示的な指示が無い限り扱わない
+
 ## 手順
 1. `docs/frontend/ui-rules/spec.md` を読み、UI 生成ルールとレイアウト制約を確認する。
 2. 必要なら `docs/frontend/frontend-coding-standards/spec.md` で実装上の制約を確認する。
-3. 対象画面と対象ファイルを特定する。
-4. `wails dev` と Playwright MCP で現状を観測し、見た目の問題を言語化する。
+3. board から対象画面、対象要素、対象ファイルを特定する。
+4. 現状観測を言語化し、見た目の問題を board に追記する。
 5. 余白、配置、視認性、整列のどこを直すかを最小単位で決める。
 6. ロジック変更を混ぜず、対象範囲だけを最小差分で修正する。
-7. 同じ画面を Playwright MCP で再確認し、修正前後の差分を確認する。
+7. 修正前後の差分と残リスクを board に残す。
 8. フロントの品質ゲートを通す。
 
 ## 参照資料
@@ -37,5 +43,4 @@ description: AI Translation Engine 2 専用。既存 UI の見た目を整える
 - 各ステップで対象、観測結果、次の 1 手を明確にする
 - 指定されていないファイルへ勝手に範囲を広げない
 - デザイン修正にロジック変更を混ぜない
-- `wails dev` の起動方法を勝手に変えない
-- Playwright MCP で実画面確認するまで完了扱いにしない
+- board を更新せずに次の role へ handoff しない

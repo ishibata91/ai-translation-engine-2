@@ -34,13 +34,21 @@ stateDiagram-v2
 ## Copy Tone
 文言トーン
 
-## Playwright MCP Checks
-- どの state をどう確認するか
-- 何を snapshot し、何を screenshot するか
-- どの操作で遷移を発火するか
+## Verification Facts
+- 各 state で後続 skill に渡す観測事実
+- 実装前に固定したい確認観点
 
 ## Non-goals
 今回決めないこと
 
 ## Open Questions
 未確定事項
+
+## Context Board Entry
+```md
+### UI Design Handoff
+- 確定した state:
+- 確定した UI 事実:
+- 未確定事項:
+- 次に読むべき board:
+```

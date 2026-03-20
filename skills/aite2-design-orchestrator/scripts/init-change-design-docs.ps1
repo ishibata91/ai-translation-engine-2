@@ -9,6 +9,7 @@ $ErrorActionPreference = "Stop"
 
 $root = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))
 $changeDir = Join-Path $root "changes\$ChangeId"
+$contextBoardDir = Join-Path $changeDir "context_board"
 
 $templates = @{
     "ui" = @{
@@ -25,7 +26,23 @@ $templates = @{
     }
 }
 
+$boardTemplates = @(
+    @{
+        Source = Join-Path $root "skills\aite2-design-orchestrator\references\context-board\current_context.md"
+        Destination = Join-Path $contextBoardDir "current_context.md"
+    }
+    @{
+        Source = Join-Path $root "skills\aite2-design-orchestrator\references\context-board\handoff.md"
+        Destination = Join-Path $contextBoardDir "handoff.md"
+    }
+    @{
+        Source = Join-Path $root "skills\aite2-design-orchestrator\references\context-board\findings.md"
+        Destination = Join-Path $contextBoardDir "findings.md"
+    }
+)
+
 New-Item -ItemType Directory -Path $changeDir -Force | Out-Null
+New-Item -ItemType Directory -Path $contextBoardDir -Force | Out-Null
 
 foreach ($kind in $Kinds) {
     if (-not $templates.ContainsKey($kind)) {
@@ -46,6 +63,20 @@ foreach ($kind in $Kinds) {
 
     Copy-Item -Path $source -Destination $destination
     Write-Output "Created $destination"
+}
+
+foreach ($boardTemplate in $boardTemplates) {
+    if (-not (Test-Path $boardTemplate.Source)) {
+        throw "Template not found: $($boardTemplate.Source)"
+    }
+
+    if (Test-Path $boardTemplate.Destination) {
+        Write-Output "Skipped existing $($boardTemplate.Destination)"
+        continue
+    }
+
+    Copy-Item -Path $boardTemplate.Source -Destination $boardTemplate.Destination
+    Write-Output "Created $($boardTemplate.Destination)"
 }
 
 function ConvertTo-TitleCase {
@@ -102,6 +133,7 @@ if ($generatedDocs.Count -gt 0) {
 $indexLines += ""
 $indexLines += "## Next Steps"
 $indexLines += '- Fill `ui.md`, `scenarios.md`, and `logic.md` in order.'
+$indexLines += '- Use `context_board/` to store shared context, handoff, and findings between design skills.'
 $indexLines += "- Added documents are reflected in this list automatically."
 
 Set-Content -Path $indexPath -Value ($indexLines -join "`n") -Encoding utf8

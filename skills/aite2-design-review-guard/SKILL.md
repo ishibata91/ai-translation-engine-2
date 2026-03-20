@@ -5,12 +5,18 @@ description: AI Translation Engine 2 専用。change と docs 正本をレビュ
 
 # AITE2 Design Review Guard
 
-この skill は change 文書、`docs/` 正本、architecture を照合し、設計上の重大な欠陥から順に指摘するための review skill。
+この skill は architect 向けに、change 文書、`docs/` 正本、architecture を照合し、設計上の重大な欠陥から順に指摘するための review skill。
 
 ## 使う場面
 - 実装前に設計レビューをしたい
 - `logic.md` / `ui.md` / `scenarios.md` と `docs/` のズレを見たい
 - docs 正本へ上げるべき仕様断片を確認したい
+
+## architect 入力契約
+- design orchestrator から渡された context packet
+- 関連する `changes/` 文書
+- 参照すべき `docs/` 正本
+- review で重点確認したい論点
 
 ## 手順
 1. 関連する `changes/` 文書と `docs/` 正本を集める。
@@ -27,6 +33,9 @@ description: AI Translation Engine 2 専用。change と docs 正本をレビュ
 - Residual Risks を分ける
 - docs 同期要否を最後に短く添える
 
+## 参照資料
+- findings 記録は `references/templates.md` を使う。
+
 ## 原則
 - 作業は対話内でタスク化し、常に 1 ステップずつ進める
 - 実装差分の是正ループには入らない
@@ -34,3 +43,4 @@ description: AI Translation Engine 2 専用。change と docs 正本をレビュ
 - 要約は findings の後に置く
 - 問題なしならそれを明示する
 - change 文書だけでなく `docs/` 正本との仕様差分も確認する
+- architect は実装差分の是正ループには入らない

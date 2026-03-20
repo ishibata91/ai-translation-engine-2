@@ -53,3 +53,12 @@ flowchart LR
 
 ## Open Questions
 未確定事項
+
+## Context Board Entry
+```md
+### Scenario Design Handoff
+- 確定した main flow:
+- 確定した acceptance:
+- 未確定事項:
+- 次に読むべき board:
+```

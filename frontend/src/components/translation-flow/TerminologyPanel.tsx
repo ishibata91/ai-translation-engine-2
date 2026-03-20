@@ -100,7 +100,7 @@ export function TerminologyPanel({
                 namespace="translation_flow.terminology"
                 enabled={isConfigHydrated}
                 locked={isRunning}
-                collapsible={false}
+                collapsible
                 labels={{
                     executionProfile: '翻訳実行方式',
                     syncConcurrency: '単語翻訳の同期並列数',
