@@ -5,7 +5,7 @@ description: AI Translation Engine 2 専用。既存 UI の見た目を整える
 
 # AITE2 UI Polish
 
-この skill は ui-refine 系の実務担当として、既存 UI の見た目だけを対象に、観測、最小修正、board handoff の順でデザイン差分を直すための skill。
+この skill は ui-refine 系作業の指揮者として動き、既存 UI の見た目だけを対象に、観測、修正委譲、review、board handoff の順でデザイン差分を直すための orchestration skill。
 
 ## 使う場面
 - 「余白を直して」と既存 UI の見た目修正を依頼された
@@ -17,10 +17,18 @@ description: AI Translation Engine 2 専用。既存 UI の見た目を整える
 - 補助: `docs/frontend/frontend-coding-standards/spec.md`
 
 ## handoff 前提
+- ui-polish 指揮役は、原則として必要な前段 skill を subagent として起動する
+- 下位 skill の起動時は、各 skill 配下の `agents/openai.yaml` に定義された subagent 設定を使う
+- ローカル直実行は、ユーザーが delegation を明示的に止めた場合か、subagent 側設定が欠けていて継続不能な場合に限る
 - change が無い場合は `scripts/init-change-ui-refine-docs.ps1` で `changes/<id>/context_board/` を作る
-- `context_manager` が初期観測を整理した board を読む
-- 修正方針と変更結果は board に残して次の role へ渡す
+- `aite2-explorer` が初期観測を整理した board を読む
+- 修正方針と変更結果は board に残して次の skill へ渡す
 - ロジック変更は board に明示的な指示が無い限り扱わない
+
+## subagent 起動規約
+- 初期観測や対象整理が必要な場合は `aite2-explorer` を使う
+- 実際の UI 修正は `aite2-frontend-implementation` を使う
+- UI 実装差分の review が必要な場合は `aite2-implementation-review-guard` を使う
 
 ## 手順
 1. `docs/frontend/ui-rules/spec.md` を読み、UI 生成ルールとレイアウト制約を確認する。
@@ -28,9 +36,9 @@ description: AI Translation Engine 2 専用。既存 UI の見た目を整える
 3. board から対象画面、対象要素、対象ファイルを特定する。
 4. 現状観測を言語化し、見た目の問題を board に追記する。
 5. 余白、配置、視認性、整列のどこを直すかを最小単位で決める。
-6. ロジック変更を混ぜず、対象範囲だけを最小差分で修正する。
-7. 修正前後の差分と残リスクを board に残す。
-8. フロントの品質ゲートを通す。
+6. `aite2-frontend-implementation` に、ロジック変更を混ぜない UI 修正として実装を委譲する。
+7. 必要なら `aite2-implementation-review-guard` に review を委譲する。
+8. 修正前後の差分と残リスクを board に残す。
 
 ## 参照資料
 - 起動例と非起動例は `references/examples.md` を読む。
@@ -41,6 +49,7 @@ description: AI Translation Engine 2 専用。既存 UI の見た目を整える
 - 作業は対話内でタスク化し、常に 1 ステップずつ進める
 - 一度に複数箇所へ広げず、指定された対象から順に直す
 - 各ステップで対象、観測結果、次の 1 手を明確にする
+- 指揮役は orchestration 以外を行わず、自分で修正や review をしない
 - 指定されていないファイルへ勝手に範囲を広げない
 - デザイン修正にロジック変更を混ぜない
-- board を更新せずに次の role へ handoff しない
+- board を更新せずに次の skill へ handoff しない

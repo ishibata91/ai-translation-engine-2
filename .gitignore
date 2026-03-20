@@ -6,7 +6,6 @@
 .clinerules
 /node_modules
 build/
-.codex
 ./
 frontend/test-results
 # Wails build artifacts
