@@ -8,7 +8,7 @@ description: AI Translation Engine 2 専用。bugfix 調査で原因仮説と検
 > **起動確認**: このスキルが起動されたら、まず `invoked_skill` が `fix-trace` であることを確認する。不一致の場合は作業を開始せずエラーを返す。
 
 この skill は原因仮説、調査計画、専用 logger 配置、再現後の原因絞り込みを返す skill。
-絶対に恒久修正を行わないこと｡他スキルのサブエージェントを呼び出したりしないこと｡
+絶対に恒久修正を行わないこと｡他スキルのサブエージェントを呼び出したりしないこと｡ただしログ追加は許可する｡
 
 ## 使う場面
 - bugfix flow で最初の原因仮説を立てたい
@@ -27,7 +27,8 @@ description: AI Translation Engine 2 専用。bugfix 調査で原因仮説と検
 2. 原因仮説と優先調査箇所を整理する。
 3. `scripts/init-debugger-logger.ps1` で `changes/<id>/debugger_logs/` 配下に専用 logger と専用出力を配置する。
 4. 再現後は構造化された観測事実を読み、原因候補を狭める。
-5. `fix-direction` へ fix plan の前提となる原因整理を返す。
+5. 必要な場合､context_boardに出力する観測ログを追加する｡このとき､実装はサブエージェントを使わずにそのまま追加すること｡
+6. `fix-direction` へ fix plan の前提となる原因整理を返す。
 
 ## 原則
 - 恒久修正は行わない
