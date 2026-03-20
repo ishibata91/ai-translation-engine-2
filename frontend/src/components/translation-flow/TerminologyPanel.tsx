@@ -54,6 +54,8 @@ export function TerminologyPanel({
     const statusClass = STATUS_BADGE_CLASS[summary.status] ?? STATUS_BADGE_CLASS.pending;
     const canRun = taskId !== '' && llmConfig.model.trim() !== '' && !isRunning;
     const canNext = summary.status === 'completed';
+    const errorClass =
+        summary.status === 'pending' && summary.targetCount === 0 ? 'mt-3 text-sm text-warning' : 'mt-3 text-sm text-error';
 
     return (
         <div className={`tab-content-panel flex-col gap-4 h-full overflow-y-auto ${isActive ? 'flex' : 'hidden'}`}>
@@ -82,7 +84,7 @@ export function TerminologyPanel({
                 {llmConfig.model.trim() === '' && (
                     <p className="mt-3 text-sm text-warning">実行前にモデルを選択してください。</p>
                 )}
-                {errorMessage !== '' && <p className="mt-3 text-sm text-error">{errorMessage}</p>}
+                {errorMessage !== '' && <p className={errorClass}>{errorMessage}</p>}
             </div>
 
             <div className="grid grid-cols-1 gap-3 md:grid-cols-3">

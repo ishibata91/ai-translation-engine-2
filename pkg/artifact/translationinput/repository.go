@@ -299,6 +299,7 @@ func (r *sqliteRepository) LoadTerminologyInput(ctx context.Context, taskID stri
 		if err := rows.Scan(&entry.ID, &entry.EditorID, &entry.RecordType, &entry.SourceText, &entry.SourceFile, &entry.PairKey, &entry.Variant); err != nil {
 			return TerminologyInput{}, fmt.Errorf("scan terminology entry task_id=%s: %w", trimmedTaskID, err)
 		}
+		entry.RecordType = normalizeTerminologyRecordType(entry.RecordType)
 		input.Entries = append(input.Entries, entry)
 	}
 	if err := rows.Err(); err != nil {
@@ -806,13 +807,23 @@ func normalizeTerminologyRecordType(recordType string) string {
 	if trimmed == "" {
 		return trimmed
 	}
-	if strings.HasPrefix(trimmed, "NPC_:") {
-		return trimmed
+	parts := strings.Fields(trimmed)
+	if len(parts) == 2 {
+		variant := strings.ToUpper(parts[1])
+		if variant == "FULL" || variant == "SHRT" {
+			return parts[0] + ":" + variant
+		}
 	}
 	if strings.Contains(trimmed, ":") {
-		return trimmed
+		pair := strings.SplitN(trimmed, ":", 2)
+		left := strings.Join(strings.Fields(pair[0]), "")
+		right := strings.ToUpper(strings.Join(strings.Fields(pair[1]), ""))
+		if right == "" {
+			right = "FULL"
+		}
+		return left + ":" + right
 	}
-	return trimmed + ":FULL"
+	return strings.Join(parts, "") + ":FULL"
 }
 
 func normalizePairKey(editorID *string, recordID string) string {

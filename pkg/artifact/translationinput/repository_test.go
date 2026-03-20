@@ -195,6 +195,40 @@ func TestRepository_SaveAndPreview_TableDriven(t *testing.T) {
 	}
 }
 
+func TestRepository_LoadTerminologyInput_NormalizesLegacyRecordTypes(t *testing.T) {
+	db, cleanup := setupRepositoryTestDB(t)
+	defer cleanup()
+
+	repo := NewRepository(db)
+	editorID := "EditorLegacy"
+	name := "Legacy Weapon"
+
+	if _, err := repo.SaveParsedOutput(context.Background(), "task-legacy", `C:\mods\legacy.json`, &skyrim.ParserOutput{
+		Items: []skyrim.Item{{
+			BaseExtractedRecord: skyrim.BaseExtractedRecord{
+				ID:         "legacy-item-1",
+				EditorID:   &editorID,
+				Type:       "WEAP FULL",
+				SourceJSON: `C:\mods\legacy.json`,
+			},
+			Name: &name,
+		}},
+	}); err != nil {
+		t.Fatalf("SaveParsedOutput failed: %v", err)
+	}
+
+	input, err := repo.LoadTerminologyInput(context.Background(), "task-legacy")
+	if err != nil {
+		t.Fatalf("LoadTerminologyInput failed: %v", err)
+	}
+	if len(input.Entries) != 1 {
+		t.Fatalf("unexpected terminology entry count: got=%d want=1", len(input.Entries))
+	}
+	if input.Entries[0].RecordType != "WEAP:FULL" {
+		t.Fatalf("unexpected normalized record type: got=%q want=%q", input.Entries[0].RecordType, "WEAP:FULL")
+	}
+}
+
 func setupRepositoryTestDB(t *testing.T) (*sql.DB, func()) {
 	t.Helper()
 

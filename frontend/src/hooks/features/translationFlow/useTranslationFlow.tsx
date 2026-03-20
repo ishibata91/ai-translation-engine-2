@@ -23,6 +23,8 @@ const TERMINOLOGY_LLM_NAMESPACE = 'translation_flow.terminology.llm';
 const TERMINOLOGY_PROMPT_NAMESPACE = 'translation_flow.terminology.prompt';
 const TERMINOLOGY_USER_PROMPT_KEY = 'user_prompt';
 const TERMINOLOGY_SYSTEM_PROMPT_KEY = 'system_prompt';
+const NO_TERMINOLOGY_TARGETS_MESSAGE =
+    '用語翻訳対象がありません。ロード済みデータに Items / Locations / Cells / NPCs の対象レコードが含まれているか確認してください。';
 const DEFAULT_TERMINOLOGY_PROMPT_CONFIG: MasterPersonaPromptConfig = {
     userPrompt: 'Translate the provided term.',
     systemPrompt: `You are a translator for a Skyrim mod.
@@ -189,9 +191,17 @@ const normalizeTerminologyPromptConfig = (loaded: Record<string, string>): Maste
     systemPrompt: loaded[TERMINOLOGY_SYSTEM_PROMPT_KEY] ?? DEFAULT_TERMINOLOGY_PROMPT_CONFIG.systemPrompt,
 });
 
-const terminologyStatusLabel = (summary: TerminologyPhaseSummary, isRunning: boolean, progressLabel: string): string => {
+const terminologyStatusLabel = (
+    summary: TerminologyPhaseSummary,
+    isRunning: boolean,
+    progressLabel: string,
+    errorMessage: string,
+): string => {
     if (isRunning && progressLabel !== '') {
         return progressLabel;
+    }
+    if (summary.status === 'pending' && summary.targetCount === 0 && errorMessage === NO_TERMINOLOGY_TARGETS_MESSAGE) {
+        return '用語翻訳対象なし';
     }
     switch (summary.status) {
         case 'completed':
@@ -348,6 +358,11 @@ export function useTranslationFlow(): UseTranslationFlowResult {
     }, [isTerminologyPromptHydrated, terminologyPromptConfig]);
 
     const handleRefreshTerminologyPhase = useCallback(async () => {
+        if (taskId === '') {
+            setTerminologySummary(EMPTY_TERMINOLOGY_SUMMARY);
+            setTerminologyErrorMessage('');
+            return;
+        }
         try {
             const payload = await GetTranslationFlowTerminology(taskId);
             const summary = mapTerminologyPhaseResult(payload);
@@ -365,6 +380,10 @@ export function useTranslationFlow(): UseTranslationFlowResult {
     }, [taskId]);
 
     const handleReloadFiles = useCallback(async () => {
+        if (taskId === '') {
+            setLoadedFiles([]);
+            return;
+        }
         setIsLoading(true);
         setErrorMessage('');
         try {
@@ -385,9 +404,17 @@ export function useTranslationFlow(): UseTranslationFlowResult {
         if (!isTaskIDResolved) {
             return;
         }
+        if (taskId === '') {
+            setLoadedFiles([]);
+            setTerminologySummary(EMPTY_TERMINOLOGY_SUMMARY);
+            setTerminologyErrorMessage('');
+            setErrorMessage('');
+            setActiveTab(0);
+            return;
+        }
         void handleReloadFiles();
         void handleRefreshTerminologyPhase();
-    }, [handleRefreshTerminologyPhase, handleReloadFiles, isTaskIDResolved]);
+    }, [handleRefreshTerminologyPhase, handleReloadFiles, isTaskIDResolved, taskId]);
 
     const handleSelectFiles = useCallback(async () => {
         setErrorMessage('');
@@ -507,6 +534,11 @@ export function useTranslationFlow(): UseTranslationFlowResult {
                 ...summary,
                 taskId: summary.taskId || taskId,
             });
+            if (summary.status === 'pending' && summary.targetCount === 0) {
+                setTerminologyErrorMessage(NO_TERMINOLOGY_TARGETS_MESSAGE);
+                setTerminologyProgressLabel('用語翻訳対象なし');
+                return;
+            }
             setTerminologyProgressLabel('単語翻訳完了');
         } catch (error) {
             setTerminologyErrorMessage(toErrorMessage(error, '単語翻訳の実行に失敗しました'));
@@ -559,7 +591,12 @@ export function useTranslationFlow(): UseTranslationFlowResult {
             isLoading,
             errorMessage,
             terminologySummary,
-            terminologyStatusLabel: terminologyStatusLabel(terminologySummary, isTerminologyRunning, terminologyProgressLabel),
+            terminologyStatusLabel: terminologyStatusLabel(
+                terminologySummary,
+                isTerminologyRunning,
+                terminologyProgressLabel,
+                terminologyErrorMessage,
+            ),
             terminologyErrorMessage,
             isTerminologyRunning,
             terminologyConfig,
