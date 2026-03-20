@@ -1,3 +1,4 @@
 display_name: AITE2 Debugger
+profile: debugger
 short_description: bugfix 調査で原因仮説と専用 logger 配置を担当する
 default_prompt: Use $aite2-debugger at skills/aite2-debugger when bugfix work needs a debugger role to place dedicated logging, analyze repro facts, and narrow the cause before any fix is applied.

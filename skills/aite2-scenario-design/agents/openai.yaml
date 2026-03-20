@@ -1,3 +1,4 @@
 display_name: AITE2 Scenario Design
+profile: architect
 short_description: ロバストネス図付きで操作シナリオを整理する
 default_prompt: Use $aite2-scenario-design at skills/aite2-scenario-design when the user wants to define user flows, error cases, and acceptance criteria for a change.

@@ -1,3 +1,4 @@
 display_name: AITE2 UI Design
+profile: architect
 short_description: architect として UI 契約を state machine ベースで整理する
 default_prompt: Use $aite2-ui-design at skills/aite2-ui-design when an architect-owned design step needs to define or revise UI states, flows, and screen responsibilities from a prepared context packet.

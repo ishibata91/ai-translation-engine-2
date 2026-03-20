@@ -1,0 +1,4 @@
+display_name: AITE2 Design Review Guard
+profile: architect
+short_description: change 文書と docs 正本を architect 観点でレビューする
+default_prompt: Use $aite2-design-review-guard at skills/aite2-design-review-guard when an architect-owned design review needs to compare change docs, canonical docs, and architecture constraints and return findings only.

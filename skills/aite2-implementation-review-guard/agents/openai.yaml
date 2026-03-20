@@ -1,3 +1,4 @@
 display_name: AITE2 Implementation Review Guard
+profile: reviewer
 short_description: coder の統合差分を read-only でレビューする
 default_prompt: Use $aite2-implementation-review-guard at skills/aite2-implementation-review-guard when a reviewer subagent needs to compare integrated implementation diffs against change docs and docs/ and return findings only.
