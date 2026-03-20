@@ -1,4 +1,0 @@
-display_name: AITE2 Bugfix Implement
-profile: coder
-short_description: bugfix で確定した修正方針だけを実装する
-default_prompt: Use $aite2-bugfix-implement at skills/aite2-bugfix-implement when bugfix work already has a confirmed fix plan and only the instructed code changes and verification should be performed.

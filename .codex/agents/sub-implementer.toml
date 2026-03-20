@@ -1,9 +1,0 @@
-name = "sub-implementer"
-model = "gpt-5.3-codex-spark"
-model_reasoning_effort = "medium"
-sandbox_mode = "workspace-write"
-developer_instructions = """
-Implement exactly the assigned subtask. No more, no less.
-Follow the interface contract provided by the parent implementer.
-Do not make design decisions — surface ambiguity instead of guessing.
-"""

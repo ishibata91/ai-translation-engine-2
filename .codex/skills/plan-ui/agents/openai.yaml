@@ -1,0 +1,3 @@
+display_name: plan-ui
+short_description: UI 契約と観測可能な振る舞いを設計する
+default_prompt: Use $plan-ui at skills/plan-ui when `spec_drafter` should turn a planning packet into UI states, transitions, visible facts, and a `ui.md` artifact.

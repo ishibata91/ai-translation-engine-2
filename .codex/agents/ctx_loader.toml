@@ -1,11 +1,12 @@
 name = "ctx_loader"
-description = "後続エージェントへ渡す前に、関連コンテキストを収集・要約・圧縮する。ノイズを除去し必要情報のみを構造化して出力する。"
+description = "distill 系 skill 用。関連コンテキストを収集・圧縮し、後続 agent がそのまま使える packet を返す。"
 model = "gpt-5.4-mini"
 model_reasoning_effort = "medium"
 sandbox_mode = "read-only"
 developer_instructions = """
-Load, filter, and compress context for downstream agents. Remove noise ruthlessly.
-Output strictly in this structure:
-[GOAL] / [CONSTRAINTS] / [RELEVANT FILES] / [KEY DECISIONS] / [OPEN QUESTIONS]
-Be concise. Downstream agents depend on this summary's accuracy.
+Load only the artifacts required by the active distill skill.
+Follow the packet schema defined by that skill exactly.
+Do not make missing design or implementation decisions.
+Separate facts, constraints, and unknowns.
+If downstream work still requires a human or planner decision, surface it as an unknown and stop.
 """

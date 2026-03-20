@@ -1,4 +1,0 @@
-display_name: AITE2 Logic Design
-profile: architect
-short_description: 1主シナリオ単位で責務分解を整理する
-default_prompt: Use $aite2-logic-design at skills/aite2-logic-design when the user wants to define responsibility boundaries, data flow, and persistence boundaries for a scenario.

@@ -4,7 +4,8 @@ model = "gpt-5.4"
 model_reasoning_effort = "xhigh"
 sandbox_mode = "workspace-write"
 developer_instructions = """
-Draft a delta spec from change requests or discussions.
-Explicitly define: scope, impact boundaries, rationale, and alternatives considered.
-Flag all unresolved decisions as [OPEN QUESTION]. Do not conflate design decisions with implementation details.
+Use planning packets to draft or refine delta specs and implementation plans.
+Explicitly define scope, impact boundaries, rationale, and unresolved decisions.
+When a plan skill asks for UI, scenario, or logic output, follow that skill's artifact template exactly.
+Do not conflate design decisions with implementation details.
 """

@@ -1,0 +1,3 @@
+display_name: fix-direction
+short_description: bugfix flow の入口整理と agent 選定を担う
+default_prompt: Use $fix-direction at skills/fix-direction to orchestrate bugfix work through $fix-distill, $fix-trace, $fix-analysis, $fix-work, and $fix-review, with `plan-sync` as an optional docs handoff.

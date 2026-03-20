@@ -1,0 +1,3 @@
+display_name: impl-backend-work
+short_description: backend の所有範囲だけを実装する
+default_prompt: Use $impl-backend-work at skills/impl-backend-work when `sub_implementer` should implement only the owned backend paths from a work order and return a structured diff plus verification.

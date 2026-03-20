@@ -1,0 +1,3 @@
+display_name: plan-direction
+short_description: plan 系の入口整理と次の skill / agent 選定を担う
+default_prompt: Use $plan-direction at skills/plan-direction to route planning work through $plan-distill, $plan-ui, $plan-scenario, $plan-logic, $plan-review, and $plan-sync without doing the downstream work directly.

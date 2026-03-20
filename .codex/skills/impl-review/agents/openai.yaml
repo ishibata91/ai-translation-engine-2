@@ -1,0 +1,3 @@
+display_name: impl-review
+short_description: 実装差分を required delta 中心でレビューする
+default_prompt: Use $impl-review at skills/impl-review when `review_cycler` should compare masked implementation artifacts against the spec and return structured review feedback plus docs sync need.

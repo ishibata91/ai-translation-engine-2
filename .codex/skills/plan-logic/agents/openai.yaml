@@ -1,0 +1,3 @@
+display_name: plan-logic
+short_description: 責務分解とビジネスロジックを設計する
+default_prompt: Use $plan-logic at skills/plan-logic when `spec_drafter` should define responsibility boundaries, data flow, persistence boundaries, and `logic.md` from a planning packet.

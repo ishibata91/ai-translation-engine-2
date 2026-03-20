@@ -1,0 +1,3 @@
+display_name: plan-scenario
+short_description: 操作シナリオと acceptance を設計する
+default_prompt: Use $plan-scenario at skills/plan-scenario when `spec_drafter` should turn a planning packet into user flows, branches, and `scenarios.md`.

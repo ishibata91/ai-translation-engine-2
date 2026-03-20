@@ -1,0 +1,23 @@
+---
+name: fix-distill
+description: AI Translation Engine 2 専用。再現条件、関連コード、既知観測、関連仕様を bugfix packet に蒸留する。bugfix flow の入口で事実整理をしたいときに使う。
+---
+
+# Fix Distill
+
+この skill は `ctx_loader` 用の bugfix 蒸留 skill。
+再現条件と既知観測を整理し、`fix-trace` や `fix-direction` が次の調査方針を決められる packet を返す。
+
+## 制約
+- 恒久修正を提案しない。
+- 原因推定は行わない。
+- 事実、再現条件、関連 artifact を分けて返す。
+
+## やること
+1. 対象の症状、再現条件、change を確認する。
+2. 関連する docs、コード、context board、既知ログを読む。
+3. 再現条件、観測済み事実、関連箇所、未観測箇所を整理する。
+4. `fix-trace` または `fix-direction` が次に読む bugfix packet を返す。
+
+## 参照
+- 返答テンプレートは `references/response-template.md` を使う。

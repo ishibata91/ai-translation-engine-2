@@ -1,0 +1,3 @@
+display_name: impl-distill
+short_description: 確定済み artifacts を実装 packet へ蒸留する
+default_prompt: Use $impl-distill at skills/impl-distill when `ctx_loader` should turn reviewed planning artifacts into an implementation packet for $impl-workplan without making any new design decisions.

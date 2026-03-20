@@ -1,0 +1,3 @@
+display_name: plan-sync
+short_description: review 済みの設計差分を docs 正本へ同期する
+default_prompt: Use $plan-sync at skills/plan-sync when `spec_syncer` should promote reviewed planning artifacts into canonical docs without copying implementation-only details.

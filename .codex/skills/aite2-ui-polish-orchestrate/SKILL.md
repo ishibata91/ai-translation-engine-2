@@ -19,14 +19,14 @@ description: AI Translation Engine 2 専用。既存 UI の見た目を整える
 ## handoff 前提
 - ui-polish 指揮役は、原則として必要な前段 skill を subagent として起動する
 - change が無い場合は `scripts/init-change-ui-refine-docs.ps1` で `changes/<id>/context_board/` を作る
-- `aite2-context-collect` が初期観測を整理した board を読む
+- `plan-distill` が初期観測を整理した board を読む
 - 修正方針と変更結果は board に残して次の skill へ渡す
 - ロジック変更は board に明示的な指示が無い限り扱わない
 
 ## subagent 起動規約
-- 初期観測や対象整理が必要な場合は `aite2-context-collect` を使う
-- 実際の UI 修正は `aite2-frontend-implement` を使う
-- UI 実装差分の review が必要な場合は `aite2-implementation-review` を使う
+- 初期観測や対象整理が必要な場合は `plan-distill` を使う
+- 実際の UI 修正は `impl-frontend-work` を使う
+- UI 実装差分の review が必要な場合は `impl-review` を使う
 
 ## 手順
 1. `docs/frontend/ui-rules/spec.md` を読み、UI 生成ルールとレイアウト制約を確認する。
@@ -34,8 +34,8 @@ description: AI Translation Engine 2 専用。既存 UI の見た目を整える
 3. board から対象画面、対象要素、対象ファイルを特定する。
 4. 現状観測を言語化し、見た目の問題を board に追記する。
 5. 余白、配置、視認性、整列のどこを直すかを最小単位で決める。
-6. `aite2-frontend-implement` に、ロジック変更を混ぜない UI 修正として実装を委譲する。
-7. 必要なら `aite2-implementation-review` に review を委譲する。
+6. `impl-frontend-work` に、ロジック変更を混ぜない UI 修正として実装を委譲する。
+7. 必要なら `impl-review` に review を委譲する。
 8. 修正前後の差分と残リスクを board に残す。
 
 ## 参照資料
