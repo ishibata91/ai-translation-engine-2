@@ -1,4 +1,0 @@
-display_name: AITE2 UI Polish
-profile: coder
-short_description: context board を使って既存 UI の見た目だけを修正する
-default_prompt: Use $aite2-ui-polish at skills/aite2-ui-polish when the user asks to fix spacing, layout, alignment, or visibility issues in an existing UI and the work should be handed off through the change context board.

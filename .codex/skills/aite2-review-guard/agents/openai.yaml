@@ -1,3 +1,0 @@
-display_name: AITE2 Review Guard
-short_description: 仕様差分と実装差分を突き合わせてレビューする
-default_prompt: Use $aite2-review-guard at skills/aite2-review-guard when the user asks for a review or wants to check implementation against change docs and docs/.

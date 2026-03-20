@@ -1,3 +1,0 @@
-display_name: AITE2 Bug Fix
-short_description: bugfix の調査と handoff を指揮する
-default_prompt: 'Use $aite2-bug-fix at skills/aite2-bug-fix to orchestrate bug reproduction, debugger analysis, fixer handoff, and reviewer follow-up using the change context board.'

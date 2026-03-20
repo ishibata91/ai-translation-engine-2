@@ -1,0 +1,4 @@
+display_name: AITE2 UI Polish Orchestrate
+profile: coder
+short_description: context board を使って既存 UI の見た目だけを修正する入口を整理する
+default_prompt: Use $aite2-ui-polish-orchestrate at skills/aite2-ui-polish-orchestrate when the user asks to fix spacing, layout, alignment, or visibility issues in an existing UI and the work should be handed off through the change context board.

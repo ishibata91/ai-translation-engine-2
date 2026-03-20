@@ -5,6 +5,9 @@
 ## 出力言語
 - 返答、資料、プランはすべて日本語で出力する。
 
+## Routing Rule
+Every agent MUST check: "Am I the right agent for this task?"
+If not, surface a handoff suggestion to the orchestrator before proceeding.
 
 ## 進め方
 - `go-llm-lensが入っている｡pkg/以下で走査したいときは使うこと`

@@ -1,0 +1,4 @@
+display_name: AITE2 Backend Implement
+profile: coder
+short_description: backend coder として task を実装し品質ゲートまで進める
+default_prompt: Use $aite2-backend-implement at skills/aite2-backend-implement when a backend coder role needs to implement owned tasks according to tasks.md or logic.md and return verification results.

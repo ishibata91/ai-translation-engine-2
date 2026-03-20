@@ -1,0 +1,4 @@
+display_name: AITE2 Frontend Implement
+profile: coder
+short_description: frontend coder として task を実装し品質ゲートまで進める
+default_prompt: Use $aite2-frontend-implement at skills/aite2-frontend-implement when a frontend coder role needs to implement owned tasks according to tasks.md, ui.md, or scenarios.md and return verification results.

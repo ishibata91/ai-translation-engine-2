@@ -1,3 +1,0 @@
-display_name: AITE2 Design Orchestrator
-short_description: context 収集込みで design skill の順序を指揮する
-default_prompt: Use $aite2-design-orchestrator at skills/aite2-design-orchestrator to collect design context, choose the next design skill, and orchestrate architect-owned design review and docs sync steps.

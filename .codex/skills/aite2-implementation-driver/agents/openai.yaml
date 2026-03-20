@@ -1,3 +1,0 @@
-display_name: AITE2 Implementation Driver
-short_description: impl 系 multi-agent orchestration の指揮者を担う
-default_prompt: Use $aite2-implementation-driver at skills/aite2-implementation-driver to orchestrate implementation work by first running $aite2-explorer, then spawning $aite2-frontend-implementation and/or $aite2-backend-implementation, then running $aite2-implementation-review-guard and looping on findings.

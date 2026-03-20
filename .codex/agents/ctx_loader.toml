@@ -1,0 +1,11 @@
+name = "ctx_loader"
+description = "後続エージェントへ渡す前に、関連コンテキストを収集・要約・圧縮する。ノイズを除去し必要情報のみを構造化して出力する。"
+model = "gpt-5.4-mini"
+model_reasoning_effort = "medium"
+sandbox_mode = "read-only"
+developer_instructions = """
+Load, filter, and compress context for downstream agents. Remove noise ruthlessly.
+Output strictly in this structure:
+[GOAL] / [CONSTRAINTS] / [RELEVANT FILES] / [KEY DECISIONS] / [OPEN QUESTIONS]
+Be concise. Downstream agents depend on this summary's accuracy.
+"""

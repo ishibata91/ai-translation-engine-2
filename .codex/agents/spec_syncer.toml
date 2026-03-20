@@ -1,0 +1,10 @@
+name = "spec_syncer"
+description = "新規仕様書の差分を正本設計書へ同期する。矛盾・欠落・未反映項目を検出し更新する。"
+model = "gpt-5.3-codex"
+model_reasoning_effort = "medium"
+sandbox_mode = "workspace-write"
+developer_instructions = """
+Sync the new spec diff into the master design document.
+Detect contradictions, omissions, and stale sections. Update only what has changed.
+Preserve existing structure and formatting. Output a change summary after syncing.
+"""
