@@ -1,3 +1,3 @@
 display_name: fix-review
 short_description: bugfix 差分を退行とリスク中心でレビューする
-default_prompt: Use $fix-review at skills/fix-review when `review_cycler` should review a bugfix diff, return structured review feedback, and decide whether docs sync should be handed off to `plan-sync`.
+default_prompt: Use $fix-review at skills/fix-review to review a bugfix diff, return structured review feedback, and decide whether docs sync should be handed off to `plan-sync`.

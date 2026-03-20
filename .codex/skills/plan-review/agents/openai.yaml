@@ -1,3 +1,3 @@
 display_name: plan-review
 short_description: 設計差分と docs 正本の整合をレビューする
-default_prompt: Use $plan-review at skills/plan-review when `review_cycler` should compare planning artifacts against canonical docs and return findings, open questions, residual risks, and docs sync needs.
+default_prompt: Use $plan-review at skills/plan-review to compare planning artifacts against canonical docs and return findings, open questions, residual risks, and docs sync needs.

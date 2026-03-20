@@ -1,11 +1,11 @@
 ---
 name: impl-frontend-work
-description: AI Translation Engine 2 専用。frontend 所有範囲の実装だけを行う。`sub_implementer` が work order に従って UI / frontend task を実装するときに使う。
+description: AI Translation Engine 2 専用。frontend 所有範囲の実装だけを行う。work order に従って UI / frontend task を実装したいときに使う。
 ---
 
 # Impl Frontend Work
 
-この skill は `sub_implementer` 用の frontend 実装 skill。
+この skill は frontend 所有範囲の実装結果を返す skill。
 work order で指定された所有範囲だけを変更し、frontend 品質ゲートを返す。
 
 ## 使う場面
@@ -43,7 +43,7 @@ work order で指定された所有範囲だけを変更し、frontend 品質ゲ
 - 品質ゲート順序は `references/quality-checklist.md` を使う。
 
 ## 原則
-- `sub_implementer` として自分の所有範囲に責任を持つ
+- 自分の所有範囲に責任を持つ
 - 大きい変更を一括で入れず、小さな変更単位で実装と確認を繰り返す
 - 設計が曖昧なまま実装で補完しない
 - UI とロジックの責務を混ぜない

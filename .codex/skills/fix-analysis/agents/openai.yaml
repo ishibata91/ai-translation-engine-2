@@ -1,3 +1,3 @@
 display_name: fix-analysis
 short_description: 再現ログと観測出力を事実へ圧縮する
-default_prompt: Use $fix-analysis at skills/fix-analysis when `ctx_loader` should convert dedicated logs or repro outputs into structured facts without adding root-cause speculation.
+default_prompt: Use $fix-analysis at skills/fix-analysis to convert dedicated logs or repro outputs into structured facts without adding root-cause speculation.

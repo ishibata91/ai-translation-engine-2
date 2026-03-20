@@ -1,3 +1,3 @@
 display_name: plan-distill
 short_description: plan 系の判断材料を planning packet へ蒸留する
-default_prompt: Use $plan-distill at skills/plan-distill when `ctx_loader` should gather only the artifacts needed to decide the next planning step and return a planning packet for $plan-direction or another plan skill.
+default_prompt: Use $plan-distill at skills/plan-distill to gather only the artifacts needed to decide the next planning step and return a planning packet for $plan-direction or another plan skill.

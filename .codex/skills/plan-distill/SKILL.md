@@ -1,12 +1,12 @@
 ---
 name: plan-distill
-description: AI Translation Engine 2 専用。差分仕様作成と実装計画確定のために、要求、既存 docs、既存コード、制約を蒸留する。plan 系 skill の入口として planning packet を作りたいときに使う。
+description: AI Translation Engine 2 専用。差分仕様作成と実装計画確定のために、要求、既存 docs、既存コード、制約を整理し、planning packet を作る。次の plan skill が判断を始めるための材料をまとめたいときに使う。
 ---
 
 # Plan Distill
 
-この skill は `ctx_loader` 用の設計蒸留 skill。
-要求と既存 artifact を整理し、次の plan skill が設計判断を始められる planning packet を返す。
+この skill は設計判断に必要な planning packet を作る skill。
+要求と既存 artifact を整理し、次の plan skill が設計判断を始められる材料を返す。
 
 ## 制約
 - 自分では UI / シナリオ / ロジックを確定しない。

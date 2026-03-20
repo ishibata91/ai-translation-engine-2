@@ -1,11 +1,11 @@
 ---
 name: impl-workplan
-description: AI Translation Engine 2 専用。implementer が implementation packet を独立 work order へ分解し、shared contract を確定して worker を起動する。mixed 実装や ownership 分割が必要なときに使う。
+description: AI Translation Engine 2 専用。implementation packet を独立 work order へ分解し、shared contract を確定して `sub_implementer` worker を起動する。mixed 実装や ownership 分割が必要なときに使う。
 ---
 
 # Impl Workplan
 
-この skill は `implementer` 用の work planning skill。
+この skill は implementation packet を work order に分解し、`sub_implementer` worker を起動する skill。
 implementation packet を独立 work order に分解し、shared contract を確定したうえで worker を起動する。
 
 ## 使う場面
@@ -24,7 +24,7 @@ implementation packet を独立 work order に分解し、shared contract を確
 2. worker ごとに owned paths と forbidden paths を決める。
 3. shared contract を 1 回だけ確定する。
 4. `impl-frontend-work` または `impl-backend-work` を使う work order を作る。
-5. worker を起動し、返却された structured diff を集約する。
+5. `sub_implementer` worker を起動し、返却された structured diff を集約する。
 6. integration に必要な検証結果をそろえて `impl-review` へ渡す。
 
 ## 出力契約

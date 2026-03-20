@@ -1,3 +1,3 @@
 display_name: fix-trace
 short_description: 原因仮説と tracing 計画を作る
-default_prompt: Use $fix-trace at skills/fix-trace when `fault_tracer` should turn a bugfix packet into ranked hypotheses and the smallest useful tracing plan without applying a fix.
+default_prompt: Use $fix-trace at skills/fix-trace to turn a bugfix packet into ranked hypotheses and the smallest useful tracing plan without applying a fix.

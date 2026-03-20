@@ -5,7 +5,7 @@ description: AI Translation Engine 2 専用。bugfix 調査で原因仮説と検
 
 # Fix Trace
 
-この skill は bugfix flow の原因調査役として、原因仮説、調査計画、専用 logger 配置、再現後の原因絞り込みを担当する。
+この skill は原因仮説、調査計画、専用 logger 配置、再現後の原因絞り込みを返す skill。
 
 ## 使う場面
 - bugfix flow で最初の原因仮説を立てたい

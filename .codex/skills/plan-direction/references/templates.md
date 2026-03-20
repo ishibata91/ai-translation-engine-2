@@ -21,6 +21,16 @@
 - 未確定事項:
 ```
 
+## chain 実行更新
+```md
+### Chain Update
+- current_stage:
+- completed_stages:
+- remaining_stages:
+- current_artifacts:
+- blockers:
+```
+
 ## conflict 応答
 ```md
 ### Conflict Handoff

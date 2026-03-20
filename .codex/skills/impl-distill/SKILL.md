@@ -1,11 +1,11 @@
 ---
 name: impl-distill
-description: AI Translation Engine 2 専用。確定済み artifacts を implementer 用の実装 packet に蒸留する。`ui.md` `scenarios.md` `logic.md` `tasks.md` から interface-only packet を作りたいときに使う。
+description: AI Translation Engine 2 専用。確定済み artifacts を実装 packet に蒸留する。`ui.md` `scenarios.md` `logic.md` `tasks.md` から interface-only packet を作りたいときに使う。
 ---
 
 # Impl Distill
 
-この skill は `ctx_loader` 用の実装蒸留 skill。
+この skill は実装開始に必要な implementation packet を作る skill。
 plan 側で確定済みの artifact を読み、実装開始に必要な packet を返す。
 
 ## 制約

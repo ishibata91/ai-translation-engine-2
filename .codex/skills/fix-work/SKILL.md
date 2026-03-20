@@ -1,11 +1,11 @@
 ---
 name: fix-work
-description: AI Translation Engine 2 専用。bugfix flow で確定した修正方針だけを実装する。`sub_implementer` が fix scope と修正方針に従って最小修正を入れるときに使う。
+description: AI Translation Engine 2 専用。bugfix flow で確定した修正方針だけを実装する。fix scope と修正方針に従って最小修正を反映したいときに使う。
 ---
 
 # Fix Work
 
-この skill は bugfix flow の実装修正役として、確定した修正方針だけを実装する。
+この skill は確定した修正方針だけを実装する skill。
 
 ## 使う場面
 - `fix-trace` と `fix-direction` が fix scope を確定済み

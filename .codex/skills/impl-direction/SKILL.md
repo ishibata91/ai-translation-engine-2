@@ -41,8 +41,8 @@ description: AI Translation Engine 2 専用。実装依頼、UI 反映、fronten
 6. `impl-distill` を起動した後は implementation packet を待つ。返却前に自分で追加走査、追加読解、worker 選定の先行実施を始めない。
 7. `impl-distill` が unknowns なしの implementation packet を返したら `impl-workplan` を起動する。
 8. 実装完了後、統合差分を対象に `impl-review` を起動する。
-9. `impl-review` が required delta を返したら、該当 worker へ差し戻す。
-10. `docs_sync_needed` が true の場合だけ `plan-sync` へ handoff する。
+9. `impl-review` が required delta を返すか `score < 0.85` の場合は、該当 worker へ差し戻す。
+10. `score >= 0.85` を満たし、`docs_sync_needed` が true の場合だけ `plan-sync` へ handoff する。
 
 ## 標準チェーン
 - 標準: `impl-direction` -> `impl-distill` -> `impl-workplan` -> `impl-frontend-work / impl-backend-work` -> `impl-review`
@@ -58,6 +58,7 @@ description: AI Translation Engine 2 専用。実装依頼、UI 反映、fronten
 - agent 選択は `.codex/agents` を正本にする
 - plan artifact が曖昧なまま `impl-workplan` へ進めない
 - review feedback を要約せず、必要な worker へそのまま返す
+- `score >= 0.85` を満たさない review では次工程へ進めない
 - distill 起動後は packet を待ち、自分で追加走査、追加読解、worker 起動を行わない
 - implementation packet が不足しているなら自分で読むのではなく `impl-distill` を再実行する
 - conflict を検出したら自動補正や自動続行を行わず、停止して handoff だけを返す

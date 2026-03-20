@@ -1,11 +1,11 @@
 ---
 name: impl-review
-description: AI Translation Engine 2 専用。実装差分をレビューし、required delta を返す。Observation Masking 前提で統合差分を検査したいときに使う。
+description: AI Translation Engine 2 専用。実装差分をレビューし、required delta を返す。修正や差分編集は行わず、Observation Masking 前提で統合差分を検査したいときに使う。
 ---
 
 # Impl Review
 
-この skill は `review_cycler` 用の実装レビュー skill。
+この skill は実装差分をレビューし、required delta を返すだけの skill。
 spec 抜粋、統合差分、検証結果、前回 findings を照合し、required delta 中心で返す。
 
 ## 使う場面
@@ -25,8 +25,10 @@ spec 抜粋、統合差分、検証結果、前回 findings を照合し、requi
 2. 退行、contract 逸脱、責務逸脱、未検証を優先して見る。
 3. `severity` `location` `violated_contract` `required_delta` `recheck` を返す。
 4. docs 反映が必要な仕様差分だけ `docs_sync_needed` に示す。
+5. 自分では修正、差分編集、worker への差し戻し実行を行わず、レビュー結果だけを返して終了する。
 
 ## 出力形式
+- `score` (0.0 - 1.0)
 - `severity`
 - `location`
 - `violated_contract`
@@ -35,10 +37,12 @@ spec 抜粋、統合差分、検証結果、前回 findings を照合し、requi
 - `docs_sync_needed`
 
 ## 終了条件
-- `critical` と `medium` が 0 件なら review loop を終了してよい
+- `score >= 0.85` かつ `critical` と `medium` が 0 件なら review loop を終了してよい
+- `score < 0.85` の場合は `required_delta` を返して review loop を継続する
 - `low` のみ残る場合は残留リスクとして返す
 
 ## 原則
 - Observation Masking 前提で、不要な背景説明を受け取らない
 - 実装方針の好みより仕様逸脱と退行を優先する
-- `review_cycler` は read-only として振る舞う
+- read-only として振る舞う
+- 自分では修正、差分編集、worker 起動、差し戻し実行を行わず、レビュー結果だけを返す
