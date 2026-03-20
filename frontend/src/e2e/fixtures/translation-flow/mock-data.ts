@@ -71,7 +71,6 @@ export const TRANSLATION_FLOW_SECOND_FILE_MARKER = 'Quest Objective B-01';
 export const TRANSLATION_FLOW_TERMINOLOGY_SUMMARY = {
   task_id: TRANSLATION_FLOW_TASK_ID,
   status: 'pending',
-  target_count: 0,
   saved_count: 0,
   failed_count: 0,
 } as const;
@@ -79,9 +78,41 @@ export const TRANSLATION_FLOW_TERMINOLOGY_SUMMARY = {
 export const TRANSLATION_FLOW_TERMINOLOGY_COMPLETED_SUMMARY = {
   task_id: TRANSLATION_FLOW_TASK_ID,
   status: 'completed',
-  target_count: 8,
   saved_count: 8,
   failed_count: 0,
+} as const;
+
+export const TRANSLATION_FLOW_TERMINOLOGY_TARGET_PAGE = {
+  task_id: TRANSLATION_FLOW_TASK_ID,
+  page: 1,
+  page_size: 50,
+  total_rows: 8,
+  rows: [
+    {
+      id: 'npc-full-01',
+      record_type: 'NPC_:FULL',
+      editor_id: 'NPC_B_03',
+      source_text: 'NPC Name B-03',
+      variant: 'full',
+      source_file: 'Update.esm.extract.json',
+    },
+    {
+      id: 'npc-short-01',
+      record_type: 'NPC_:SHRT',
+      editor_id: 'NPC_B_03',
+      source_text: 'NPC Name B-03',
+      variant: 'short',
+      source_file: 'Update.esm.extract.json',
+    },
+    {
+      id: 'quest-01',
+      record_type: 'QUST',
+      editor_id: 'Q_B_01',
+      source_text: 'Quest Objective B-01',
+      variant: 'single',
+      source_file: 'Update.esm.extract.json',
+    },
+  ],
 } as const;
 
 export const TRANSLATION_FLOW_TERMINOLOGY_LLM_CONFIG = {

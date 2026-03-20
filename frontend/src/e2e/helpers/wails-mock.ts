@@ -22,6 +22,7 @@ import {
     TRANSLATION_FLOW_TERMINOLOGY_LLM_CONFIG,
     TRANSLATION_FLOW_TERMINOLOGY_PROMPT_CONFIG,
     TRANSLATION_FLOW_TERMINOLOGY_SUMMARY,
+    TRANSLATION_FLOW_TERMINOLOGY_TARGET_PAGE,
 } from '../fixtures/translation-flow/mock-data';
 
 type DashboardMockFixture = {
@@ -72,6 +73,7 @@ type TranslationFlowMockFixture = {
   terminologyLLMConfig: Record<string, string>;
   terminologyPromptConfig: Record<string, string>;
   terminologySummary: Record<string, number | string>;
+  terminologyTargetPage: Record<string, unknown>;
 };
 
 type WailsMockFixture = {
@@ -108,6 +110,7 @@ export async function installWailsMocks(page: Page): Promise<void> {
       terminologyLLMConfig: TRANSLATION_FLOW_TERMINOLOGY_LLM_CONFIG,
       terminologyPromptConfig: TRANSLATION_FLOW_TERMINOLOGY_PROMPT_CONFIG,
       terminologySummary: TRANSLATION_FLOW_TERMINOLOGY_SUMMARY,
+      terminologyTargetPage: TRANSLATION_FLOW_TERMINOLOGY_TARGET_PAGE,
     },
   };
 
@@ -219,6 +222,12 @@ export async function installWailsMocks(page: Page): Promise<void> {
       GetActiveTasks: async () => [...dashboardTasks],
       GetAllTasks: async () => [...dashboardTasks],
       GetTranslationFlowTerminology: async () => ({...terminologySummary}),
+      ListTranslationFlowTerminologyTargets: async (taskID: string, page: number, pageSize: number) => ({
+        ...mockFixture.translationFlow.terminologyTargetPage,
+        task_id: taskID,
+        page,
+        page_size: pageSize,
+      }),
       ListLoadedTranslationFlowFiles: async (taskID: string) => {
         const files = translationFilesByTask.get(taskID) ?? [];
         return {

@@ -70,15 +70,24 @@ func TestRepository_SaveAndPreview_TableDriven(t *testing.T) {
 				if len(terminologyInput.Entries) != 9 {
 					t.Fatalf("unexpected terminology entry count: got=%d want=9", len(terminologyInput.Entries))
 				}
+				if terminologyInput.Entries[0].SourceFile != file.SourceFileName {
+					t.Fatalf("unexpected source file: got=%q want=%q", terminologyInput.Entries[0].SourceFile, file.SourceFileName)
+				}
 				foundWEAP := false
+				foundNPCFull := false
 				for _, entry := range terminologyInput.Entries {
 					if entry.RecordType == "WEAP:FULL" && entry.SourceText == "Weapon Name" {
 						foundWEAP = true
-						break
+					}
+					if entry.RecordType == "NPC_:FULL" && entry.Variant == "full" {
+						foundNPCFull = true
 					}
 				}
 				if !foundWEAP {
 					t.Fatalf("expected WEAP:FULL terminology entry to be preserved")
+				}
+				if !foundNPCFull {
+					t.Fatalf("expected npc variant rows to preserve variant values: full=%t", foundNPCFull)
 				}
 			},
 		},

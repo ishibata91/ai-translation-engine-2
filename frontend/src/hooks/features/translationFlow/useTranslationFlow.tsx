@@ -7,24 +7,32 @@ import {
     GetTranslationFlowTerminology,
     ListLoadedTranslationFlowFiles,
     ListTranslationFlowPreviewRows,
+    ListTranslationFlowTerminologyTargets,
     LoadTranslationFlowFiles,
     RunTranslationFlowTerminology,
 } from '../../../wailsjs/go/controller/TaskController';
 import {
     DEFAULT_MASTER_PERSONA_LLM_CONFIG,
     type MasterPersonaLLMConfig,
-    type MasterPersonaPromptConfig
+    type MasterPersonaPromptConfig,
 } from '../../../types/masterPersona';
-import {mapLoadResult, mapPreviewPage, mapTerminologyPhaseResult} from './adapters';
-import type {TerminologyPhaseSummary, TranslationFlowTab, UseTranslationFlowResult} from './types';
+import {mapLoadResult, mapPreviewPage, mapTerminologyPhaseResult, mapTerminologyTargetPreviewPage} from './adapters';
+import type {
+    TerminologyPhaseSummary,
+    TerminologyTargetPreviewPage,
+    TerminologyTargetViewState,
+    TranslationFlowTab,
+    UseTranslationFlowResult,
+} from './types';
 
 const PREVIEW_PAGE_SIZE = 50;
 const TERMINOLOGY_LLM_NAMESPACE = 'translation_flow.terminology.llm';
 const TERMINOLOGY_PROMPT_NAMESPACE = 'translation_flow.terminology.prompt';
 const TERMINOLOGY_USER_PROMPT_KEY = 'user_prompt';
 const TERMINOLOGY_SYSTEM_PROMPT_KEY = 'system_prompt';
-const NO_TERMINOLOGY_TARGETS_MESSAGE =
-    '用語翻訳対象がありません。ロード済みデータに Items / Locations / Cells / NPCs の対象レコードが含まれているか確認してください。';
+const DUPLICATE_FILE_MESSAGE = '同じプラグインを2重で処理しないため、同名ファイルは追加できません。';
+const NO_TERMINOLOGY_TARGETS_MESSAGE = 'ロード済みデータに Terminology 対象 REC がありません。';
+
 const DEFAULT_TERMINOLOGY_PROMPT_CONFIG: MasterPersonaPromptConfig = {
     userPrompt: 'Translate the provided term.',
     systemPrompt: `You are a translator for a Skyrim mod.
@@ -53,13 +61,25 @@ Requirements:
 3. You MUST output the final translation in the following exact format and nothing else:
 TL: |[translated_text]|`,
 };
+
 const EMPTY_TERMINOLOGY_SUMMARY: TerminologyPhaseSummary = {
     taskId: '',
     status: 'pending',
-    targetCount: 0,
     savedCount: 0,
     failedCount: 0,
 };
+
+const EMPTY_TERMINOLOGY_TARGET_PAGE = (
+    taskId = '',
+    page = 1,
+    pageSize = PREVIEW_PAGE_SIZE,
+): TerminologyTargetPreviewPage => ({
+    taskId,
+    page,
+    pageSize,
+    totalRows: 0,
+    rows: [],
+});
 
 const TABS: TranslationFlowTab[] = [
     {label: 'データロード'},
@@ -94,6 +114,40 @@ const parseDate = (value: unknown): number => {
     }
     const parsed = Date.parse(value);
     return Number.isNaN(parsed) ? 0 : parsed;
+};
+
+const normalizeFileName = (path: string): string => {
+    const trimmed = path.trim();
+    if (trimmed === '') {
+        return '';
+    }
+    const parts = trimmed.split(/[\\/]/);
+    return (parts[parts.length - 1] ?? trimmed).trim().toLowerCase();
+};
+
+const mergeUniqueFilesByName = (
+    base: string[],
+    incoming: string[],
+    loadedFileNames: Set<string>,
+): {files: string[]; duplicateBlocked: boolean} => {
+    const existingNames = new Set(base.map(normalizeFileName).filter((value) => value !== ''));
+    const next = [...base];
+    let duplicateBlocked = false;
+
+    for (const path of incoming) {
+        const fileName = normalizeFileName(path);
+        if (fileName === '') {
+            continue;
+        }
+        if (existingNames.has(fileName) || loadedFileNames.has(fileName)) {
+            duplicateBlocked = true;
+            continue;
+        }
+        existingNames.add(fileName);
+        next.push(path);
+    }
+
+    return {files: next, duplicateBlocked};
 };
 
 const resolveTranslationProjectTaskID = (payload: unknown): string => {
@@ -155,18 +209,6 @@ const resolveTaskID = async (routeTaskID: string): Promise<string> => {
     return resolveTranslationProjectTaskID(allTasks);
 };
 
-const mergeUniquePaths = (base: string[], incoming: string[]): string[] => {
-    const existing = new Set(base);
-    const next = [...base];
-    for (const path of incoming) {
-        if (!existing.has(path)) {
-            existing.add(path);
-            next.push(path);
-        }
-    }
-    return next;
-};
-
 const normalizeTerminologyLLMConfig = (loaded: Record<string, string>): MasterPersonaLLMConfig => {
     const temperature = Number.parseFloat(loaded.temperature ?? '');
     const contextLength = Number.parseInt(loaded.context_length ?? '', 10);
@@ -193,14 +235,20 @@ const normalizeTerminologyPromptConfig = (loaded: Record<string, string>): Maste
 
 const terminologyStatusLabel = (
     summary: TerminologyPhaseSummary,
+    targetStatus: TerminologyTargetViewState,
     isRunning: boolean,
     progressLabel: string,
-    errorMessage: string,
 ): string => {
     if (isRunning && progressLabel !== '') {
         return progressLabel;
     }
-    if (summary.status === 'pending' && summary.targetCount === 0 && errorMessage === NO_TERMINOLOGY_TARGETS_MESSAGE) {
+    if (targetStatus === 'loading') {
+        return '読込中';
+    }
+    if (targetStatus === 'error') {
+        return '対象単語リスト取得失敗';
+    }
+    if (targetStatus === 'empty') {
         return '用語翻訳対象なし';
     }
     switch (summary.status) {
@@ -231,6 +279,12 @@ export function useTranslationFlow(): UseTranslationFlowResult {
     const [errorMessage, setErrorMessage] = useState('');
     const [terminologySummary, setTerminologySummary] = useState<TerminologyPhaseSummary>(EMPTY_TERMINOLOGY_SUMMARY);
     const [terminologyErrorMessage, setTerminologyErrorMessage] = useState('');
+    const [terminologyTargetPage, setTerminologyTargetPage] = useState<TerminologyTargetPreviewPage>(
+        EMPTY_TERMINOLOGY_TARGET_PAGE(routeTaskID),
+    );
+    const [terminologyTargetStatus, setTerminologyTargetStatus] = useState<TerminologyTargetViewState>('loading');
+    const [terminologyTargetErrorMessage, setTerminologyTargetErrorMessage] = useState('');
+    const [isTerminologyTargetLoading, setIsTerminologyTargetLoading] = useState(false);
     const [isTerminologyRunning, setIsTerminologyRunning] = useState(false);
     const [terminologyProgressLabel, setTerminologyProgressLabel] = useState('');
     const [terminologyConfig, setTerminologyConfig] = useState<MasterPersonaLLMConfig>(DEFAULT_MASTER_PERSONA_LLM_CONFIG);
@@ -239,6 +293,116 @@ export function useTranslationFlow(): UseTranslationFlowResult {
     const [isTerminologyPromptHydrated, setIsTerminologyPromptHydrated] = useState(false);
     const llmSaveTimerRef = useRef<number | null>(null);
     const promptSaveTimerRef = useRef<number | null>(null);
+
+    const handleReloadFiles = useCallback(async () => {
+        if (taskId === '') {
+            setLoadedFiles([]);
+            return;
+        }
+        setIsLoading(true);
+        setErrorMessage('');
+        try {
+            const payload = await ListLoadedTranslationFlowFiles(taskId);
+            const mapped = mapLoadResult(payload);
+            if (mapped.taskId !== '' && mapped.taskId !== taskId) {
+                setTaskID(mapped.taskId);
+            }
+            setLoadedFiles(mapped.files);
+        } catch (error) {
+            setErrorMessage(toErrorMessage(error, 'ロード済みファイルの取得に失敗しました'));
+        } finally {
+            setIsLoading(false);
+        }
+    }, [taskId]);
+
+    const handleRefreshTerminologySummary = useCallback(async (nextTaskId: string): Promise<string> => {
+        if (nextTaskId === '') {
+            setTerminologySummary(EMPTY_TERMINOLOGY_SUMMARY);
+            setTerminologyErrorMessage('');
+            return '';
+        }
+
+        try {
+            const payload = await GetTranslationFlowTerminology(nextTaskId);
+            const summary = mapTerminologyPhaseResult(payload);
+            const resolvedTaskId = summary.taskId || nextTaskId;
+
+            if (resolvedTaskId !== '' && resolvedTaskId !== taskId) {
+                setTaskID(resolvedTaskId);
+            }
+
+            setTerminologySummary({
+                ...summary,
+                taskId: resolvedTaskId,
+            });
+            setTerminologyErrorMessage('');
+            return resolvedTaskId;
+        } catch (error) {
+            setTerminologyErrorMessage(toErrorMessage(error, '単語翻訳の状態取得に失敗しました'));
+            return nextTaskId;
+        }
+    }, [taskId]);
+
+    const handleRefreshTerminologyTargets = useCallback(async (
+        nextTaskId: string,
+        page = terminologyTargetPage.page,
+        pageSize = terminologyTargetPage.pageSize,
+    ): Promise<TerminologyTargetPreviewPage> => {
+        if (nextTaskId === '') {
+            const emptyPage = EMPTY_TERMINOLOGY_TARGET_PAGE('', page, pageSize);
+            setTerminologyTargetPage(emptyPage);
+            setTerminologyTargetStatus('empty');
+            setTerminologyTargetErrorMessage('');
+            setIsTerminologyTargetLoading(false);
+            return emptyPage;
+        }
+
+        setIsTerminologyTargetLoading(true);
+        setTerminologyTargetStatus('loading');
+        setTerminologyTargetErrorMessage('');
+        setTerminologyTargetPage(EMPTY_TERMINOLOGY_TARGET_PAGE(nextTaskId, page, pageSize));
+
+        try {
+            const payload = await ListTranslationFlowTerminologyTargets(nextTaskId, page, pageSize);
+            const mapped = mapTerminologyTargetPreviewPage(payload);
+            const resolvedTaskId = mapped.taskId || nextTaskId;
+            const nextPage = {
+                ...mapped,
+                taskId: resolvedTaskId,
+            };
+
+            if (resolvedTaskId !== '' && resolvedTaskId !== taskId) {
+                setTaskID(resolvedTaskId);
+            }
+
+            setTerminologyTargetPage(nextPage);
+            setTerminologyTargetStatus(nextPage.totalRows > 0 ? 'ready' : 'empty');
+            return nextPage;
+        } catch (error) {
+            const message = toErrorMessage(error, '対象単語リストの取得に失敗しました');
+            setTerminologyTargetErrorMessage(message);
+            setTerminologyTargetStatus('error');
+            const emptyPage = EMPTY_TERMINOLOGY_TARGET_PAGE(nextTaskId, page, pageSize);
+            setTerminologyTargetPage(emptyPage);
+            return emptyPage;
+        } finally {
+            setIsTerminologyTargetLoading(false);
+        }
+    }, [taskId, terminologyTargetPage.page, terminologyTargetPage.pageSize]);
+
+    const handleRefreshTerminologyPhase = useCallback(async (nextTaskId = taskId): Promise<void> => {
+        if (nextTaskId === '') {
+            setTerminologySummary(EMPTY_TERMINOLOGY_SUMMARY);
+            setTerminologyErrorMessage('');
+            setTerminologyTargetPage(EMPTY_TERMINOLOGY_TARGET_PAGE('', 1, PREVIEW_PAGE_SIZE));
+            setTerminologyTargetStatus('empty');
+            setTerminologyTargetErrorMessage('');
+            return;
+        }
+
+        const resolvedTaskId = await handleRefreshTerminologySummary(nextTaskId);
+        await handleRefreshTerminologyTargets(resolvedTaskId || nextTaskId, 1, PREVIEW_PAGE_SIZE);
+    }, [handleRefreshTerminologySummary, handleRefreshTerminologyTargets, taskId]);
 
     useEffect(() => {
         let active = true;
@@ -357,49 +521,6 @@ export function useTranslationFlow(): UseTranslationFlowResult {
         };
     }, [isTerminologyPromptHydrated, terminologyPromptConfig]);
 
-    const handleRefreshTerminologyPhase = useCallback(async () => {
-        if (taskId === '') {
-            setTerminologySummary(EMPTY_TERMINOLOGY_SUMMARY);
-            setTerminologyErrorMessage('');
-            return;
-        }
-        try {
-            const payload = await GetTranslationFlowTerminology(taskId);
-            const summary = mapTerminologyPhaseResult(payload);
-            const nextTaskID = summary.taskId || taskId;
-            if (nextTaskID !== '' && nextTaskID !== taskId) {
-                setTaskID(nextTaskID);
-            }
-            setTerminologySummary({
-                ...summary,
-                taskId: nextTaskID,
-            });
-        } catch (error) {
-            setTerminologyErrorMessage(toErrorMessage(error, '単語翻訳の状態取得に失敗しました'));
-        }
-    }, [taskId]);
-
-    const handleReloadFiles = useCallback(async () => {
-        if (taskId === '') {
-            setLoadedFiles([]);
-            return;
-        }
-        setIsLoading(true);
-        setErrorMessage('');
-        try {
-            const payload = await ListLoadedTranslationFlowFiles(taskId);
-            const mapped = mapLoadResult(payload);
-            if (mapped.taskId !== '' && mapped.taskId !== taskId) {
-                setTaskID(mapped.taskId);
-            }
-            setLoadedFiles(mapped.files);
-        } catch (error) {
-            setErrorMessage(toErrorMessage(error, 'ロード済みファイルの取得に失敗しました'));
-        } finally {
-            setIsLoading(false);
-        }
-    }, [taskId]);
-
     useEffect(() => {
         if (!isTaskIDResolved) {
             return;
@@ -408,12 +529,15 @@ export function useTranslationFlow(): UseTranslationFlowResult {
             setLoadedFiles([]);
             setTerminologySummary(EMPTY_TERMINOLOGY_SUMMARY);
             setTerminologyErrorMessage('');
+            setTerminologyTargetPage(EMPTY_TERMINOLOGY_TARGET_PAGE('', 1, PREVIEW_PAGE_SIZE));
+            setTerminologyTargetStatus('empty');
+            setTerminologyTargetErrorMessage('');
             setErrorMessage('');
             setActiveTab(0);
             return;
         }
         void handleReloadFiles();
-        void handleRefreshTerminologyPhase();
+        void handleRefreshTerminologyPhase(taskId);
     }, [handleRefreshTerminologyPhase, handleReloadFiles, isTaskIDResolved, taskId]);
 
     const handleSelectFiles = useCallback(async () => {
@@ -423,11 +547,18 @@ export function useTranslationFlow(): UseTranslationFlowResult {
             if (!Array.isArray(files) || files.length === 0) {
                 return;
             }
-            setSelectedFiles((prev) => mergeUniquePaths(prev, files));
+
+            const loadedFileNames = new Set(loadedFiles.map((file) => normalizeFileName(file.fileName || file.filePath)));
+            const {files: merged, duplicateBlocked} = mergeUniqueFilesByName(selectedFiles, files, loadedFileNames);
+
+            setSelectedFiles(merged);
+            if (duplicateBlocked) {
+                setErrorMessage(DUPLICATE_FILE_MESSAGE);
+            }
         } catch (error) {
             setErrorMessage(toErrorMessage(error, 'ファイル選択に失敗しました'));
         }
-    }, []);
+    }, [loadedFiles, selectedFiles]);
 
     const handleRemoveFile = useCallback((pathToRemove: string) => {
         setSelectedFiles((prev) => prev.filter((path) => path !== pathToRemove));
@@ -443,18 +574,20 @@ export function useTranslationFlow(): UseTranslationFlowResult {
         try {
             const payload = await LoadTranslationFlowFiles(taskId, selectedFiles);
             const mapped = mapLoadResult(payload);
-            if (mapped.taskId !== '' && mapped.taskId !== taskId) {
-                setTaskID(mapped.taskId);
+            const resolvedTaskId = mapped.taskId !== '' ? mapped.taskId : taskId;
+            if (resolvedTaskId !== '' && resolvedTaskId !== taskId) {
+                setTaskID(resolvedTaskId);
             }
             setLoadedFiles(mapped.files);
             setSelectedFiles([]);
-            setTerminologySummary({...EMPTY_TERMINOLOGY_SUMMARY, taskId});
+            setTerminologySummary({...EMPTY_TERMINOLOGY_SUMMARY, taskId: resolvedTaskId});
+            await handleRefreshTerminologyPhase(resolvedTaskId);
         } catch (error) {
             setErrorMessage(toErrorMessage(error, 'ファイルロードに失敗しました'));
         } finally {
             setIsLoading(false);
         }
-    }, [selectedFiles, taskId]);
+    }, [handleRefreshTerminologyPhase, selectedFiles, taskId]);
 
     const handlePreviewPageChange = useCallback(async (fileId: number, page: number) => {
         if (fileId <= 0) {
@@ -495,6 +628,13 @@ export function useTranslationFlow(): UseTranslationFlowResult {
         setActiveTab(1);
     }, [loadedFiles.length]);
 
+    const handleTerminologyTargetPageChange = useCallback(async (page: number) => {
+        if (taskId === '') {
+            return;
+        }
+        await handleRefreshTerminologyTargets(taskId, Math.max(1, page), terminologyTargetPage.pageSize);
+    }, [handleRefreshTerminologyTargets, taskId, terminologyTargetPage.pageSize]);
+
     const handleRunTerminologyPhase = useCallback(async () => {
         if (taskId === '' || isTerminologyRunning) {
             return;
@@ -504,7 +644,7 @@ export function useTranslationFlow(): UseTranslationFlowResult {
         setTerminologyProgressLabel('terminology ジョブを生成中');
         setTerminologySummary((prev) => ({
             ...prev,
-            taskId: taskId,
+            taskId,
             status: 'running',
         }));
 
@@ -530,28 +670,40 @@ export function useTranslationFlow(): UseTranslationFlowResult {
             );
             setTerminologyProgressLabel('翻訳結果を保存中');
             const summary = mapTerminologyPhaseResult(payload);
+            const resolvedTaskId = summary.taskId || taskId;
             setTerminologySummary({
                 ...summary,
-                taskId: summary.taskId || taskId,
+                taskId: resolvedTaskId,
             });
-            if (summary.status === 'pending' && summary.targetCount === 0) {
+            if (summary.status === 'pending' && summary.savedCount === 0 && summary.failedCount === 0) {
                 setTerminologyErrorMessage(NO_TERMINOLOGY_TARGETS_MESSAGE);
+                setTerminologyTargetStatus('empty');
+                setTerminologyTargetPage(EMPTY_TERMINOLOGY_TARGET_PAGE(resolvedTaskId, terminologyTargetPage.page, terminologyTargetPage.pageSize));
                 setTerminologyProgressLabel('用語翻訳対象なし');
                 return;
             }
+            await handleRefreshTerminologyTargets(resolvedTaskId, terminologyTargetPage.page, terminologyTargetPage.pageSize);
             setTerminologyProgressLabel('単語翻訳完了');
         } catch (error) {
             setTerminologyErrorMessage(toErrorMessage(error, '単語翻訳の実行に失敗しました'));
             setTerminologyProgressLabel('単語翻訳に失敗しました');
             setTerminologySummary((prev) => ({
                 ...prev,
-                taskId: taskId,
+                taskId,
                 status: 'pending',
             }));
         } finally {
             setIsTerminologyRunning(false);
         }
-    }, [isTerminologyRunning, taskId, terminologyConfig, terminologyPromptConfig]);
+    }, [
+        handleRefreshTerminologyTargets,
+        isTerminologyRunning,
+        taskId,
+        terminologyConfig,
+        terminologyPromptConfig,
+        terminologyTargetPage.page,
+        terminologyTargetPage.pageSize,
+    ]);
 
     const handleAdvanceFromTerminology = useCallback(() => {
         if (terminologySummary.status !== 'completed') {
@@ -593,11 +745,15 @@ export function useTranslationFlow(): UseTranslationFlowResult {
             terminologySummary,
             terminologyStatusLabel: terminologyStatusLabel(
                 terminologySummary,
+                terminologyTargetStatus,
                 isTerminologyRunning,
                 terminologyProgressLabel,
-                terminologyErrorMessage,
             ),
             terminologyErrorMessage,
+            terminologyTargetPage,
+            terminologyTargetStatus,
+            terminologyTargetErrorMessage,
+            isTerminologyTargetLoading,
             isTerminologyRunning,
             terminologyConfig,
             terminologyPromptConfig,
@@ -614,6 +770,7 @@ export function useTranslationFlow(): UseTranslationFlowResult {
             handleAdvanceFromLoad,
             handleRunTerminologyPhase,
             handleRefreshTerminologyPhase,
+            handleTerminologyTargetPageChange,
             handleTerminologyConfigChange,
             handleTerminologyPromptChange,
             handleAdvanceFromTerminology,

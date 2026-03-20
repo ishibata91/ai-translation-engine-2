@@ -15,7 +15,8 @@ const BROWSER_MOCK_TASK_ID = 'browser-mock-translation-project';
 const BROWSER_MOCK_FILE_ID = 9001;
 const BROWSER_MOCK_SOURCE_FILE = 'F:/mock/translation-flow/dialogue_sample_01.json';
 
-const EMPTY_TERMINOLOGY_RESULT = () => ({task_id: '', status: 'pending', target_count: 0, saved_count: 0, failed_count: 0});
+const EMPTY_TERMINOLOGY_RESULT = () => ({task_id: '', status: 'pending', saved_count: 0, failed_count: 0});
+const EMPTY_TERMINOLOGY_TARGET_PAGE = () => ({task_id: '', page: 1, page_size: 50, total_rows: 0, rows: []});
 
 const resolveTaskIDFromArgs = (args: unknown[]): string => {
     const candidate = args[0];
@@ -133,7 +134,6 @@ const CONTROLLER_FALLBACKS: Record<string, ControllerMap> = {
         GetTranslationFlowTerminology: async (...args) => ({
             ...EMPTY_TERMINOLOGY_RESULT(),
             task_id: resolveTaskIDFromArgs(args),
-            target_count: isTranslationFlowRoute() ? 12 : 0,
         }),
         ListLoadedTranslationFlowFiles: async (...args) =>
             isTranslationFlowRoute()
@@ -142,6 +142,33 @@ const CONTROLLER_FALLBACKS: Record<string, ControllerMap> = {
                     files: [createBrowserMockLoadedFile()],
                 }
                 : {task_id: '', files: []},
+        ListTranslationFlowTerminologyTargets: async (...args) =>
+            isTranslationFlowRoute()
+                ? {
+                    task_id: resolveTaskIDFromArgs(args),
+                    page: Math.max(1, toInt(args[1], 1)),
+                    page_size: Math.max(1, toInt(args[2], 50)),
+                    total_rows: 2,
+                    rows: [
+                        {
+                            id: 'term-1',
+                            record_type: 'NPC_:FULL',
+                            editor_id: 'MQ101Farengar',
+                            source_text: 'Farengar Secret-Fire',
+                            variant: 'full',
+                            source_file: 'dialogue_sample_01.json',
+                        },
+                        {
+                            id: 'term-2',
+                            record_type: 'NPC_:SHRT',
+                            editor_id: 'MQ101Farengar',
+                            source_text: 'Farengar',
+                            variant: 'short',
+                            source_file: 'dialogue_sample_01.json',
+                        },
+                    ],
+                }
+                : EMPTY_TERMINOLOGY_TARGET_PAGE(),
         ListTranslationFlowPreviewRows: async (...args) => {
             if (!isTranslationFlowRoute()) {
                 return {
@@ -168,7 +195,6 @@ const CONTROLLER_FALLBACKS: Record<string, ControllerMap> = {
         RunTranslationFlowTerminology: async (...args) => ({
             task_id: resolveTaskIDFromArgs(args),
             status: isTranslationFlowRoute() ? 'completed' : 'pending',
-            target_count: isTranslationFlowRoute() ? 12 : 0,
             saved_count: isTranslationFlowRoute() ? 12 : 0,
             failed_count: 0,
         }),

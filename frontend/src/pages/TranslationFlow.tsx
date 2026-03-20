@@ -67,6 +67,10 @@ export default function TranslationFlow() {
                         summary={state.terminologySummary}
                         statusLabel={state.terminologyStatusLabel}
                         errorMessage={state.terminologyErrorMessage}
+                        targetPage={state.terminologyTargetPage}
+                        targetStatus={state.terminologyTargetStatus}
+                        targetErrorMessage={state.terminologyTargetErrorMessage}
+                        isTargetLoading={state.isTerminologyTargetLoading}
                         isRunning={state.isTerminologyRunning}
                         llmConfig={state.terminologyConfig}
                         promptConfig={state.terminologyPromptConfig}
@@ -76,6 +80,7 @@ export default function TranslationFlow() {
                         onPromptChange={actions.handleTerminologyPromptChange}
                         onRun={actions.handleRunTerminologyPhase}
                         onRefresh={actions.handleRefreshTerminologyPhase}
+                        onTargetPageChange={actions.handleTerminologyTargetPageChange}
                         onNext={actions.handleAdvanceFromTerminology}
                     />
                     <PersonaPanel isActive={state.activeTab === 2} onNext={() => actions.handleTabChange(3)} />

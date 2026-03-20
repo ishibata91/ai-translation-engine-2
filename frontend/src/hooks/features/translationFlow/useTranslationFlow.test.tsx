@@ -7,6 +7,7 @@ import {
     GetAllTasks,
     GetTranslationFlowTerminology,
     ListLoadedTranslationFlowFiles,
+    ListTranslationFlowTerminologyTargets,
     RunTranslationFlowTerminology,
 } from '../../../wailsjs/go/controller/TaskController';
 import type {FrontendTask} from '../../../types/task';
@@ -24,6 +25,7 @@ vi.mock('../../../wailsjs/go/controller/TaskController', () => ({
     GetAllTasks: vi.fn(),
     GetTranslationFlowTerminology: vi.fn(),
     ListLoadedTranslationFlowFiles: vi.fn(),
+    ListTranslationFlowTerminologyTargets: vi.fn(),
     ListTranslationFlowPreviewRows: vi.fn(),
     LoadTranslationFlowFiles: vi.fn(),
     RunTranslationFlowTerminology: vi.fn(),
@@ -81,6 +83,11 @@ const asTerminologyResult = (
     value: unknown,
 ): Awaited<ReturnType<typeof RunTranslationFlowTerminology>> => value as Awaited<ReturnType<typeof RunTranslationFlowTerminology>>;
 
+const asTerminologyTargetPage = (
+    value: unknown,
+): Awaited<ReturnType<typeof ListTranslationFlowTerminologyTargets>> =>
+    value as Awaited<ReturnType<typeof ListTranslationFlowTerminologyTargets>>;
+
 describe('useTranslationFlow task resolution', () => {
     beforeEach(() => {
         vi.clearAllMocks();
@@ -88,10 +95,16 @@ describe('useTranslationFlow task resolution', () => {
         vi.mocked(GetTranslationFlowTerminology).mockResolvedValue({
             task_id: 'resolved-task',
             status: 'pending',
-            target_count: 0,
             saved_count: 0,
             failed_count: 0,
         });
+        vi.mocked(ListTranslationFlowTerminologyTargets).mockResolvedValue(asTerminologyTargetPage({
+            task_id: 'resolved-task',
+            page: 1,
+            page_size: 50,
+            total_rows: 0,
+            rows: [],
+        }));
         vi.mocked(ListLoadedTranslationFlowFiles).mockResolvedValue(asLoadResult({
             task_id: 'resolved-task',
             files: [],
@@ -109,10 +122,16 @@ describe('useTranslationFlow task resolution', () => {
         vi.mocked(GetTranslationFlowTerminology).mockResolvedValue({
             task_id: 'existing-task',
             status: 'pending',
-            target_count: 0,
             saved_count: 0,
             failed_count: 0,
         });
+        vi.mocked(ListTranslationFlowTerminologyTargets).mockResolvedValue(asTerminologyTargetPage({
+            task_id: 'existing-task',
+            page: 1,
+            page_size: 50,
+            total_rows: 0,
+            rows: [],
+        }));
         vi.mocked(ListLoadedTranslationFlowFiles).mockResolvedValue(asLoadResult({
             task_id: 'existing-task',
             files: [],
@@ -163,10 +182,16 @@ describe('useTranslationFlow terminology run', () => {
         vi.mocked(GetTranslationFlowTerminology).mockResolvedValue({
             task_id: 'existing-task',
             status: 'pending',
-            target_count: 0,
             saved_count: 0,
             failed_count: 0,
         });
+        vi.mocked(ListTranslationFlowTerminologyTargets).mockResolvedValue(asTerminologyTargetPage({
+            task_id: 'existing-task',
+            page: 1,
+            page_size: 50,
+            total_rows: 0,
+            rows: [],
+        }));
         vi.mocked(ListLoadedTranslationFlowFiles).mockResolvedValue(asLoadResult({
             task_id: 'existing-task',
             files: [],
@@ -181,7 +206,6 @@ describe('useTranslationFlow terminology run', () => {
         vi.mocked(RunTranslationFlowTerminology).mockResolvedValue(asTerminologyResult({
             task_id: 'existing-task',
             status: 'pending',
-            target_count: 0,
             saved_count: 0,
             failed_count: 0,
         }));
@@ -202,7 +226,7 @@ describe('useTranslationFlow terminology run', () => {
             expect(screen.getByTestId('terminology-status')).toHaveTextContent('用語翻訳対象なし');
         });
         expect(screen.getByTestId('terminology-error')).toHaveTextContent(
-            '用語翻訳対象がありません。ロード済みデータに Items / Locations / Cells / NPCs の対象レコードが含まれているか確認してください。',
+            'ロード済みデータに Terminology 対象 REC がありません。',
         );
     });
 });

@@ -7,5 +7,6 @@
 
 
 ## 進め方
+- `go-llm-lensが入っている｡pkg/以下で走査したいときは使うこと`
 - `server-filesystem` MCPが入っている｡検索､書き込み､読み取りは"""必ず"""これを利用すること｡
 - 書き込みも原則`server-filesystem`を利用すること｡

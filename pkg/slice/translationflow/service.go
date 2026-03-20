@@ -87,3 +87,12 @@ func (s *service) ListPreviewRows(ctx context.Context, fileID int64, page int, p
 		Rows:      rows,
 	}, nil
 }
+
+// LoadTerminologyInput exposes persisted terminology rows for workflow preview projection.
+func (s *service) LoadTerminologyInput(ctx context.Context, taskID string) (translationinput.TerminologyInput, error) {
+	input, err := s.repo.LoadTerminologyInput(ctx, taskID)
+	if err != nil {
+		return translationinput.TerminologyInput{}, fmt.Errorf("load terminology input task_id=%s: %w", taskID, err)
+	}
+	return input, nil
+}

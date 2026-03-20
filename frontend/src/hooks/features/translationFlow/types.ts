@@ -19,6 +19,29 @@ export interface TranslationTargetRow {
 }
 
 /**
+ * 単語翻訳 phase の対象一覧 1 行。
+ */
+export interface TerminologyTargetPreviewRow {
+    id: string;
+    recordType: string;
+    editorId: string;
+    sourceText: string;
+    variant: string;
+    sourceFile: string;
+}
+
+/**
+ * 単語翻訳 phase の対象一覧ページ。
+ */
+export interface TerminologyTargetPreviewPage {
+    taskId: string;
+    page: number;
+    pageSize: number;
+    totalRows: number;
+    rows: TerminologyTargetPreviewRow[];
+}
+
+/**
  * ロード済みファイルと preview ページング状態。
  */
 export interface LoadedTranslationFile {
@@ -39,10 +62,14 @@ export interface LoadedTranslationFile {
 export interface TerminologyPhaseSummary {
     taskId: string;
     status: string;
-    targetCount: number;
     savedCount: number;
     failedCount: number;
 }
+
+/**
+ * 単語翻訳 phase の対象一覧の表示状態。
+ */
+export type TerminologyTargetViewState = 'loading' | 'ready' | 'empty' | 'error';
 
 /**
  * TranslationFlow が保持する state 群。
@@ -58,6 +85,10 @@ interface TranslationFlowState {
     terminologySummary: TerminologyPhaseSummary;
     terminologyStatusLabel: string;
     terminologyErrorMessage: string;
+    terminologyTargetPage: TerminologyTargetPreviewPage;
+    terminologyTargetStatus: TerminologyTargetViewState;
+    terminologyTargetErrorMessage: string;
+    isTerminologyTargetLoading: boolean;
     isTerminologyRunning: boolean;
     terminologyConfig: MasterPersonaLLMConfig;
     terminologyPromptConfig: MasterPersonaPromptConfig;
@@ -78,6 +109,7 @@ interface TranslationFlowActions {
     handleAdvanceFromLoad: () => void;
     handleRunTerminologyPhase: () => Promise<void>;
     handleRefreshTerminologyPhase: () => Promise<void>;
+    handleTerminologyTargetPageChange: (page: number) => Promise<void>;
     handleTerminologyConfigChange: (next: MasterPersonaLLMConfig) => void;
     handleTerminologyPromptChange: (next: MasterPersonaPromptConfig) => void;
     handleAdvanceFromTerminology: () => void;
@@ -155,10 +187,38 @@ export interface WailsTerminologyPhaseResult {
     task_id?: string;
     taskId?: string;
     status?: string;
-    target_count?: number;
-    targetCount?: number;
     saved_count?: number;
     savedCount?: number;
     failed_count?: number;
     failedCount?: number;
+}
+
+/**
+ * Wails の terminology target preview page payload。
+ */
+export interface WailsTerminologyTargetPreviewPage {
+    task_id?: string;
+    taskId?: string;
+    page?: number;
+    pageSize?: number;
+    page_size?: number;
+    totalRows?: number;
+    total_rows?: number;
+    rows?: WailsTerminologyTargetPreviewRow[];
+}
+
+/**
+ * Wails の terminology target preview row payload。
+ */
+export interface WailsTerminologyTargetPreviewRow {
+    id?: string;
+    record_type?: string;
+    recordType?: string;
+    editor_id?: string;
+    editorId?: string;
+    source_text?: string;
+    sourceText?: string;
+    variant?: string;
+    source_file?: string;
+    sourceFile?: string;
 }

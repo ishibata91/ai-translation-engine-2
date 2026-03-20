@@ -1,8 +1,12 @@
 import type {
     LoadedTranslationFile,
     TerminologyPhaseSummary,
+    TerminologyTargetPreviewPage,
+    TerminologyTargetPreviewRow,
     TranslationTargetRow,
     WailsTerminologyPhaseResult,
+    WailsTerminologyTargetPreviewPage,
+    WailsTerminologyTargetPreviewRow,
     WailsTranslationLoadedFile,
     WailsTranslationLoadResult,
     WailsTranslationPreviewPage,
@@ -28,6 +32,15 @@ const mapPreviewRow = (payload: WailsTranslationPreviewRow): TranslationTargetRo
     recordType: pickString(payload.record_type ?? payload.recordType),
     editorId: pickString(payload.editor_id ?? payload.editorId),
     sourceText: pickString(payload.source_text ?? payload.sourceText),
+});
+
+const mapTerminologyTargetPreviewRow = (payload: WailsTerminologyTargetPreviewRow): TerminologyTargetPreviewRow => ({
+    id: pickString(payload.id),
+    recordType: pickString(payload.record_type ?? payload.recordType),
+    editorId: pickString(payload.editor_id ?? payload.editorId),
+    sourceText: pickString(payload.source_text ?? payload.sourceText),
+    variant: pickString(payload.variant),
+    sourceFile: pickString(payload.source_file ?? payload.sourceFile),
 });
 
 export const mapPreviewPage = (payload: unknown): {
@@ -89,8 +102,20 @@ export const mapTerminologyPhaseResult = (payload: unknown): TerminologyPhaseSum
     return {
         taskId: pickString(resultPayload.task_id ?? resultPayload.taskId),
         status: pickString(resultPayload.status, 'pending'),
-        targetCount: Math.max(0, pickNumber(resultPayload.target_count ?? resultPayload.targetCount, 0)),
         savedCount: Math.max(0, pickNumber(resultPayload.saved_count ?? resultPayload.savedCount, 0)),
         failedCount: Math.max(0, pickNumber(resultPayload.failed_count ?? resultPayload.failedCount, 0)),
+    };
+};
+
+export const mapTerminologyTargetPreviewPage = (payload: unknown): TerminologyTargetPreviewPage => {
+    const pagePayload = (asRecord(payload) ?? {}) as WailsTerminologyTargetPreviewPage;
+    const rawRows = Array.isArray(pagePayload.rows) ? pagePayload.rows : [];
+
+    return {
+        taskId: pickString(pagePayload.task_id ?? pagePayload.taskId),
+        page: Math.max(1, pickNumber(pagePayload.page, 1)),
+        pageSize: Math.max(1, pickNumber(pagePayload.pageSize ?? pagePayload.page_size, 50)),
+        totalRows: Math.max(0, pickNumber(pagePayload.totalRows ?? pagePayload.total_rows, 0)),
+        rows: rawRows.map(mapTerminologyTargetPreviewRow),
     };
 };

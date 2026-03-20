@@ -29,7 +29,10 @@ export class TranslationFlowPO extends BasePO {
   }
 
   private terminologyModelSettings(): Locator {
-    return this.page.getByLabel('単語翻訳モデル設定');
+    return this.terminologyPanel()
+      .locator('.card, .collapse')
+      .filter({has: this.page.getByText('単語翻訳モデル設定')})
+      .first();
   }
 
   private async ensureExpanded(fileName: string): Promise<void> {
@@ -143,12 +146,22 @@ export class TranslationFlowPO extends BasePO {
   async expectTerminologyPhaseVisible(): Promise<void> {
     const panel = this.terminologyPanel();
     await expect(panel).toBeVisible();
-    await expect(panel.getByText('対象件数')).toBeVisible();
+    await expect(panel.getByRole('heading', {name: '対象単語リスト', exact: true})).toBeVisible();
     await expect(panel.getByText('保存件数')).toBeVisible();
     await expect(panel.getByText('失敗件数')).toBeVisible();
     await expect(panel.getByRole('button', {name: '単語翻訳を実行'})).toBeVisible();
     await expect(this.terminologyModelSettings()).toBeVisible();
     await expect(this.terminologyModelSettings().locator('select').nth(1)).toHaveValue('local-terminology-model');
+    await this.expectNoRuntimeErrors();
+  }
+
+  async expectTerminologyTargetVisible(recordType: string, editorId: string, sourceText: string, variant: string, sourceFile: string): Promise<void> {
+    const panel = this.terminologyPanel();
+    await expect(panel.getByRole('cell', {name: recordType}).first()).toBeVisible();
+    await expect(panel.getByRole('cell', {name: editorId}).first()).toBeVisible();
+    await expect(panel.getByRole('cell', {name: sourceText}).first()).toBeVisible();
+    await expect(panel.getByRole('cell', {name: variant}).first()).toBeVisible();
+    await expect(panel.getByRole('cell', {name: sourceFile}).first()).toBeVisible();
     await this.expectNoRuntimeErrors();
   }
 
@@ -169,9 +182,8 @@ export class TranslationFlowPO extends BasePO {
     await this.expectNoRuntimeErrors();
   }
 
-  async expectTerminologySummary(targetCount: string, savedCount: string, failedCount: string): Promise<void> {
+  async expectTerminologySummary(savedCount: string, failedCount: string): Promise<void> {
     const panel = this.terminologyPanel();
-    await expect(panel.getByText('対象件数').locator('..')).toContainText(targetCount);
     await expect(panel.getByText('保存件数').locator('..')).toContainText(savedCount);
     await expect(panel.getByText('失敗件数').locator('..')).toContainText(failedCount);
     await this.expectNoRuntimeErrors();

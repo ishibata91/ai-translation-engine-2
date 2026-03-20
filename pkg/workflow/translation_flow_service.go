@@ -135,6 +135,58 @@ func mapPreviewPage(page translationflow.PreviewPage) TranslationPreviewPage {
 	}
 }
 
+// ListTerminologyTargets returns a paged terminology-target preview for one task.
+func (s *TranslationFlowService) ListTerminologyTargets(ctx context.Context, taskID string, page int, pageSize int) (TerminologyTargetPreviewPage, error) {
+	trimmedTaskID := strings.TrimSpace(taskID)
+	if trimmedTaskID == "" {
+		return TerminologyTargetPreviewPage{}, fmt.Errorf("task_id is required")
+	}
+
+	input, err := s.store.LoadTerminologyInput(ctx, trimmedTaskID)
+	if err != nil {
+		return TerminologyTargetPreviewPage{}, fmt.Errorf("load terminology input task_id=%s: %w", trimmedTaskID, err)
+	}
+
+	safePage := page
+	if safePage <= 0 {
+		safePage = 1
+	}
+	safePageSize := pageSize
+	if safePageSize <= 0 {
+		safePageSize = defaultTranslationPreviewPageSize
+	}
+
+	totalRows := len(input.Entries)
+	start := (safePage - 1) * safePageSize
+	if start > totalRows {
+		start = totalRows
+	}
+	end := start + safePageSize
+	if end > totalRows {
+		end = totalRows
+	}
+
+	rows := make([]TerminologyTargetPreviewRow, 0, end-start)
+	for _, entry := range input.Entries[start:end] {
+		rows = append(rows, TerminologyTargetPreviewRow{
+			ID:         entry.ID,
+			RecordType: entry.RecordType,
+			EditorID:   entry.EditorID,
+			SourceText: entry.SourceText,
+			Variant:    entry.Variant,
+			SourceFile: entry.SourceFile,
+		})
+	}
+
+	return TerminologyTargetPreviewPage{
+		TaskID:    trimmedTaskID,
+		Page:      safePage,
+		PageSize:  safePageSize,
+		TotalRows: totalRows,
+		Rows:      rows,
+	}, nil
+}
+
 // RunTerminologyPhase executes the terminology phase synchronously and returns the persisted summary.
 func (s *TranslationFlowService) RunTerminologyPhase(ctx context.Context, input RunTerminologyPhaseInput) (TerminologyPhaseResult, error) {
 	trimmedTaskID := strings.TrimSpace(input.TaskID)
@@ -200,7 +252,6 @@ func (s *TranslationFlowService) GetTerminologyPhase(ctx context.Context, taskID
 	return TerminologyPhaseResult{
 		TaskID:      summary.TaskID,
 		Status:      summary.Status,
-		TargetCount: summary.TargetCount,
 		SavedCount:  summary.SavedCount,
 		FailedCount: summary.FailedCount,
 	}, nil

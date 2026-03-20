@@ -21,6 +21,7 @@ type translationFlowWorkflow interface {
 	LoadFiles(ctx context.Context, input workflow.LoadTranslationFlowInput) (workflow.TranslationLoadResult, error)
 	ListFiles(ctx context.Context, taskID string) (workflow.TranslationLoadResult, error)
 	ListPreviewRows(ctx context.Context, fileID int64, page int, pageSize int) (workflow.TranslationPreviewPage, error)
+	ListTerminologyTargets(ctx context.Context, taskID string, page int, pageSize int) (workflow.TerminologyTargetPreviewPage, error)
 	RunTerminologyPhase(ctx context.Context, input workflow.RunTerminologyPhaseInput) (workflow.TerminologyPhaseResult, error)
 	GetTerminologyPhase(ctx context.Context, taskID string) (workflow.TerminologyPhaseResult, error)
 }
@@ -124,6 +125,22 @@ func (c *TaskController) ListTranslationFlowPreviewRows(fileID int64, page int, 
 		return workflow.TranslationPreviewPage{}, fmt.Errorf("list translation flow preview rows file_id=%d page=%d page_size=%d: %w", fileID, page, pageSize, err)
 	}
 	return preview, nil
+}
+
+// ListTranslationFlowTerminologyTargets returns a paged preview of terminology targets for one task.
+func (c *TaskController) ListTranslationFlowTerminologyTargets(taskID string, page int, pageSize int) (workflow.TerminologyTargetPreviewPage, error) {
+	if c.translationFlow == nil {
+		return workflow.TerminologyTargetPreviewPage{}, fmt.Errorf("translation flow workflow is not configured")
+	}
+	resolvedTaskID, err := c.manager.EnsureTranslationProjectTask(c.ctx, taskID)
+	if err != nil {
+		return workflow.TerminologyTargetPreviewPage{}, fmt.Errorf("ensure translation project task task_id=%s: %w", taskID, err)
+	}
+	result, err := c.translationFlow.ListTerminologyTargets(c.ctx, resolvedTaskID, page, pageSize)
+	if err != nil {
+		return workflow.TerminologyTargetPreviewPage{}, fmt.Errorf("list translation flow terminology targets task_id=%s: %w", resolvedTaskID, err)
+	}
+	return result, nil
 }
 
 // RunTranslationFlowTerminology executes the terminology phase for one translation project task.

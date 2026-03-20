@@ -3,6 +3,7 @@ package translationflow
 import (
 	"context"
 
+	"github.com/ishibata91/ai-translation-engine-2/pkg/artifact/translationinput"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/format/parser/skyrim"
 )
 
@@ -41,4 +42,5 @@ type Service interface {
 	SaveParsedOutput(ctx context.Context, taskID string, sourceFilePath string, output *skyrim.ParserOutput) (LoadedFile, error)
 	ListFiles(ctx context.Context, taskID string) ([]LoadedFile, error)
 	ListPreviewRows(ctx context.Context, fileID int64, page int, pageSize int) (PreviewPage, error)
+	LoadTerminologyInput(ctx context.Context, taskID string) (translationinput.TerminologyInput, error)
 }

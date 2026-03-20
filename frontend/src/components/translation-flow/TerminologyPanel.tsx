@@ -1,6 +1,13 @@
+import type {ColumnDef} from '@tanstack/react-table';
+import DataTable from '../DataTable';
 import ModelSettings from '../ModelSettings';
 import PromptSettingCard from '../masterPersona/PromptSettingCard';
-import type {TerminologyPhaseSummary} from '../../hooks/features/translationFlow/types';
+import type {
+    TerminologyPhaseSummary,
+    TerminologyTargetPreviewPage,
+    TerminologyTargetPreviewRow,
+    TerminologyTargetViewState,
+} from '../../hooks/features/translationFlow/types';
 import type {MasterPersonaLLMConfig, MasterPersonaPromptConfig} from '../../types/masterPersona';
 
 interface TerminologyPanelProps {
@@ -9,6 +16,10 @@ interface TerminologyPanelProps {
     summary: TerminologyPhaseSummary;
     statusLabel: string;
     errorMessage: string;
+    targetPage: TerminologyTargetPreviewPage;
+    targetStatus: TerminologyTargetViewState;
+    targetErrorMessage: string;
+    isTargetLoading: boolean;
     isRunning: boolean;
     llmConfig: MasterPersonaLLMConfig;
     promptConfig: MasterPersonaPromptConfig;
@@ -18,6 +29,7 @@ interface TerminologyPanelProps {
     onPromptChange: (next: MasterPersonaPromptConfig) => void;
     onRun: () => Promise<void>;
     onRefresh: () => Promise<void>;
+    onTargetPageChange: (page: number) => Promise<void>;
     onNext: () => void;
 }
 
@@ -34,12 +46,41 @@ const SummaryCard = ({label, value}: {label: string; value: number}) => (
     </div>
 );
 
+const TARGET_COLUMNS: ColumnDef<TerminologyTargetPreviewRow, unknown>[] = [
+    {
+        accessorKey: 'recordType',
+        header: 'Record Type',
+        cell: (info) => <span className="font-mono text-xs">{String(info.getValue() ?? '')}</span>,
+    },
+    {
+        accessorKey: 'editorId',
+        header: 'Editor ID',
+        cell: (info) => <span className="font-mono text-xs">{String(info.getValue() ?? '')}</span>,
+    },
+    {
+        accessorKey: 'sourceText',
+        header: 'Source Text',
+    },
+    {
+        accessorKey: 'variant',
+        header: 'Variant',
+    },
+    {
+        accessorKey: 'sourceFile',
+        header: 'Source File',
+    },
+];
+
 export function TerminologyPanel({
     isActive,
     taskId,
     summary,
     statusLabel,
     errorMessage,
+    targetPage,
+    targetStatus,
+    targetErrorMessage,
+    isTargetLoading,
     isRunning,
     llmConfig,
     promptConfig,
@@ -49,13 +90,13 @@ export function TerminologyPanel({
     onPromptChange,
     onRun,
     onRefresh,
+    onTargetPageChange,
     onNext,
 }: TerminologyPanelProps) {
     const statusClass = STATUS_BADGE_CLASS[summary.status] ?? STATUS_BADGE_CLASS.pending;
-    const canRun = taskId !== '' && llmConfig.model.trim() !== '' && !isRunning;
+    const canRun = taskId !== '' && llmConfig.model.trim() !== '' && !isRunning && targetStatus === 'ready';
     const canNext = summary.status === 'completed';
-    const errorClass =
-        summary.status === 'pending' && summary.targetCount === 0 ? 'mt-3 text-sm text-warning' : 'mt-3 text-sm text-error';
+    const totalPages = Math.max(1, Math.ceil(targetPage.totalRows / Math.max(1, targetPage.pageSize)));
 
     return (
         <div className={`tab-content-panel flex-col gap-4 h-full overflow-y-auto ${isActive ? 'flex' : 'hidden'}`}>
@@ -84,13 +125,64 @@ export function TerminologyPanel({
                 {llmConfig.model.trim() === '' && (
                     <p className="mt-3 text-sm text-warning">実行前にモデルを選択してください。</p>
                 )}
-                {errorMessage !== '' && <p className={errorClass}>{errorMessage}</p>}
+                {errorMessage !== '' && <p className="mt-3 text-sm text-error">{errorMessage}</p>}
             </div>
 
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-                <SummaryCard label="対象件数" value={summary.targetCount} />
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                 <SummaryCard label="保存件数" value={summary.savedCount} />
                 <SummaryCard label="失敗件数" value={summary.failedCount} />
+            </div>
+
+            <div className="rounded-2xl border border-base-200 bg-base-100 p-5 shadow-sm">
+                <div className="mb-4 flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+                    <div>
+                        <h3 className="text-base font-bold">対象単語リスト</h3>
+                        <p className="text-sm text-base-content/70">Dictionary import と同じ対象集合から抽出した単語です。</p>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs">
+                        <span className="badge badge-outline">{targetPage.totalRows} 件</span>
+                        <button
+                            type="button"
+                            className="btn btn-outline btn-xs"
+                            onClick={() => void onTargetPageChange(Math.max(1, targetPage.page - 1))}
+                            disabled={isRunning || isTargetLoading || targetPage.page <= 1 || targetStatus !== 'ready'}
+                        >
+                            前へ
+                        </button>
+                        <span>{targetPage.page} / {totalPages}</span>
+                        <button
+                            type="button"
+                            className="btn btn-outline btn-xs"
+                            onClick={() => void onTargetPageChange(Math.min(totalPages, targetPage.page + 1))}
+                            disabled={isRunning || isTargetLoading || targetPage.page >= totalPages || targetStatus !== 'ready'}
+                        >
+                            次へ
+                        </button>
+                    </div>
+                </div>
+
+                {targetStatus === 'loading' && (
+                    <div className="rounded-xl border border-dashed border-base-300 p-4 text-sm text-base-content/60">
+                        読込中
+                    </div>
+                )}
+                {targetStatus === 'error' && (
+                    <div className="rounded-xl border border-error/30 bg-error/5 p-4 text-sm text-error">
+                        {targetErrorMessage || '対象単語リストの取得に失敗しました'}
+                    </div>
+                )}
+                {targetStatus === 'empty' && (
+                    <div className="rounded-xl border border-dashed border-base-300 p-4 text-sm text-base-content/60">
+                        ロード済みデータに Terminology 対象 REC がありません。
+                    </div>
+                )}
+                {targetStatus === 'ready' && (
+                    <DataTable
+                        columns={TARGET_COLUMNS}
+                        data={targetPage.rows}
+                        title={`対象単語リスト (${targetPage.totalRows} 件)`}
+                    />
+                )}
             </div>
 
             <ModelSettings

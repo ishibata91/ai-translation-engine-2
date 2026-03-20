@@ -1,40 +1,40 @@
 # Skill Architecture
 
-この文書は `skills/` 配下の役割分担と、profile 駆動の orchestration 方針をまとめた構造仕様。
+この文書は `skills/` 配下の役割分担と、skill 駆動の orchestration 方針をまとめた構造仕様。
 実装済みの内容と、今後この方針へ寄せる内容を分けて扱う。
 
 ## 目的
 
 - skill を単機能の手順書として保つ
-- `default` を指揮者にして subagent を役割単位で起動する
-- model 指定を skill 本文へ埋め込まず、外部 `config.yaml` profile で差し替えられるようにする
+- `default` を指揮者にして subagent を skill 単位で起動する
+- model 指定や profile 指定を skill 本文へ埋め込まない
 - design / implementation / bugfix を別フローとして扱い、責務を混ぜない
 
-## Profile と役割
+## Skill と役割
 
-| profile | model | sandbox | 主用途 |
-| --- | --- | --- | --- |
-| `reviewer` | `gpt-5.3-codex` | `read-only` | 実装差分レビュー |
-| `tester` | `gpt-5.3-codex` | `workspace-write` | テスト追加、検証、回帰確認 |
-| `documenter` | `gpt-5.4-mini` | `workspace-write` | `aite2-sync-docs` による docs 同期 |
-| `coder` | `gpt-5.4-mini` | `workspace-write` | 実装、限定的な修正 |
-| `architect` | `gpt-5.4` | `workspace-write` | design 系 skill 専用 |
-| `context_manager` | `gpt-5.4-mini` | `read-only` | 関連文書、関連コード、ログの圧縮 |
-| `debugger` | `gpt-5.4` | `workspace-write` | 原因予測、デバッグログ配置、再現後の絞り込み |
+| skill | 主用途 |
+| --- | --- |
+| `aite2-explorer` | 関連文書、関連コード、ログの圧縮 |
+| `aite2-debugger` | 原因予測、デバッグログ配置、再現後の絞り込み |
+| `aite2-fixer` | bugfix の限定修正 |
+| `aite2-backend-implementation` | backend 実装 |
+| `aite2-frontend-implementation` | frontend 実装 |
+| `aite2-implementation-review-guard` | 実装差分レビュー |
+| `aite2-sync-docs` | docs 正本への同期 |
+| `aite2-design-orchestrator` | design 系の入口整理 |
 
 補足:
 
-- `architect` は design 系 skill 専用に固定する
-- `context_manger` という typo は使わず、必ず `context_manager` を使う
-- model や approval policy は skill 本文に直書きせず、role 名だけを参照する
-- role 名は profile 名に合わせて `reviewer` `tester` `documenter` `coder` `architect` `context_manager` `debugger` を使う
+- profile や model の割り当ては `config.yaml` や外部設定側の責務とする
+- skill 本文は profile 名を前提にせず、起動すべき skill 名と責務だけを書く
+- 旧来の `context_manager` は skill 名ではなく、今後は `aite2-explorer` に統一する
 
 ## 基本原則
 
 - 指揮者 role は `default` が担う
 - 1 セクションごとに step-by-step で進める
-- `context_manager` は編集せず、圧縮と観測事実の整理だけを行う
-- reviewer は read-only で、コード修正を行わない
+- `aite2-explorer` は編集せず、圧縮と観測事実の整理だけを行う
+- review skill はコード修正を行わない
 - design と implementation は自動連結しない
 - Playwright ループは skill から言及しない
 
@@ -43,7 +43,7 @@
 ### 目的
 
 - subagent 間の handoff を口頭説明ではなく、change 配下の共有板で受け渡す
-- `context_manager` の圧縮結果、指揮者の判断、reviewer / debugger の findings を同じ change 単位で保持する
+- `aite2-explorer` の圧縮結果、指揮者の判断、review skill / debugger の findings を同じ change 単位で保持する
 - role ごとの入力契約を固定し、次の skill が何を読むべきかを曖昧にしない
 
 ### 配置
@@ -58,8 +58,8 @@
 - skill 起動時は、そのテンプレートを `context_board/` 配下へ貼り付けてから中身を書く
 - 次の skill は shared board を読んで必要な情報を引き継ぐ
 - 指揮者は board のどのファイルを次の role が読むべきかを明示する
-- `context_manager` は board を初期化し、必要な圧縮面を更新する
-- reviewer / debugger は board に findings を追記し、修正担当はそれを受けて次の手を決める
+- `aite2-explorer` は board を初期化し、必要な圧縮面を更新する
+- review skill / debugger は board に findings を追記し、修正担当はそれを受けて次の手を決める
 
 ### 最低限の board 面
 
@@ -75,7 +75,7 @@
   - 完了条件
   - 未確定事項
 - `findings.md`
-  - reviewer / debugger の指摘
+  - review skill / debugger の指摘
   - 未解消事項
   - 次回の優先論点
 
@@ -91,25 +91,25 @@
 
 1. `aite2-design-orchestrator` を起動する
 2. change 作成 script が `changes/<id>/context_board/` を作る
-3. `context_manager` が指示に関連する context を収集し、board を初期化する
+3. `aite2-explorer` が指示に関連する context を収集し、board を初期化する
 4. `aite2-design-orchestrator` が最初に使う設計 skill と順番を決める
-5. 各設計 skill を `architect` で担当する
-6. review が必要なら `aite2-design-review-guard` も `architect` で担当する
-7. docs 同期が必要なら `aite2-sync-docs` も `architect` で担当する
+5. 各設計 skill を順番に起動する
+6. review が必要なら `aite2-design-review-guard` を起動する
+7. docs 同期が必要なら `aite2-sync-docs` を起動する
 
 ### 設計上の意味
 
 - `aite2-design-orchestrator` は最初に使う design skill と順番を決める司令塔
-- `context_manager` は `changes/` `docs/` 既存コードから、設計に必要な範囲だけを圧縮し、architect へ渡す context packet を作る
+- `aite2-explorer` は `changes/` `docs/` 既存コードから、設計に必要な範囲だけを圧縮し、次の skill へ渡す context packet を作る
 - design 系の change 作成 script は `ui.md` `scenarios.md` `logic.md` に加えて `context_board/` を用意する
 - 各 design skill は自分のテンプレを board へ貼り付け、決定事項、未確定事項、次の handoff を残す
-- 実際の UI / scenario / logic / review / docs sync の各 skill は `architect` profile で動く前提にする
-- `architect` は implementation や bugfix では使わない
+- 実際の UI / scenario / logic / review / docs sync の各 skill は、外部 profile ではなく skill 名で分岐して扱う
 - context 収集は設計フローの入口で必ず 1 回実施し、途中で不足したときだけ追加で再収集する
 
 ### 対象 skill
 
 - `aite2-design-orchestrator`
+- `aite2-explorer`
 - `aite2-ui-design`
 - `aite2-scenario-design`
 - `aite2-logic-design`
@@ -122,24 +122,24 @@
 
 1. `default` が implementation 依頼を受ける
 2. task をセクション単位に分割する
-3. `context_manager` が関連文書と関連コードを圧縮する
-4. `coder` が実装する
-5. `tester` がテスト追加と検証を行う
-6. `reviewer` がレビューする
-7. docs 同期が必要な場合だけ `documenter` が `aite2-sync-docs` を使う
+3. `aite2-explorer` が関連文書と関連コードを圧縮する
+4. `aite2-backend-implementation` または `aite2-frontend-implementation` が実装する
+5. 必要な品質ゲートを実行する
+6. `aite2-implementation-review-guard` がレビューする
+7. docs 同期が必要な場合だけ `aite2-sync-docs` を使う
 
 ### 設計上の意味
 
 - implementation の指揮者は `aite2-implementation-driver`
 - mixed task でも v1 は並列化せず、section ごとに順番に処理する
-- `coder` は実装担当として `aite2-backend-implementation` または `aite2-frontend-implementation` を使う
-- `tester` は検証担当として将来専用 skill を持てるように分離する
-- `reviewer` は `aite2-implementation-review-guard` を使い、`critical` と `medium` finding を返す
-- docs 同期要否は reviewer が判断し、必要時のみ `documenter` を起動する
+- 実装担当は `aite2-backend-implementation` または `aite2-frontend-implementation` を使う
+- review 担当は `aite2-implementation-review-guard` を使い、`critical` と `medium` finding を返す
+- docs 同期要否は review 結果と指揮者判断で決め、必要時のみ `aite2-sync-docs` を起動する
 
 ### 対象 skill
 
 - `aite2-implementation-driver`
+- `aite2-explorer`
 - `aite2-backend-implementation`
 - `aite2-frontend-implementation`
 - `aite2-implementation-review-guard`
@@ -147,8 +147,8 @@
 
 ### 実装状態
 
-- impl 系の multi-agent orchestration 基本方針は `aite2-implementation-driver` と coder / reviewer skill に反映済み
-- `tester` 専用 skill と `context_manager` 専用 skill は未作成
+- impl 系の multi-agent orchestration 基本方針は `aite2-implementation-driver` と実装 / review skill に反映済み
+- `aite2-explorer` は未作成だったため追加対象
 - frontend skill からは Playwright 前提を外す方針
 
 ## Bugfix フロー
@@ -157,29 +157,31 @@
 
 1. `default` が bugfix を起動する
 2. change 作成 script が `changes/<id>/context_board/` を作る
-3. `context_manager` が関連 context を収集し、board を初期化する
-4. `debugger` が原因予測を行い、専用 logger と専用出力を配置する
+3. `aite2-explorer` が関連 context を収集し、board を初期化する
+4. `aite2-debugger` が原因予測を行い、専用 logger と専用出力を配置する
 5. ユーザーが操作してバグを再現する
-6. `context_manager` role の `aite2-log-parser` がログを構造化 JSON にし、起きた事実だけを `debugger` に返す
-7. `debugger` が原因をさらに絞る
+6. `aite2-log-parser` がログを構造化 JSON にし、起きた事実だけを `aite2-debugger` に返す
+7. `aite2-debugger` が原因をさらに絞る
 8. bugfix 指揮者が原因を受け取り、実装プランを作る
-9. `coder` role の `aite2-fixer` が指示された修正だけを行う
-10. `reviewer` が review する
+9. `aite2-fixer` が指示された修正だけを行う
+10. `aite2-implementation-review-guard` が review する
 
 ### 設計上の意味
 
 - bugfix は implementation とは別の調査駆動フローとする
-- `debugger` は原因予測とデバッグ観測の準備が仕事で、恒久実装は行わない
+- `aite2-debugger` は原因予測とデバッグ観測の準備が仕事で、恒久実装は行わない
 - 配置する logger は debugger 専用とし、repo 常設ロガーとは分離する
 - ログとファイル出力は後で一括削除しやすい配置と命名にする
-- `context_manager` は `aite2-log-parser` を通じたログ事実化を含む read-only 役として扱う
-- `coder` は bugfix フローでは `aite2-fixer` を通じて保守要員として使う
+- `aite2-explorer` は bugfix の入口で context 圧縮と board 初期化を行う
+- `aite2-log-parser` は観測事実だけを返し、原因判断は持たない
+- `aite2-fixer` は bugfix フローの保守要員として使う
 - bugfix 系の change 作成 script も `context_board/` を作り、原因仮説、観測事実、fix plan を board 上で handoff する
 - debugger の一時ログと context board は別物として扱う
 
 ### 対象 skill
 
 - `aite2-bug-fix`
+- `aite2-explorer`
 - `aite2-debugger`
 - `aite2-log-parser`
 - `aite2-fixer`
@@ -187,8 +189,8 @@
 
 ### 実装状態
 
-- bugfix 系はまだ旧 skill 構造のまま
-- `debugger` `aite2-log-parser` `aite2-fixer` は追加済みだが、呼び出し元 skill の接続は今後調整余地がある
+- bugfix 系は旧 role 名の記述が残っていたため、実在 skill 名へ整理する
+- `aite2-explorer` `aite2-debugger` `aite2-log-parser` `aite2-fixer` の接続を標準形にそろえる
 - 既存 bugfix skill にある `Playwright` 言及は今後除去する
 
 ## UI-Refine フロー
@@ -197,9 +199,9 @@
 
 1. `default` が ui-refine を起動する
 2. change 作成 script が `changes/<id>/context_board/` を作る
-3. `context_manager` が対象画面、関連 docs、対象コードを収集し、board を初期化する
+3. `aite2-explorer` が対象画面、関連 docs、対象コードを収集し、board を初期化する
 4. `aite2-ui-polish` が board を読み、観測、修正方針、変更結果を board に残す
-5. 必要なら reviewer が見た目修正差分を確認する
+5. 必要なら review skill が見た目修正差分を確認する
 
 ### 設計上の意味
 
@@ -209,6 +211,7 @@
 
 ### 対象 skill
 
+- `aite2-explorer`
 - `aite2-ui-polish`
 
 ## Skill の責務境界
@@ -242,6 +245,6 @@
 
 ## 今後の更新対象
 
-- `aite2-design-orchestrator` を `architect` 前提へ更新
+- `aite2-design-orchestrator` を skill 名ベースの接続へ更新
 - `aite2-bug-fix` を debugger 主導フローへ更新
-- `tester` と `context_manager` の専用 skill を導入するかを再検討
+- `aite2-explorer` を入口 skill として各フローへ接続する

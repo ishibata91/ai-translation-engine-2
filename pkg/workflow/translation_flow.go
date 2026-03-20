@@ -60,6 +60,25 @@ type TranslationPromptConfig struct {
 	SystemPrompt string `json:"system_prompt"`
 }
 
+// TerminologyTargetPreviewRow is one terminology target row shown before execution.
+type TerminologyTargetPreviewRow struct {
+	ID         string `json:"id"`
+	RecordType string `json:"record_type"`
+	EditorID   string `json:"editor_id"`
+	SourceText string `json:"source_text"`
+	Variant    string `json:"variant"`
+	SourceFile string `json:"source_file"`
+}
+
+// TerminologyTargetPreviewPage is one paged response for terminology targets.
+type TerminologyTargetPreviewPage struct {
+	TaskID    string                        `json:"task_id"`
+	Page      int                           `json:"page"`
+	PageSize  int                           `json:"page_size"`
+	TotalRows int                           `json:"total_rows"`
+	Rows      []TerminologyTargetPreviewRow `json:"rows"`
+}
+
 // RunTerminologyPhaseInput is the controller-facing DTO for terminology phase execution.
 type RunTerminologyPhaseInput struct {
 	TaskID  string                   `json:"task_id"`
@@ -71,7 +90,6 @@ type RunTerminologyPhaseInput struct {
 type TerminologyPhaseResult struct {
 	TaskID      string `json:"task_id"`
 	Status      string `json:"status"`
-	TargetCount int    `json:"target_count"`
 	SavedCount  int    `json:"saved_count"`
 	FailedCount int    `json:"failed_count"`
 }
@@ -81,6 +99,7 @@ type TranslationFlow interface {
 	LoadFiles(ctx context.Context, input LoadTranslationFlowInput) (TranslationLoadResult, error)
 	ListFiles(ctx context.Context, taskID string) (TranslationLoadResult, error)
 	ListPreviewRows(ctx context.Context, fileID int64, page int, pageSize int) (TranslationPreviewPage, error)
+	ListTerminologyTargets(ctx context.Context, taskID string, page int, pageSize int) (TerminologyTargetPreviewPage, error)
 	RunTerminologyPhase(ctx context.Context, input RunTerminologyPhaseInput) (TerminologyPhaseResult, error)
 	GetTerminologyPhase(ctx context.Context, taskID string) (TerminologyPhaseResult, error)
 }

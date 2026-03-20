@@ -107,6 +107,15 @@ func TestTaskController_TranslationFlowAPI_TableDriven(t *testing.T) {
 	ensureErr := errors.New("ensure failed")
 	loadResult := workflow.TranslationLoadResult{TaskID: "task-1", Files: []workflow.TranslationLoadedFile{{FileID: 10}}}
 	previewResult := workflow.TranslationPreviewPage{FileID: 10, Page: 2, PageSize: 50, TotalRows: 99}
+	terminologyPreview := workflow.TerminologyTargetPreviewPage{
+		TaskID:    "task-1",
+		Page:      1,
+		PageSize:  50,
+		TotalRows: 1,
+		Rows: []workflow.TerminologyTargetPreviewRow{
+			{ID: "row-1", RecordType: "NPC_:FULL", EditorID: "EDID_001", SourceText: "Uthgerd the Unbroken", Variant: "full", SourceFile: "Skyrim.esm.extract.json"},
+		},
+	}
 
 	testCases := []struct {
 		name string
@@ -198,6 +207,30 @@ func TestTaskController_TranslationFlowAPI_TableDriven(t *testing.T) {
 				assert.ErrorIs(t, err, workflowErr)
 			},
 		},
+		{
+			name: "ListTranslationFlowTerminologyTargets resolves task id and returns preview",
+			run: func(t *testing.T, controller *TaskController, env *taskcontrollertest.Env, wf *fakeTranslationFlowWorkflow) {
+				env.Manager.EnsureTaskResolvedID = "task-resolved"
+				wf.terminologyPreviewResult = terminologyPreview
+				got, err := controller.ListTranslationFlowTerminologyTargets("task-1", 1, 50)
+				require.NoError(t, err)
+				assert.Equal(t, terminologyPreview, got)
+				assert.Equal(t, "task-1", env.Manager.EnsureTaskInput)
+				assert.Equal(t, "task-resolved", wf.lastTerminologyPreviewTaskID)
+				assert.Equal(t, 1, wf.lastTerminologyPreviewPage)
+				assert.Equal(t, 50, wf.lastTerminologyPreviewPageSize)
+			},
+		},
+		{
+			name: "ListTranslationFlowTerminologyTargets returns workflow error",
+			run: func(t *testing.T, controller *TaskController, env *taskcontrollertest.Env, wf *fakeTranslationFlowWorkflow) {
+				wf.terminologyPreviewErr = workflowErr
+				_, err := controller.ListTranslationFlowTerminologyTargets("task-3", 2, 25)
+				require.Error(t, err)
+				assert.Equal(t, "task-3", env.Manager.EnsureTaskInput)
+				assert.ErrorIs(t, err, workflowErr)
+			},
+		},
 	}
 
 	for _, tc := range testCases {
@@ -231,25 +264,34 @@ func TestTaskController_TranslationFlowAPI_NilWorkflowGuard(t *testing.T) {
 	_, err = controller.ListTranslationFlowPreviewRows(1, 1, 50)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not configured")
+
+	_, err = controller.ListTranslationFlowTerminologyTargets("task-1", 1, 50)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not configured")
 }
 
 type fakeTranslationFlowWorkflow struct {
-	lastCtx              context.Context
-	lastLoadInput        workflow.LoadTranslationFlowInput
-	lastListTaskID       string
-	lastPreviewFileID    int64
-	lastPreviewPage      int
-	lastPreviewPageSize  int
-	lastTerminologyInput workflow.RunTerminologyPhaseInput
+	lastCtx                        context.Context
+	lastLoadInput                  workflow.LoadTranslationFlowInput
+	lastListTaskID                 string
+	lastPreviewFileID              int64
+	lastPreviewPage                int
+	lastPreviewPageSize            int
+	lastTerminologyPreviewTaskID   string
+	lastTerminologyPreviewPage     int
+	lastTerminologyPreviewPageSize int
+	lastTerminologyInput           workflow.RunTerminologyPhaseInput
 
-	loadResult        workflow.TranslationLoadResult
-	loadErr           error
-	listResult        workflow.TranslationLoadResult
-	listErr           error
-	previewResult     workflow.TranslationPreviewPage
-	previewErr        error
-	terminologyResult workflow.TerminologyPhaseResult
-	terminologyErr    error
+	loadResult               workflow.TranslationLoadResult
+	loadErr                  error
+	listResult               workflow.TranslationLoadResult
+	listErr                  error
+	previewResult            workflow.TranslationPreviewPage
+	previewErr               error
+	terminologyPreviewResult workflow.TerminologyTargetPreviewPage
+	terminologyPreviewErr    error
+	terminologyResult        workflow.TerminologyPhaseResult
+	terminologyErr           error
 }
 
 func (f *fakeTranslationFlowWorkflow) LoadFiles(ctx context.Context, input workflow.LoadTranslationFlowInput) (workflow.TranslationLoadResult, error) {
@@ -270,6 +312,14 @@ func (f *fakeTranslationFlowWorkflow) ListPreviewRows(ctx context.Context, fileI
 	f.lastPreviewPage = page
 	f.lastPreviewPageSize = pageSize
 	return f.previewResult, f.previewErr
+}
+
+func (f *fakeTranslationFlowWorkflow) ListTerminologyTargets(ctx context.Context, taskID string, page int, pageSize int) (workflow.TerminologyTargetPreviewPage, error) {
+	f.lastCtx = ctx
+	f.lastTerminologyPreviewTaskID = taskID
+	f.lastTerminologyPreviewPage = page
+	f.lastTerminologyPreviewPageSize = pageSize
+	return f.terminologyPreviewResult, f.terminologyPreviewErr
 }
 
 func (f *fakeTranslationFlowWorkflow) RunTerminologyPhase(ctx context.Context, input workflow.RunTerminologyPhaseInput) (workflow.TerminologyPhaseResult, error) {

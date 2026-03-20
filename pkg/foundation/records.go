@@ -3,7 +3,7 @@ package foundation
 // DictionaryImportRECTypes is the shared REC allow-list used by dictionary import
 // and terminology target extraction.
 var DictionaryImportRECTypes = []string{
-	"BOOK:FULL",
+	//"BOOK:FULL",本の内容そのものであるため
 	"NPC_:FULL",
 	"NPC_:SHRT",
 	"ARMO:FULL",
