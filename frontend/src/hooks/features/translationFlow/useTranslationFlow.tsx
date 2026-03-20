@@ -2,6 +2,7 @@ import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {useLocation} from 'react-router-dom';
 import {ConfigGetAll, ConfigSet} from '../../../wailsjs/go/controller/ConfigController';
 import {SelectTranslationInputFiles} from '../../../wailsjs/go/controller/FileDialogController';
+import {useWailsEvent} from '../../useWailsEvent';
 import {
     GetAllTasks,
     GetTranslationFlowTerminology,
@@ -23,6 +24,7 @@ import type {
     TerminologyTargetViewState,
     TranslationFlowTab,
     UseTranslationFlowResult,
+    WailsTerminologyProgressEvent,
 } from './types';
 
 const PREVIEW_PAGE_SIZE = 50;
@@ -30,6 +32,7 @@ const TERMINOLOGY_LLM_NAMESPACE = 'translation_flow.terminology.llm';
 const TERMINOLOGY_PROMPT_NAMESPACE = 'translation_flow.terminology.prompt';
 const TERMINOLOGY_USER_PROMPT_KEY = 'user_prompt';
 const TERMINOLOGY_SYSTEM_PROMPT_KEY = 'system_prompt';
+const TERMINOLOGY_PROGRESS_EVENT = 'translation_flow.terminology.progress';
 const DUPLICATE_FILE_MESSAGE = '同じプラグインを2重で処理しないため、同名ファイルは追加できません。';
 const NO_TERMINOLOGY_TARGETS_MESSAGE = 'ロード済みデータに Terminology 対象 REC がありません。';
 
@@ -67,6 +70,10 @@ const EMPTY_TERMINOLOGY_SUMMARY: TerminologyPhaseSummary = {
     status: 'pending',
     savedCount: 0,
     failedCount: 0,
+    progressMode: 'hidden',
+    progressCurrent: 0,
+    progressTotal: 0,
+    progressMessage: '',
 };
 
 const EMPTY_TERMINOLOGY_TARGET_PAGE = (
@@ -107,6 +114,12 @@ const toErrorMessage = (error: unknown, fallback: string): string => {
     }
     return fallback;
 };
+
+const pickProgressEventString = (value: unknown, fallback = ''): string =>
+    typeof value === 'string' ? value : fallback;
+
+const pickProgressEventNumber = (value: unknown, fallback = 0): number =>
+    typeof value === 'number' && Number.isFinite(value) ? value : fallback;
 
 const parseDate = (value: unknown): number => {
     if (typeof value !== 'string' || value.trim() === '') {
@@ -236,11 +249,9 @@ const normalizeTerminologyPromptConfig = (loaded: Record<string, string>): Maste
 const terminologyStatusLabel = (
     summary: TerminologyPhaseSummary,
     targetStatus: TerminologyTargetViewState,
-    isRunning: boolean,
-    progressLabel: string,
 ): string => {
-    if (isRunning && progressLabel !== '') {
-        return progressLabel;
+    if (summary.status === 'running' && summary.progressMessage !== '') {
+        return summary.progressMessage;
     }
     if (targetStatus === 'loading') {
         return '読込中';
@@ -252,10 +263,14 @@ const terminologyStatusLabel = (
         return '用語翻訳対象なし';
     }
     switch (summary.status) {
+        case 'completed_partial':
+            return '単語翻訳完了（一部失敗あり）';
         case 'completed':
-            return summary.failedCount > 0 ? '単語翻訳完了（一部失敗あり）' : '単語翻訳完了';
+            return '単語翻訳完了';
         case 'running':
             return '単語翻訳を実行中';
+        case 'run_error':
+            return '単語翻訳の実行に失敗しました';
         default:
             return '未実行';
     }
@@ -286,13 +301,47 @@ export function useTranslationFlow(): UseTranslationFlowResult {
     const [terminologyTargetErrorMessage, setTerminologyTargetErrorMessage] = useState('');
     const [isTerminologyTargetLoading, setIsTerminologyTargetLoading] = useState(false);
     const [isTerminologyRunning, setIsTerminologyRunning] = useState(false);
-    const [terminologyProgressLabel, setTerminologyProgressLabel] = useState('');
     const [terminologyConfig, setTerminologyConfig] = useState<MasterPersonaLLMConfig>(DEFAULT_MASTER_PERSONA_LLM_CONFIG);
     const [terminologyPromptConfig, setTerminologyPromptConfig] = useState<MasterPersonaPromptConfig>(DEFAULT_TERMINOLOGY_PROMPT_CONFIG);
     const [isTerminologyConfigHydrated, setIsTerminologyConfigHydrated] = useState(false);
     const [isTerminologyPromptHydrated, setIsTerminologyPromptHydrated] = useState(false);
     const llmSaveTimerRef = useRef<number | null>(null);
     const promptSaveTimerRef = useRef<number | null>(null);
+
+    useWailsEvent<WailsTerminologyProgressEvent>(TERMINOLOGY_PROGRESS_EVENT, (payload) => {
+        const eventTaskId = pickProgressEventString(payload.task_id ?? payload.taskId ?? payload.TaskID);
+        if (eventTaskId === '' || (taskId !== '' && eventTaskId !== taskId)) {
+            return;
+        }
+
+        const eventStatus = pickProgressEventString(payload.status ?? payload.Status);
+        if (eventStatus !== 'IN_PROGRESS') {
+            return;
+        }
+
+        const progressTotal = Math.max(0, pickProgressEventNumber(payload.total ?? payload.Total));
+        const progressCurrent = Math.max(
+            0,
+            pickProgressEventNumber(payload.current ?? payload.Current ?? payload.completed ?? payload.Completed),
+        );
+        const progressMessage = pickProgressEventString(
+            payload.message ?? payload.Message,
+            '単語翻訳を実行中',
+        );
+
+        setTerminologySummary((prev) => ({
+            ...prev,
+            taskId: eventTaskId,
+            status: 'running',
+            progressMode: progressTotal > 0 ? 'determinate' : 'indeterminate',
+            progressCurrent,
+            progressTotal,
+            progressMessage,
+        }));
+        setTerminologyErrorMessage('');
+        setTerminologyTargetStatus('loading');
+        setIsTerminologyRunning(true);
+    });
 
     const handleReloadFiles = useCallback(async () => {
         if (taskId === '') {
@@ -335,9 +384,11 @@ export function useTranslationFlow(): UseTranslationFlowResult {
                 ...summary,
                 taskId: resolvedTaskId,
             });
+            setIsTerminologyRunning(summary.status === 'running');
             setTerminologyErrorMessage('');
             return resolvedTaskId;
         } catch (error) {
+            setIsTerminologyRunning(false);
             setTerminologyErrorMessage(toErrorMessage(error, '単語翻訳の状態取得に失敗しました'));
             return nextTaskId;
         }
@@ -534,6 +585,7 @@ export function useTranslationFlow(): UseTranslationFlowResult {
             setTerminologyTargetErrorMessage('');
             setErrorMessage('');
             setActiveTab(0);
+            setIsTerminologyRunning(false);
             return;
         }
         void handleReloadFiles();
@@ -639,18 +691,25 @@ export function useTranslationFlow(): UseTranslationFlowResult {
         if (taskId === '' || isTerminologyRunning) {
             return;
         }
+        if (terminologyTargetStatus === 'empty') {
+            setTerminologyErrorMessage(NO_TERMINOLOGY_TARGETS_MESSAGE);
+            return;
+        }
         setIsTerminologyRunning(true);
         setTerminologyErrorMessage('');
-        setTerminologyProgressLabel('terminology ジョブを生成中');
         setTerminologySummary((prev) => ({
             ...prev,
             taskId,
             status: 'running',
+            progressMode: 'indeterminate',
+            progressCurrent: 0,
+            progressTotal: Math.max(prev.progressTotal, 0),
+            progressMessage: '単語翻訳を実行中',
         }));
+        setTerminologyTargetErrorMessage('');
 
         try {
-            await Promise.resolve();
-            setTerminologyProgressLabel('LLM で単語翻訳を実行中');
+            setTerminologyTargetStatus('loading');
             const payload = await RunTranslationFlowTerminology(
                 taskId,
                 {
@@ -668,7 +727,6 @@ export function useTranslationFlow(): UseTranslationFlowResult {
                     system_prompt: terminologyPromptConfig.systemPrompt,
                 },
             );
-            setTerminologyProgressLabel('翻訳結果を保存中');
             const summary = mapTerminologyPhaseResult(payload);
             const resolvedTaskId = summary.taskId || taskId;
             setTerminologySummary({
@@ -679,34 +737,30 @@ export function useTranslationFlow(): UseTranslationFlowResult {
                 setTerminologyErrorMessage(NO_TERMINOLOGY_TARGETS_MESSAGE);
                 setTerminologyTargetStatus('empty');
                 setTerminologyTargetPage(EMPTY_TERMINOLOGY_TARGET_PAGE(resolvedTaskId, terminologyTargetPage.page, terminologyTargetPage.pageSize));
-                setTerminologyProgressLabel('用語翻訳対象なし');
+                setIsTerminologyRunning(false);
                 return;
             }
             await handleRefreshTerminologyTargets(resolvedTaskId, terminologyTargetPage.page, terminologyTargetPage.pageSize);
-            setTerminologyProgressLabel('単語翻訳完了');
         } catch (error) {
             setTerminologyErrorMessage(toErrorMessage(error, '単語翻訳の実行に失敗しました'));
-            setTerminologyProgressLabel('単語翻訳に失敗しました');
-            setTerminologySummary((prev) => ({
-                ...prev,
-                taskId,
-                status: 'pending',
-            }));
+            await handleRefreshTerminologyPhase(taskId);
         } finally {
             setIsTerminologyRunning(false);
         }
     }, [
+        handleRefreshTerminologyPhase,
         handleRefreshTerminologyTargets,
         isTerminologyRunning,
         taskId,
         terminologyConfig,
         terminologyPromptConfig,
+        terminologyTargetStatus,
         terminologyTargetPage.page,
         terminologyTargetPage.pageSize,
     ]);
 
     const handleAdvanceFromTerminology = useCallback(() => {
-        if (terminologySummary.status !== 'completed') {
+        if (terminologySummary.status !== 'completed' && terminologySummary.status !== 'completed_partial') {
             return;
         }
         setActiveTab(2);
@@ -727,7 +781,7 @@ export function useTranslationFlow(): UseTranslationFlowResult {
         if (index > 0 && loadedFiles.length === 0) {
             return;
         }
-        if (index > 1 && terminologySummary.status !== 'completed') {
+        if (index > 1 && terminologySummary.status !== 'completed' && terminologySummary.status !== 'completed_partial') {
             return;
         }
         setActiveTab(index);
@@ -746,8 +800,6 @@ export function useTranslationFlow(): UseTranslationFlowResult {
             terminologyStatusLabel: terminologyStatusLabel(
                 terminologySummary,
                 terminologyTargetStatus,
-                isTerminologyRunning,
-                terminologyProgressLabel,
             ),
             terminologyErrorMessage,
             terminologyTargetPage,

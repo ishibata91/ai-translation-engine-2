@@ -26,6 +26,8 @@ export interface TerminologyTargetPreviewRow {
     recordType: string;
     editorId: string;
     sourceText: string;
+    translatedText: string;
+    translationState: string;
     variant: string;
     sourceFile: string;
 }
@@ -64,6 +66,10 @@ export interface TerminologyPhaseSummary {
     status: string;
     savedCount: number;
     failedCount: number;
+    progressMode: string;
+    progressCurrent: number;
+    progressTotal: number;
+    progressMessage: string;
 }
 
 /**
@@ -191,6 +197,14 @@ export interface WailsTerminologyPhaseResult {
     savedCount?: number;
     failed_count?: number;
     failedCount?: number;
+    progress_mode?: string;
+    progressMode?: string;
+    progress_current?: number;
+    progressCurrent?: number;
+    progress_total?: number;
+    progressTotal?: number;
+    progress_message?: string;
+    progressMessage?: string;
 }
 
 /**
@@ -218,7 +232,32 @@ export interface WailsTerminologyTargetPreviewRow {
     editorId?: string;
     source_text?: string;
     sourceText?: string;
+    translated_text?: string;
+    translatedText?: string;
+    translation_state?: string;
+    translationState?: string;
     variant?: string;
     source_file?: string;
     sourceFile?: string;
+}
+
+/**
+ * terminology progress bridge event payload。
+ */
+export interface WailsTerminologyProgressEvent {
+    task_id?: string;
+    taskId?: string;
+    TaskID?: string;
+    status?: string;
+    Status?: string;
+    current?: number;
+    Current?: number;
+    completed?: number;
+    Completed?: number;
+    total?: number;
+    Total?: number;
+    failed?: number;
+    Failed?: number;
+    message?: string;
+    Message?: string;
 }

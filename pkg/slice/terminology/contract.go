@@ -49,13 +49,24 @@ type PhaseOptions struct {
 	Prompt  PromptConfig
 }
 
+// PreviewTranslation reports one preview row's current translation visibility.
+type PreviewTranslation struct {
+	RowID            string
+	TranslatedText   string
+	TranslationState string
+}
+
 // PhaseSummary reports the persisted terminology phase state.
 type PhaseSummary struct {
-	TaskID      string `json:"task_id"`
-	Status      string `json:"status"`
-	TargetCount int    `json:"target_count"`
-	SavedCount  int    `json:"saved_count"`
-	FailedCount int    `json:"failed_count"`
+	TaskID          string `json:"task_id"`
+	Status          string `json:"status"`
+	TargetCount     int    `json:"target_count"`
+	SavedCount      int    `json:"saved_count"`
+	FailedCount     int    `json:"failed_count"`
+	ProgressMode    string `json:"progress_mode"`
+	ProgressCurrent int    `json:"progress_current"`
+	ProgressTotal   int    `json:"progress_total"`
+	ProgressMessage string `json:"progress_message"`
 }
 
 // Terminology is the main entry point for term translation (Pass 1).
@@ -71,6 +82,12 @@ type Terminology interface {
 
 	// GetPhaseSummary returns persisted counts/status for one task.
 	GetPhaseSummary(ctx context.Context, taskID string) (PhaseSummary, error)
+
+	// GetPreviewTranslations resolves translated text for one preview page.
+	GetPreviewTranslations(ctx context.Context, entries []TerminologyEntry) (map[string]PreviewTranslation, error)
+
+	// UpdatePhaseSummary persists workflow-owned phase snapshot updates.
+	UpdatePhaseSummary(ctx context.Context, summary PhaseSummary) error
 }
 
 // TermRequestBuilder extracts term translation targets from TerminologyInput
@@ -97,6 +114,7 @@ type ModTermStore interface {
 	Clear(ctx context.Context) error
 	UpdatePhaseSummary(ctx context.Context, summary PhaseSummary) error
 	GetPhaseSummary(ctx context.Context, taskID string) (PhaseSummary, error)
+	GetPreviewTranslations(ctx context.Context, entries []TerminologyEntry) (map[string]PreviewTranslation, error)
 }
 
 // ProgressNotifier reports translation progress to the Process Manager.

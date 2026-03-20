@@ -7,11 +7,14 @@ import (
 
 	"github.com/ishibata91/ai-translation-engine-2/pkg/format/parser/skyrim"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/foundation/llmio"
+	runtimeprogress "github.com/ishibata91/ai-translation-engine-2/pkg/foundation/progress"
 	terminologyslice "github.com/ishibata91/ai-translation-engine-2/pkg/slice/terminology"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/slice/translationflow"
+	taskworkflow "github.com/ishibata91/ai-translation-engine-2/pkg/workflow/task"
 )
 
 const defaultTranslationPreviewPageSize = 50
+const terminologyProgressPhase = "terminology"
 
 // TranslationFlowService orchestrates parser execution and artifact persistence for load phase.
 type TranslationFlowService struct {
@@ -19,6 +22,7 @@ type TranslationFlowService struct {
 	store       translationflow.Service
 	terminology terminologyslice.Terminology
 	executor    terminologyPhaseExecutor
+	notifier    runtimeprogress.ProgressNotifier
 }
 
 type terminologyPhaseExecutor interface {
@@ -31,12 +35,14 @@ func NewTranslationFlowService(
 	store translationflow.Service,
 	terminology terminologyslice.Terminology,
 	executor terminologyPhaseExecutor,
+	notifier runtimeprogress.ProgressNotifier,
 ) *TranslationFlowService {
 	return &TranslationFlowService{
 		parser:      parser,
 		store:       store,
 		terminology: terminology,
 		executor:    executor,
+		notifier:    notifier,
 	}
 }
 
@@ -167,14 +173,35 @@ func (s *TranslationFlowService) ListTerminologyTargets(ctx context.Context, tas
 	}
 
 	rows := make([]TerminologyTargetPreviewRow, 0, end-start)
-	for _, entry := range input.Entries[start:end] {
-		rows = append(rows, TerminologyTargetPreviewRow{
+	pageEntries := input.Entries[start:end]
+	previewEntries := make([]terminologyslice.TerminologyEntry, 0, len(pageEntries))
+	for _, entry := range pageEntries {
+		previewEntries = append(previewEntries, terminologyslice.TerminologyEntry{
 			ID:         entry.ID,
-			RecordType: entry.RecordType,
 			EditorID:   entry.EditorID,
+			RecordType: entry.RecordType,
 			SourceText: entry.SourceText,
-			Variant:    entry.Variant,
 			SourceFile: entry.SourceFile,
+			PairKey:    entry.PairKey,
+			Variant:    entry.Variant,
+		})
+	}
+	translations, err := s.terminology.GetPreviewTranslations(ctx, previewEntries)
+	if err != nil {
+		return TerminologyTargetPreviewPage{}, fmt.Errorf("get terminology preview translations task_id=%s: %w", trimmedTaskID, err)
+	}
+
+	for _, entry := range pageEntries {
+		translation := translations[entry.ID]
+		rows = append(rows, TerminologyTargetPreviewRow{
+			ID:               entry.ID,
+			RecordType:       entry.RecordType,
+			EditorID:         entry.EditorID,
+			SourceText:       entry.SourceText,
+			TranslatedText:   translation.TranslatedText,
+			TranslationState: translation.TranslationState,
+			Variant:          entry.Variant,
+			SourceFile:       entry.SourceFile,
 		})
 	}
 
@@ -218,6 +245,15 @@ func (s *TranslationFlowService) RunTerminologyPhase(ctx context.Context, input 
 	}
 
 	if len(requests) > 0 {
+		s.reportTerminologyProgress(ctx, terminologyslice.PhaseSummary{
+			TaskID:          trimmedTaskID,
+			Status:          "running",
+			TargetCount:     len(requests),
+			ProgressMode:    "indeterminate",
+			ProgressCurrent: 0,
+			ProgressTotal:   len(requests),
+			ProgressMessage: "単語翻訳を実行中",
+		})
 		responses, err := s.executor.Execute(ctx, llmio.ExecutionConfig{
 			Provider:        input.Request.Provider,
 			Model:           input.Request.Model,
@@ -229,10 +265,29 @@ func (s *TranslationFlowService) RunTerminologyPhase(ctx context.Context, input 
 			BulkStrategy:    input.Request.BulkStrategy,
 		}, requests)
 		if err != nil {
+			summary, summaryErr := s.terminology.GetPhaseSummary(ctx, trimmedTaskID)
+			if summaryErr == nil {
+				runErrorSummary := terminologyslice.PhaseSummary{
+					TaskID:          trimmedTaskID,
+					Status:          "run_error",
+					TargetCount:     summary.TargetCount,
+					SavedCount:      summary.SavedCount,
+					FailedCount:     summary.FailedCount,
+					ProgressMode:    "hidden",
+					ProgressCurrent: summary.ProgressCurrent,
+					ProgressTotal:   summary.ProgressTotal,
+					ProgressMessage: "単語翻訳の実行に失敗しました",
+				}
+				_ = s.terminology.UpdatePhaseSummary(ctx, runErrorSummary)
+				s.reportTerminologyProgress(ctx, runErrorSummary)
+			}
 			return TerminologyPhaseResult{}, fmt.Errorf("execute terminology llm requests task_id=%s: %w", trimmedTaskID, err)
 		}
 		if err := s.terminology.SaveResults(ctx, trimmedTaskID, responses); err != nil {
 			return TerminologyPhaseResult{}, fmt.Errorf("save terminology results task_id=%s: %w", trimmedTaskID, err)
+		}
+		if summary, summaryErr := s.terminology.GetPhaseSummary(ctx, trimmedTaskID); summaryErr == nil {
+			s.reportTerminologyProgress(ctx, summary)
 		}
 	}
 
@@ -250,9 +305,40 @@ func (s *TranslationFlowService) GetTerminologyPhase(ctx context.Context, taskID
 		return TerminologyPhaseResult{}, fmt.Errorf("get terminology phase summary task_id=%s: %w", trimmedTaskID, err)
 	}
 	return TerminologyPhaseResult{
-		TaskID:      summary.TaskID,
-		Status:      summary.Status,
-		SavedCount:  summary.SavedCount,
-		FailedCount: summary.FailedCount,
+		TaskID:          summary.TaskID,
+		Status:          summary.Status,
+		SavedCount:      summary.SavedCount,
+		FailedCount:     summary.FailedCount,
+		ProgressMode:    summary.ProgressMode,
+		ProgressCurrent: summary.ProgressCurrent,
+		ProgressTotal:   summary.ProgressTotal,
+		ProgressMessage: summary.ProgressMessage,
 	}, nil
+}
+
+func (s *TranslationFlowService) reportTerminologyProgress(ctx context.Context, summary terminologyslice.PhaseSummary) {
+	if s.notifier == nil || strings.TrimSpace(summary.TaskID) == "" {
+		return
+	}
+
+	status := runtimeprogress.StatusInProgress
+	switch summary.Status {
+	case "completed":
+		status = runtimeprogress.StatusCompleted
+	case "completed_partial", "run_error":
+		status = runtimeprogress.StatusFailed
+	}
+
+	s.notifier.OnProgress(ctx, runtimeprogress.ProgressEvent{
+		CorrelationID: summary.TaskID,
+		TaskID:        summary.TaskID,
+		TaskType:      string(taskworkflow.TypeTranslationProject),
+		Phase:         terminologyProgressPhase,
+		Current:       summary.ProgressCurrent,
+		Total:         summary.ProgressTotal,
+		Completed:     summary.ProgressCurrent,
+		Failed:        summary.FailedCount,
+		Status:        status,
+		Message:       summary.ProgressMessage,
+	})
 }

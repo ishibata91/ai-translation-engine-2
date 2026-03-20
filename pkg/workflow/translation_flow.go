@@ -62,12 +62,14 @@ type TranslationPromptConfig struct {
 
 // TerminologyTargetPreviewRow is one terminology target row shown before execution.
 type TerminologyTargetPreviewRow struct {
-	ID         string `json:"id"`
-	RecordType string `json:"record_type"`
-	EditorID   string `json:"editor_id"`
-	SourceText string `json:"source_text"`
-	Variant    string `json:"variant"`
-	SourceFile string `json:"source_file"`
+	ID               string `json:"id"`
+	RecordType       string `json:"record_type"`
+	EditorID         string `json:"editor_id"`
+	SourceText       string `json:"source_text"`
+	TranslatedText   string `json:"translated_text"`
+	TranslationState string `json:"translation_state"`
+	Variant          string `json:"variant"`
+	SourceFile       string `json:"source_file"`
 }
 
 // TerminologyTargetPreviewPage is one paged response for terminology targets.
@@ -88,10 +90,14 @@ type RunTerminologyPhaseInput struct {
 
 // TerminologyPhaseResult is the aggregate response for terminology phase status.
 type TerminologyPhaseResult struct {
-	TaskID      string `json:"task_id"`
-	Status      string `json:"status"`
-	SavedCount  int    `json:"saved_count"`
-	FailedCount int    `json:"failed_count"`
+	TaskID          string `json:"task_id"`
+	Status          string `json:"status"`
+	SavedCount      int    `json:"saved_count"`
+	FailedCount     int    `json:"failed_count"`
+	ProgressMode    string `json:"progress_mode"`
+	ProgressCurrent int    `json:"progress_current"`
+	ProgressTotal   int    `json:"progress_total"`
+	ProgressMessage string `json:"progress_message"`
 }
 
 // TranslationFlow defines controller-facing workflow APIs for translation load phase.

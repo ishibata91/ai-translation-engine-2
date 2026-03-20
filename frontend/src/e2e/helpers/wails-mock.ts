@@ -1,28 +1,29 @@
 import {Page} from '@playwright/test';
 import {DASHBOARD_TASKS} from '../fixtures/dashboard/mock-data';
 import {
-    DICTIONARY_BUILDER_ENTRIES_BY_SOURCE_ID,
-    DICTIONARY_BUILDER_SOURCES,
+  DICTIONARY_BUILDER_ENTRIES_BY_SOURCE_ID,
+  DICTIONARY_BUILDER_SOURCES,
 } from '../fixtures/dictionary-builder/mock-data';
 import {
-    MASTER_PERSONA_DIALOGUES_BY_PERSONA_ID,
-    MASTER_PERSONA_LLM_CONFIG_BY_NAMESPACE,
-    MASTER_PERSONA_LLM_ROOT_CONFIG,
-    MASTER_PERSONA_MODEL_CATALOG_BY_PROVIDER,
-    MASTER_PERSONA_PROMPT_CONFIG,
-    MASTER_PERSONA_REQUIRED_NPCS,
-    MASTER_PERSONA_SELECTED_JSON_PATH,
-    MASTER_PERSONA_STARTED_TASK_ID,
+  MASTER_PERSONA_DIALOGUES_BY_PERSONA_ID,
+  MASTER_PERSONA_LLM_CONFIG_BY_NAMESPACE,
+  MASTER_PERSONA_LLM_ROOT_CONFIG,
+  MASTER_PERSONA_MODEL_CATALOG_BY_PROVIDER,
+  MASTER_PERSONA_PROMPT_CONFIG,
+  MASTER_PERSONA_REQUIRED_NPCS,
+  MASTER_PERSONA_SELECTED_JSON_PATH,
+  MASTER_PERSONA_STARTED_TASK_ID,
 } from '../fixtures/master-persona/mock-data';
 import {
-    TRANSLATION_FLOW_FILE_PAYLOADS,
-    TRANSLATION_FLOW_SELECTED_FILES,
-    TRANSLATION_FLOW_TASK_ID,
-    TRANSLATION_FLOW_TERMINOLOGY_COMPLETED_SUMMARY,
-    TRANSLATION_FLOW_TERMINOLOGY_LLM_CONFIG,
-    TRANSLATION_FLOW_TERMINOLOGY_PROMPT_CONFIG,
-    TRANSLATION_FLOW_TERMINOLOGY_SUMMARY,
-    TRANSLATION_FLOW_TERMINOLOGY_TARGET_PAGE,
+  TRANSLATION_FLOW_FILE_PAYLOADS,
+  TRANSLATION_FLOW_SELECTED_FILES,
+  TRANSLATION_FLOW_TASK_ID,
+  TRANSLATION_FLOW_TERMINOLOGY_COMPLETED_SUMMARY,
+  TRANSLATION_FLOW_TERMINOLOGY_COMPLETED_TARGET_PAGE,
+  TRANSLATION_FLOW_TERMINOLOGY_LLM_CONFIG,
+  TRANSLATION_FLOW_TERMINOLOGY_PROMPT_CONFIG,
+  TRANSLATION_FLOW_TERMINOLOGY_SUMMARY,
+  TRANSLATION_FLOW_TERMINOLOGY_TARGET_PAGE,
 } from '../fixtures/translation-flow/mock-data';
 
 type DashboardMockFixture = {
@@ -70,6 +71,7 @@ type TranslationFlowMockFixture = {
   selectedFiles: string[];
   taskId: string;
   terminologyCompletedSummary: Record<string, number | string>;
+  terminologyCompletedTargetPage: Record<string, unknown>;
   terminologyLLMConfig: Record<string, string>;
   terminologyPromptConfig: Record<string, string>;
   terminologySummary: Record<string, number | string>;
@@ -107,6 +109,7 @@ export async function installWailsMocks(page: Page): Promise<void> {
       selectedFiles: [...TRANSLATION_FLOW_SELECTED_FILES],
       taskId: TRANSLATION_FLOW_TASK_ID,
       terminologyCompletedSummary: TRANSLATION_FLOW_TERMINOLOGY_COMPLETED_SUMMARY,
+      terminologyCompletedTargetPage: TRANSLATION_FLOW_TERMINOLOGY_COMPLETED_TARGET_PAGE,
       terminologyLLMConfig: TRANSLATION_FLOW_TERMINOLOGY_LLM_CONFIG,
       terminologyPromptConfig: TRANSLATION_FLOW_TERMINOLOGY_PROMPT_CONFIG,
       terminologySummary: TRANSLATION_FLOW_TERMINOLOGY_SUMMARY,
@@ -117,6 +120,8 @@ export async function installWailsMocks(page: Page): Promise<void> {
   await page.addInitScript((mockFixture: WailsMockFixture) => {
     const toLowerText = (value: unknown): string =>
       String(value ?? '').toLowerCase();
+    const cloneValue = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
+    const translationScenario = new URLSearchParams(window.location.hash.split('?')[1] ?? '').get('tfScenario') ?? 'default';
 
     const paginateEntries = (
       entries: Array<Record<string, string | number | null>>,
@@ -159,11 +164,107 @@ export async function installWailsMocks(page: Page): Promise<void> {
       configStore.set(namespace, {...values});
     }
 
+    const buildTerminologyScenarioState = (taskID: string) => {
+      if (translationScenario === 'empty') {
+        return {
+          summary: {
+            ...cloneValue(mockFixture.translationFlow.terminologySummary),
+            task_id: taskID,
+          },
+          targetPage: {
+            ...cloneValue(mockFixture.translationFlow.terminologyTargetPage),
+            task_id: taskID,
+            total_rows: 0,
+            rows: [],
+          },
+        };
+      }
+
+      if (translationScenario === 'partial') {
+        const partialSummary = {
+          ...cloneValue(mockFixture.translationFlow.terminologyCompletedSummary),
+          task_id: taskID,
+          status: 'completed_partial',
+          saved_count: 7,
+          failed_count: 1,
+          progress_current: 8,
+          progress_total: 8,
+          progress_message: '',
+        };
+        const partialTargetPage = cloneValue(mockFixture.translationFlow.terminologyCompletedTargetPage);
+        const rows = Array.isArray(partialTargetPage.rows) ? partialTargetPage.rows : [];
+        if (rows.length > 0) {
+          rows[rows.length - 1] = {
+            ...rows[rows.length - 1],
+            translated_text: '',
+            translation_state: 'missing',
+          };
+        }
+        return {
+          summary: partialSummary,
+          targetPage: {
+            ...partialTargetPage,
+            task_id: taskID,
+            rows,
+          },
+        };
+      }
+
+      if (translationScenario === 'resume') {
+        return {
+          summary: {
+            ...cloneValue(mockFixture.translationFlow.terminologyCompletedSummary),
+            task_id: taskID,
+          },
+          targetPage: {
+            ...cloneValue(mockFixture.translationFlow.terminologyCompletedTargetPage),
+            task_id: taskID,
+          },
+        };
+      }
+
+      return {
+        summary: {
+          ...cloneValue(mockFixture.translationFlow.terminologySummary),
+          task_id: taskID,
+        },
+        targetPage: {
+          ...cloneValue(mockFixture.translationFlow.terminologyTargetPage),
+          task_id: taskID,
+        },
+      };
+    };
+
     let personaTask: Record<string, unknown> | null = null;
-    let terminologySummary = {...mockFixture.translationFlow.terminologySummary};
+    let terminologySummary = cloneValue(mockFixture.translationFlow.terminologySummary);
+    let terminologyTargetPage = cloneValue(mockFixture.translationFlow.terminologyTargetPage);
 
     const dashboardTasks = [...mockFixture.dashboard.tasks];
     const translationFilesByTask = new Map<string, TranslationFlowFileFixture[]>();
+
+    if (translationScenario === 'resume') {
+      translationFilesByTask.set(
+        mockFixture.translationFlow.taskId,
+        Object.values(mockFixture.translationFlow.filePayloads).map((file) => cloneValue(file)),
+      );
+      const now = new Date().toISOString();
+      dashboardTasks.push({
+        id: mockFixture.translationFlow.taskId,
+        name: 'Translation Flow Resume Mock',
+        type: 'translation_project',
+        status: 'completed',
+        phase: 'terminology',
+        progress: 100,
+        metadata: {
+          entrypoint: 'translation_flow',
+        },
+        created_at: now,
+        updated_at: now,
+      });
+      const resumeState = buildTerminologyScenarioState(mockFixture.translationFlow.taskId);
+      terminologySummary = resumeState.summary;
+      terminologyTargetPage = resumeState.targetPage;
+    }
 
     const normalizePage = (page: number): number => {
       if (!Number.isFinite(page) || page < 1) {
@@ -210,24 +311,47 @@ export async function installWailsMocks(page: Page): Promise<void> {
       preview: buildTranslationPreviewPage(file, page, pageSize),
     });
 
+    const eventHandlers = new Map<string, Set<(payload: unknown) => void>>();
     const runtime = {
-      EventsOn: () => () => undefined,
-      EventsOnMultiple: () => () => undefined,
-      EventsOff: () => undefined,
-      EventsOffAll: () => undefined,
-      EventsEmit: () => undefined,
+      EventsOn: (eventName: string, callback: (payload: unknown) => void) => {
+        const handlers = eventHandlers.get(eventName) ?? new Set<(payload: unknown) => void>();
+        handlers.add(callback);
+        eventHandlers.set(eventName, handlers);
+        return () => {
+          handlers.delete(callback);
+        };
+      },
+      EventsOnMultiple: (eventName: string, callback: (payload: unknown) => void) => runtime.EventsOn(eventName, callback),
+      EventsOff: (eventName: string) => {
+        eventHandlers.delete(eventName);
+      },
+      EventsOffAll: () => {
+        eventHandlers.clear();
+      },
+      EventsEmit: (eventName: string, payload: unknown) => {
+        const handlers = eventHandlers.get(eventName);
+        if (!handlers) {
+          return;
+        }
+        handlers.forEach((handler) => handler(payload));
+      },
     };
 
     const taskController = {
       GetActiveTasks: async () => [...dashboardTasks],
       GetAllTasks: async () => [...dashboardTasks],
       GetTranslationFlowTerminology: async () => ({...terminologySummary}),
-      ListTranslationFlowTerminologyTargets: async (taskID: string, page: number, pageSize: number) => ({
-        ...mockFixture.translationFlow.terminologyTargetPage,
-        task_id: taskID,
-        page,
-        page_size: pageSize,
-      }),
+      ListTranslationFlowTerminologyTargets: async (taskID: string, page: number, pageSize: number) => {
+        if (translationScenario === 'error') {
+          throw new Error('対象単語リストの取得に失敗しました');
+        }
+        return {
+          ...terminologyTargetPage,
+          task_id: taskID,
+          page,
+          page_size: pageSize,
+        };
+      },
       ListLoadedTranslationFlowFiles: async (taskID: string) => {
         const files = translationFilesByTask.get(taskID) ?? [];
         return {
@@ -255,10 +379,9 @@ export async function installWailsMocks(page: Page): Promise<void> {
           .map((path) => mockFixture.translationFlow.filePayloads[path])
           .filter((file): file is TranslationFlowFileFixture => Boolean(file));
         translationFilesByTask.set(taskID, loadedFiles);
-        terminologySummary = {
-          ...mockFixture.translationFlow.terminologySummary,
-          task_id: taskID,
-        };
+        const scenarioState = buildTerminologyScenarioState(taskID);
+        terminologySummary = scenarioState.summary;
+        terminologyTargetPage = scenarioState.targetPage;
         return {
           task_id: taskID,
           files: loadedFiles.map((file) => buildLoadedTranslationFile(file, 1, 50)),
@@ -269,10 +392,28 @@ export async function installWailsMocks(page: Page): Promise<void> {
         if (model.length === 0) {
           throw new Error('terminology model is required');
         }
-        terminologySummary = {
-          ...mockFixture.translationFlow.terminologyCompletedSummary,
-          task_id: taskID,
-        };
+        runtime.EventsEmit('translation_flow.terminology.progress', {
+          TaskID: taskID,
+          Status: 'IN_PROGRESS',
+          Current: 2,
+          Total: 8,
+          Message: '2 / 8 件を処理中',
+        });
+        await new Promise((resolve) => window.setTimeout(resolve, 50));
+        const scenarioState = buildTerminologyScenarioState(taskID);
+        if (translationScenario === 'default') {
+          terminologySummary = {
+            ...cloneValue(mockFixture.translationFlow.terminologyCompletedSummary),
+            task_id: taskID,
+          };
+          terminologyTargetPage = {
+            ...cloneValue(mockFixture.translationFlow.terminologyCompletedTargetPage),
+            task_id: taskID,
+          };
+        } else {
+          terminologySummary = scenarioState.summary;
+          terminologyTargetPage = scenarioState.targetPage;
+        }
         return {...terminologySummary};
       },
       ResumeTask: async () => undefined,

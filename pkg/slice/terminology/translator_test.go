@@ -221,6 +221,35 @@ func TestTermTranslatorSlice(t *testing.T) {
 			if phaseSummary.TargetCount != tc.expectedReqs {
 				t.Fatalf("unexpected target count: got=%d want=%d", phaseSummary.TargetCount, tc.expectedReqs)
 			}
+			if phaseSummary.Status != "completed" {
+				t.Fatalf("unexpected status: got=%q want=%q", phaseSummary.Status, "completed")
+			}
+			if phaseSummary.ProgressMode != "hidden" {
+				t.Fatalf("unexpected progress mode: got=%q want=%q", phaseSummary.ProgressMode, "hidden")
+			}
+
+			previewTranslations, err := translator.GetPreviewTranslations(ctx, tc.input.Entries)
+			if err != nil {
+				t.Fatalf("GetPreviewTranslations failed: %v", err)
+			}
+			for _, entry := range tc.input.Entries {
+				preview, ok := previewTranslations[entry.ID]
+				if !ok {
+					t.Fatalf("missing preview translation for row_id=%s", entry.ID)
+				}
+				if expectedJA, exists := tc.expectedTerms[entry.SourceText]; exists {
+					if preview.TranslationState != "translated" {
+						t.Fatalf("unexpected translation state for row_id=%s: got=%q want=%q", entry.ID, preview.TranslationState, "translated")
+					}
+					if preview.TranslatedText != expectedJA {
+						t.Fatalf("unexpected preview translation for row_id=%s: got=%q want=%q", entry.ID, preview.TranslatedText, expectedJA)
+					}
+					continue
+				}
+				if preview.TranslationState != "missing" {
+					t.Fatalf("unexpected missing translation state for row_id=%s: got=%q want=%q", entry.ID, preview.TranslationState, "missing")
+				}
+			}
 		})
 	}
 }

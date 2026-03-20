@@ -67,8 +67,11 @@ export class TranslationFlowPO extends BasePO {
     await expect(content).not.toBeVisible();
   }
 
-  async open(): Promise<void> {
-    await this.page.goto(APP_ROUTES.translationFlow);
+  async open(scenario?: string): Promise<void> {
+    const route = scenario
+      ? `${APP_ROUTES.translationFlow}?tfScenario=${encodeURIComponent(scenario)}`
+      : APP_ROUTES.translationFlow;
+    await this.page.goto(route);
     await this.page.waitForLoadState('domcontentloaded');
     await this.waitForHash(APP_ROUTES.translationFlow);
     await this.expectNoRuntimeErrors();
@@ -147,6 +150,7 @@ export class TranslationFlowPO extends BasePO {
     const panel = this.terminologyPanel();
     await expect(panel).toBeVisible();
     await expect(panel.getByRole('heading', {name: '対象単語リスト', exact: true})).toBeVisible();
+    await expect(panel.getByRole('columnheader', {name: 'Translated Text'})).toBeVisible();
     await expect(panel.getByText('保存件数')).toBeVisible();
     await expect(panel.getByText('失敗件数')).toBeVisible();
     await expect(panel.getByRole('button', {name: '単語翻訳を実行'})).toBeVisible();
@@ -162,6 +166,11 @@ export class TranslationFlowPO extends BasePO {
     await expect(panel.getByRole('cell', {name: sourceText}).first()).toBeVisible();
     await expect(panel.getByRole('cell', {name: variant}).first()).toBeVisible();
     await expect(panel.getByRole('cell', {name: sourceFile}).first()).toBeVisible();
+    await this.expectNoRuntimeErrors();
+  }
+
+  async expectTerminologyUntranslatedBadge(): Promise<void> {
+    await expect(this.terminologyPanel().getByText('未翻訳').first()).toBeVisible();
     await this.expectNoRuntimeErrors();
   }
 
@@ -182,10 +191,58 @@ export class TranslationFlowPO extends BasePO {
     await this.expectNoRuntimeErrors();
   }
 
+  async startTerminologyPhase(): Promise<void> {
+    const runButton = this.terminologyPanel().getByRole('button', {name: '単語翻訳を実行'});
+    await expect(runButton).toBeEnabled();
+    await runButton.click();
+    await this.expectNoRuntimeErrors();
+  }
+
+  async expectTerminologyRunningProgress(progressLabel: string): Promise<void> {
+    const panel = this.terminologyPanel();
+    await expect(panel.getByRole('button', {name: '単語翻訳を実行中...'})).toBeDisabled();
+    await expect(panel.getByText(progressLabel)).toBeVisible();
+    await expect(panel.getByText('読込中')).toBeVisible();
+    await this.expectNoRuntimeErrors();
+  }
+
+  async expectTerminologyControlsDisabled(): Promise<void> {
+    const panel = this.terminologyPanel();
+    await expect(panel.getByRole('button', {name: '状態を再読込'})).toBeDisabled();
+    await expect(panel.getByRole('button', {name: '次へ'})).toBeDisabled();
+    await expect(panel.getByRole('button', {name: '単語翻訳を確定して次へ'})).toBeDisabled();
+    await this.expectNoRuntimeErrors();
+  }
+
+  async expectTerminologyStatus(text: string): Promise<void> {
+    await expect(this.terminologyPanel().getByText(text)).toBeVisible();
+    await this.expectNoRuntimeErrors();
+  }
+
+  async expectTerminologyEmptyState(): Promise<void> {
+    await expect(this.terminologyPanel().getByText('ロード済みデータに Terminology 対象 REC がありません。')).toBeVisible();
+    await this.expectNoRuntimeErrors();
+  }
+
+  async expectTerminologyErrorPanel(message: string): Promise<void> {
+    await expect(this.terminologyPanel().getByText(message)).toBeVisible();
+    await this.expectNoRuntimeErrors();
+  }
+
+  async expectTerminologyAdvanceEnabled(): Promise<void> {
+    await expect(this.terminologyPanel().getByRole('button', {name: '単語翻訳を確定して次へ'})).toBeEnabled();
+    await this.expectNoRuntimeErrors();
+  }
+
   async expectTerminologySummary(savedCount: string, failedCount: string): Promise<void> {
     const panel = this.terminologyPanel();
     await expect(panel.getByText('保存件数').locator('..')).toContainText(savedCount);
     await expect(panel.getByText('失敗件数').locator('..')).toContainText(failedCount);
+    await this.expectNoRuntimeErrors();
+  }
+
+  async expectTerminologyTranslatedText(text: string): Promise<void> {
+    await expect(this.terminologyPanel().getByText(text, {exact: false}).first()).toBeVisible();
     await this.expectNoRuntimeErrors();
   }
 }

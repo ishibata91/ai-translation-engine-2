@@ -60,9 +60,13 @@ func (t *TermTranslatorImpl) PreparePrompts(ctx context.Context, taskID string, 
 		status = "running"
 	}
 	if err := t.store.UpdatePhaseSummary(ctx, PhaseSummary{
-		TaskID:      taskID,
-		Status:      status,
-		TargetCount: len(requests),
+		TaskID:          taskID,
+		Status:          status,
+		TargetCount:     len(requests),
+		ProgressMode:    progressModeForStatus(status),
+		ProgressCurrent: 0,
+		ProgressTotal:   len(requests),
+		ProgressMessage: progressMessageForStatus(status),
 	}); err != nil {
 		return nil, fmt.Errorf("persist terminology phase running summary task_id=%s: %w", taskID, err)
 	}
@@ -187,15 +191,19 @@ func (t *TermTranslatorImpl) SaveResults(ctx context.Context, taskID string, res
 	status := "completed"
 	if len(responses) == 0 {
 		status = "pending"
-	} else if failedCount > 0 && len(finalResults) == 0 {
-		status = "failed"
+	} else if failedCount > 0 {
+		status = "completed_partial"
 	}
 	if err := t.store.UpdatePhaseSummary(ctx, PhaseSummary{
-		TaskID:      taskID,
-		Status:      status,
-		TargetCount: len(responses),
-		SavedCount:  len(finalResults),
-		FailedCount: failedCount,
+		TaskID:          taskID,
+		Status:          status,
+		TargetCount:     len(responses),
+		SavedCount:      len(finalResults),
+		FailedCount:     failedCount,
+		ProgressMode:    progressModeForStatus(status),
+		ProgressCurrent: len(responses),
+		ProgressTotal:   len(responses),
+		ProgressMessage: progressMessageForStatus(status),
 	}); err != nil {
 		return fmt.Errorf("persist terminology phase summary task_id=%s: %w", taskID, err)
 	}
@@ -209,6 +217,23 @@ func (t *TermTranslatorImpl) GetPhaseSummary(ctx context.Context, taskID string)
 		return PhaseSummary{}, fmt.Errorf("get terminology phase summary task_id=%s: %w", taskID, err)
 	}
 	return summary, nil
+}
+
+// GetPreviewTranslations resolves translated text for one preview page.
+func (t *TermTranslatorImpl) GetPreviewTranslations(ctx context.Context, entries []TerminologyEntry) (map[string]PreviewTranslation, error) {
+	translations, err := t.store.GetPreviewTranslations(ctx, entries)
+	if err != nil {
+		return nil, fmt.Errorf("get preview translations: %w", err)
+	}
+	return translations, nil
+}
+
+// UpdatePhaseSummary persists a workflow-owned phase snapshot.
+func (t *TermTranslatorImpl) UpdatePhaseSummary(ctx context.Context, summary PhaseSummary) error {
+	if err := t.store.UpdatePhaseSummary(ctx, summary); err != nil {
+		return fmt.Errorf("update terminology phase summary task_id=%s: %w", summary.TaskID, err)
+	}
+	return nil
 }
 
 // LegacySaveResults parses LLM responses and persists to the mod term database (Phase 2).
@@ -377,5 +402,27 @@ func toTerminologyInput(input translationinput.TerminologyInput) TerminologyInpu
 		TaskID:    input.TaskID,
 		FileNames: append([]string(nil), input.FileNames...),
 		Entries:   entries,
+	}
+}
+
+func progressModeForStatus(status string) string {
+	if status == "running" {
+		return "indeterminate"
+	}
+	return "hidden"
+}
+
+func progressMessageForStatus(status string) string {
+	switch status {
+	case "running":
+		return "単語翻訳を実行中"
+	case "completed":
+		return "単語翻訳完了"
+	case "completed_partial":
+		return "単語翻訳完了（一部失敗あり）"
+	case "run_error":
+		return "単語翻訳の実行に失敗しました"
+	default:
+		return ""
 	}
 }

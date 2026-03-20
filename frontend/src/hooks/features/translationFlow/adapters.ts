@@ -39,6 +39,8 @@ const mapTerminologyTargetPreviewRow = (payload: WailsTerminologyTargetPreviewRo
     recordType: pickString(payload.record_type ?? payload.recordType),
     editorId: pickString(payload.editor_id ?? payload.editorId),
     sourceText: pickString(payload.source_text ?? payload.sourceText),
+    translatedText: pickString(payload.translated_text ?? payload.translatedText),
+    translationState: pickString(payload.translation_state ?? payload.translationState, 'missing'),
     variant: pickString(payload.variant),
     sourceFile: pickString(payload.source_file ?? payload.sourceFile),
 });
@@ -104,6 +106,10 @@ export const mapTerminologyPhaseResult = (payload: unknown): TerminologyPhaseSum
         status: pickString(resultPayload.status, 'pending'),
         savedCount: Math.max(0, pickNumber(resultPayload.saved_count ?? resultPayload.savedCount, 0)),
         failedCount: Math.max(0, pickNumber(resultPayload.failed_count ?? resultPayload.failedCount, 0)),
+        progressMode: pickString(resultPayload.progress_mode ?? resultPayload.progressMode, 'hidden'),
+        progressCurrent: Math.max(0, pickNumber(resultPayload.progress_current ?? resultPayload.progressCurrent, 0)),
+        progressTotal: Math.max(0, pickNumber(resultPayload.progress_total ?? resultPayload.progressTotal, 0)),
+        progressMessage: pickString(resultPayload.progress_message ?? resultPayload.progressMessage),
     };
 };
 

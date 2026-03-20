@@ -35,7 +35,9 @@ interface TerminologyPanelProps {
 
 const STATUS_BADGE_CLASS: Record<string, string> = {
     completed: 'badge-success badge-outline',
+    completed_partial: 'badge-warning badge-outline',
     running: 'badge-warning badge-outline',
+    run_error: 'badge-error badge-outline',
     pending: 'badge-ghost',
 };
 
@@ -60,6 +62,18 @@ const TARGET_COLUMNS: ColumnDef<TerminologyTargetPreviewRow, unknown>[] = [
     {
         accessorKey: 'sourceText',
         header: 'Source Text',
+    },
+    {
+        accessorKey: 'translatedText',
+        header: 'Translated Text',
+        cell: ({row}) => {
+            const translationState = row.original.translationState;
+            const translatedText = row.original.translatedText;
+            if (translationState !== 'translated' || translatedText.trim() === '') {
+                return <span className="badge badge-outline badge-warning">未翻訳</span>;
+            }
+            return <span>{translatedText}</span>;
+        },
     },
     {
         accessorKey: 'variant',
@@ -95,8 +109,14 @@ export function TerminologyPanel({
 }: TerminologyPanelProps) {
     const statusClass = STATUS_BADGE_CLASS[summary.status] ?? STATUS_BADGE_CLASS.pending;
     const canRun = taskId !== '' && llmConfig.model.trim() !== '' && !isRunning && targetStatus === 'ready';
-    const canNext = summary.status === 'completed';
+    const canNext = summary.status === 'completed' || summary.status === 'completed_partial';
     const totalPages = Math.max(1, Math.ceil(targetPage.totalRows / Math.max(1, targetPage.pageSize)));
+    const showProgress = summary.progressMode !== 'hidden';
+    const progressLabel = summary.progressMessage !== ''
+        ? summary.progressMessage
+        : summary.progressMode === 'determinate' && summary.progressTotal > 0
+            ? `${summary.progressCurrent} / ${summary.progressTotal}`
+            : '';
 
     return (
         <div className={`tab-content-panel flex-col gap-4 h-full overflow-y-auto ${isActive ? 'flex' : 'hidden'}`}>
@@ -117,9 +137,23 @@ export function TerminologyPanel({
                         <button type="button" className="btn btn-outline btn-sm" onClick={() => void onRefresh()} disabled={isRunning}>
                             状態を再読込
                         </button>
-                        <button type="button" className="btn btn-primary btn-sm" onClick={() => void onRun()} disabled={!canRun}>
-                            {isRunning ? '単語翻訳を実行中...' : '単語翻訳を実行'}
-                        </button>
+                        <div className="flex items-center gap-3">
+                            <button type="button" className="btn btn-primary btn-sm" onClick={() => void onRun()} disabled={!canRun}>
+                                {isRunning ? '単語翻訳を実行中...' : '単語翻訳を実行'}
+                            </button>
+                            {showProgress && (
+                                <div className="flex min-w-52 flex-col gap-1">
+                                    <progress
+                                        className="progress progress-primary w-full"
+                                        value={summary.progressMode === 'determinate' ? summary.progressCurrent : undefined}
+                                        max={summary.progressMode === 'determinate' && summary.progressTotal > 0 ? summary.progressTotal : undefined}
+                                    />
+                                    {progressLabel !== '' && (
+                                        <span className="text-xs text-base-content/70">{progressLabel}</span>
+                                    )}
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
                 {llmConfig.model.trim() === '' && (
@@ -161,7 +195,7 @@ export function TerminologyPanel({
                     </div>
                 </div>
 
-                {targetStatus === 'loading' && (
+                {(targetStatus === 'loading' || isRunning) && (
                     <div className="rounded-xl border border-dashed border-base-300 p-4 text-sm text-base-content/60">
                         読込中
                     </div>
@@ -176,7 +210,7 @@ export function TerminologyPanel({
                         ロード済みデータに Terminology 対象 REC がありません。
                     </div>
                 )}
-                {targetStatus === 'ready' && (
+                {targetStatus === 'ready' && !isRunning && (
                     <DataTable
                         columns={TARGET_COLUMNS}
                         data={targetPage.rows}

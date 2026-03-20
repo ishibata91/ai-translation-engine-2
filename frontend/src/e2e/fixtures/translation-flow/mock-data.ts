@@ -73,6 +73,10 @@ export const TRANSLATION_FLOW_TERMINOLOGY_SUMMARY = {
   status: 'pending',
   saved_count: 0,
   failed_count: 0,
+  progress_mode: 'hidden',
+  progress_current: 0,
+  progress_total: 0,
+  progress_message: '',
 } as const;
 
 export const TRANSLATION_FLOW_TERMINOLOGY_COMPLETED_SUMMARY = {
@@ -80,6 +84,10 @@ export const TRANSLATION_FLOW_TERMINOLOGY_COMPLETED_SUMMARY = {
   status: 'completed',
   saved_count: 8,
   failed_count: 0,
+  progress_mode: 'hidden',
+  progress_current: 8,
+  progress_total: 8,
+  progress_message: '',
 } as const;
 
 export const TRANSLATION_FLOW_TERMINOLOGY_TARGET_PAGE = {
@@ -93,6 +101,8 @@ export const TRANSLATION_FLOW_TERMINOLOGY_TARGET_PAGE = {
       record_type: 'NPC_:FULL',
       editor_id: 'NPC_B_03',
       source_text: 'NPC Name B-03',
+      translated_text: '',
+      translation_state: 'missing',
       variant: 'full',
       source_file: 'Update.esm.extract.json',
     },
@@ -101,6 +111,8 @@ export const TRANSLATION_FLOW_TERMINOLOGY_TARGET_PAGE = {
       record_type: 'NPC_:SHRT',
       editor_id: 'NPC_B_03',
       source_text: 'NPC Name B-03',
+      translated_text: '',
+      translation_state: 'missing',
       variant: 'short',
       source_file: 'Update.esm.extract.json',
     },
@@ -109,8 +121,31 @@ export const TRANSLATION_FLOW_TERMINOLOGY_TARGET_PAGE = {
       record_type: 'QUST',
       editor_id: 'Q_B_01',
       source_text: 'Quest Objective B-01',
+      translated_text: '',
+      translation_state: 'missing',
       variant: 'single',
       source_file: 'Update.esm.extract.json',
+    },
+  ],
+} as const;
+
+export const TRANSLATION_FLOW_TERMINOLOGY_COMPLETED_TARGET_PAGE = {
+  ...TRANSLATION_FLOW_TERMINOLOGY_TARGET_PAGE,
+  rows: [
+    {
+      ...TRANSLATION_FLOW_TERMINOLOGY_TARGET_PAGE.rows[0],
+      translated_text: 'NPC 名 B-03',
+      translation_state: 'translated',
+    },
+    {
+      ...TRANSLATION_FLOW_TERMINOLOGY_TARGET_PAGE.rows[1],
+      translated_text: 'NPC 名',
+      translation_state: 'translated',
+    },
+    {
+      ...TRANSLATION_FLOW_TERMINOLOGY_TARGET_PAGE.rows[2],
+      translated_text: 'クエスト目標 B-01',
+      translation_state: 'translated',
     },
   ],
 } as const;

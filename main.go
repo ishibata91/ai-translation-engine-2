@@ -84,6 +84,8 @@ func main() {
 	taskManager := task2.NewManager(context.TODO(), logger, taskStore) // Context will be set in startup
 	personaProgressNotifier := progress.NewWailsNotifier(logger)
 	personaProgressNotifier.SetEventName("persona:progress")
+	translationFlowProgressNotifier := progress.NewWailsNotifier(logger)
+	translationFlowProgressNotifier.SetEventName("translation_flow.terminology.progress")
 
 	// 4. Setup Dictionary System (artifact shared store)
 	dictArtifactRepo := dictionary_artifact.NewRepository(artifactDB)
@@ -149,7 +151,13 @@ func main() {
 		log.Fatalf("failed to initialize terminology store schema: %v", err)
 	}
 	termTranslator := terminology.NewTermTranslator(translationInputRepo, termBuilder, termSearcher, termStore, termPromptBuilder, logger)
-	translationFlowWorkflow := workflow.NewTranslationFlowService(parserLoader, translationFlowSlice, termTranslator, llmexec.NewSyncExecutor(llmManager))
+	translationFlowWorkflow := workflow.NewTranslationFlowService(
+		parserLoader,
+		translationFlowSlice,
+		termTranslator,
+		llmexec.NewSyncExecutor(llmManager),
+		translationFlowProgressNotifier,
+	)
 
 	personaArtifactRepo := master_persona_artifact.NewRepository(artifactDB)
 	personaStore := persona.NewPersonaStore(personaArtifactRepo)
@@ -207,6 +215,7 @@ func main() {
 			// Dictionary service progress notifier
 			wailsNotifier.SetContext(ctx)
 			personaProgressNotifier.SetContext(ctx)
+			translationFlowProgressNotifier.SetContext(ctx)
 		},
 		OnShutdown: app.shutdown,
 		Bind: []interface{}{
