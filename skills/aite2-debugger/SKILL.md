@@ -22,7 +22,7 @@ description: AI Translation Engine 2 専用。bugfix 調査で原因仮説を立
 ## 手順
 1. context board から既知の症状と再現条件を読む。
 2. 原因仮説と優先調査箇所を整理する。
-3. debugger 専用 logger と専用出力を配置する。
+3. `scripts/init-debugger-logger.ps1` で `changes/<id>/debugger_logs/` 配下に debugger 専用 logger と専用出力を配置する。
 4. 再現後は構造化された観測事実を読み、原因候補を狭める。
 5. bugfix 指揮者へ fix plan の前提となる原因整理を返す。
 
@@ -34,3 +34,7 @@ description: AI Translation Engine 2 専用。bugfix 調査で原因仮説を立
 
 ## 参照資料
 - handoff には `references/templates.md` を使う。
+- logger 初期化は `scripts/init-debugger-logger.ps1` と `scripts/debugger-logger.ps1` を使う。
+- Go の一時ロガーは `debugger/go_debuglogger/logger.go` を使う。
+- TypeScript の一時ロガーは `frontend/src/debugger/debuggerLogger.ts` を使う。
+- どちらも import と call site を一括削除して戻せる形で使う。
