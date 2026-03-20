@@ -75,6 +75,14 @@ func (s *TranslationFlowService) LoadFiles(ctx context.Context, input LoadTransl
 		}
 	}
 
+	if err := s.terminology.UpdatePhaseSummary(ctx, terminologyslice.PhaseSummary{
+		TaskID:       trimmedTaskID,
+		Status:       "pending",
+		ProgressMode: "hidden",
+	}); err != nil {
+		return TranslationLoadResult{}, fmt.Errorf("reset terminology phase summary task_id=%s: %w", trimmedTaskID, err)
+	}
+
 	return s.ListFiles(ctx, trimmedTaskID)
 }
 

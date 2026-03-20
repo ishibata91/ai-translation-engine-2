@@ -1,5 +1,20 @@
 # Bug Fix Templates
 
+## 下流スキル起動
+```md
+### Skill Invocation
+- invoked_skill: <起動する下流スキル名 (例: fix-distill)>
+- invoked_by: fix-direction
+- agent: <起動するエージェント名 (例: ctx_loader)>
+- 対象 change:
+- 入力:
+- focus:
+```
+
+> 下流スキルのサブエージェントを立ち上げるときは必ずこのテンプレートを使い、
+> `invoked_skill` と `invoked_by` を明示すること。
+> サブエージェントは自分がどのスキルで起動されたかをこのフィールドで確認する。
+
 ## 再現メモ
 ```md
 ### Repro

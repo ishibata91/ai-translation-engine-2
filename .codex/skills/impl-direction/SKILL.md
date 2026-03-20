@@ -53,6 +53,11 @@ description: AI Translation Engine 2 専用。実装依頼、UI 反映、fronten
 - frontend / backend / mixed の見分け方は `references/quality-checklist.md` を読む。
 - routing 例は `references/examples.md` を読む。
 
+## 下流スキル起動時のスキル名明示
+- 下流スキルのサブエージェントを立ち上げるときは、必ず `references/templates.md` の「下流スキル起動」テンプレートを使い、`invoked_skill` と `invoked_by` を明示すること
+- `invoked_skill` には起動する下流スキル名（例: `impl-distill`）、`invoked_by` には `impl-direction` を設定する
+- サブエージェントは起動時にこの情報で「自分がどのスキルとして起動されたか」を確認できる
+
 ## 原則
 - 指揮役は `orchestration-only` として振る舞い、蒸留、task 分割、実装、レビューを直接行わない
 - agent 選択は `.codex/agents` を正本にする

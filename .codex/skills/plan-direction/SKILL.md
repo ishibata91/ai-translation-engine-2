@@ -60,6 +60,11 @@ description: AI Translation Engine 2 専用。設計依頼、仕様補完、docs
 - 順序判断は `references/sequence-checklist.md` を使う。
 - `scripts/init-change-design-docs.ps1` の使いどころは `references/doc-init-notes.md` を読む。
 
+## 下流スキル起動時のスキル名明示
+- 下流スキルのサブエージェントを立ち上げるときは、必ず `references/templates.md` の「下流スキル起動」テンプレートを使い、`invoked_skill` と `invoked_by` を明示すること
+- `invoked_skill` には起動する下流スキル名（例: `plan-distill`）、`invoked_by` には `plan-direction` を設定する
+- サブエージェントは起動時にこの情報で「自分がどのスキルとして起動されたか」を確認できる
+
 ## 原則
 - 指揮役は `orchestration-only` として振る舞い、設計 artifact 作成そのものは行わず、plan chain の実行管理だけを行う
 - agent 選択は `.codex/agents` を正本にする

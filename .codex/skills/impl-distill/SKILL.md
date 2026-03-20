@@ -5,6 +5,8 @@ description: AI Translation Engine 2 専用。確定済み artifacts を実装 p
 
 # Impl Distill
 
+> **起動確認**: このスキルが起動されたら、まず `invoked_skill` が `impl-distill` であることを確認する。不一致の場合は作業を開始せずエラーを返す。
+
 この skill は実装開始に必要な implementation packet を作る skill。
 plan 側で確定済みの artifact を読み、実装開始に必要な packet を返す。
 

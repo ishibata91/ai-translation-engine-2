@@ -1,5 +1,20 @@
 # Design Orchestrator Templates
 
+## 下流スキル起動
+```md
+### Skill Invocation
+- invoked_skill: <起動する下流スキル名 (例: plan-distill)>
+- invoked_by: plan-direction
+- agent: <起動するエージェント名 (例: ctx_loader)>
+- 対象 change:
+- 入力:
+- focus:
+```
+
+> 下流スキルのサブエージェントを立ち上げるときは必ずこのテンプレートを使い、
+> `invoked_skill` と `invoked_by` を明示すること。
+> サブエージェントは自分がどのスキルで起動されたかをこのフィールドで確認する。
+
 ## context packet 依頼
 ```md
 ### Context Request

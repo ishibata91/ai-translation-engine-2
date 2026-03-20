@@ -5,6 +5,8 @@ description: AI Translation Engine 2 専用。実装差分をレビューし、r
 
 # Impl Review
 
+> **起動確認**: このスキルが起動されたら、まず `invoked_skill` が `impl-review` であることを確認する。不一致の場合は作業を開始せずエラーを返す。
+
 この skill は実装差分をレビューし、required delta を返すだけの skill。
 spec 抜粋、統合差分、検証結果、前回 findings を照合し、required delta 中心で返す。
 

@@ -5,7 +5,10 @@ description: AI Translation Engine 2 専用。bugfix 調査で原因仮説と検
 
 # Fix Trace
 
+> **起動確認**: このスキルが起動されたら、まず `invoked_skill` が `fix-trace` であることを確認する。不一致の場合は作業を開始せずエラーを返す。
+
 この skill は原因仮説、調査計画、専用 logger 配置、再現後の原因絞り込みを返す skill。
+絶対に恒久修正を行わないこと｡他スキルのサブエージェントを呼び出したりしないこと｡
 
 ## 使う場面
 - bugfix flow で最初の原因仮説を立てたい

@@ -5,6 +5,8 @@ description: AI Translation Engine 2 専用。implementation packet を独立 wo
 
 # Impl Workplan
 
+> **起動確認**: このスキルが起動されたら、まず `invoked_skill` が `impl-workplan` であることを確認する。不一致の場合は作業を開始せずエラーを返す。
+
 この skill は implementation packet を work order に分解し、`sub_implementer` worker を起動する skill。
 implementation packet を独立 work order に分解し、shared contract を確定したうえで worker を起動する。
 

@@ -5,6 +5,8 @@ description: AI Translation Engine 2 専用。bugfix 差分をレビューし、
 
 # Fix Review
 
+> **起動確認**: このスキルが起動されたら、まず `invoked_skill` が `fix-review` であることを確認する。不一致の場合は作業を開始せずエラーを返す。
+
 この skill は bugfix 差分をレビューし、未解消の退行や仕様逸脱を返す read-only skill。
 bugfix 差分、関連仕様、検証結果を照合して結果を返す。
 

@@ -71,6 +71,37 @@ func TestTranslationFlowServiceListTerminologyTargetsIncludesTranslations(t *tes
 	}
 }
 
+func TestTranslationFlowServiceLoadFilesResetsTerminologySummary(t *testing.T) {
+	terminology := &stubTerminology{}
+	service := &TranslationFlowService{
+		parser: &stubSkyrimParser{
+			output: &skyrim.ParserOutput{},
+		},
+		store:       &stubTranslationFlowStore{},
+		terminology: terminology,
+	}
+
+	_, err := service.LoadFiles(context.Background(), LoadTranslationFlowInput{
+		TaskID:    "task-reset",
+		FilePaths: []string{"example.json"},
+	})
+	if err != nil {
+		t.Fatalf("LoadFiles failed: %v", err)
+	}
+	if terminology.updatedSummary.TaskID != "task-reset" {
+		t.Fatalf("unexpected reset task id: got=%q want=%q", terminology.updatedSummary.TaskID, "task-reset")
+	}
+	if terminology.updatedSummary.Status != "pending" {
+		t.Fatalf("unexpected reset status: got=%q want=%q", terminology.updatedSummary.Status, "pending")
+	}
+	if terminology.updatedSummary.ProgressMode != "hidden" {
+		t.Fatalf("unexpected reset progress mode: got=%q want=%q", terminology.updatedSummary.ProgressMode, "hidden")
+	}
+	if terminology.updatedSummary.SavedCount != 0 || terminology.updatedSummary.FailedCount != 0 || terminology.updatedSummary.ProgressTotal != 0 {
+		t.Fatalf("unexpected reset counters: %+v", terminology.updatedSummary)
+	}
+}
+
 func TestTranslationFlowServiceRunTerminologyPhaseMarksRunError(t *testing.T) {
 	terminology := &stubTerminology{
 		preparePromptsResult: []llmio.Request{
@@ -159,6 +190,20 @@ func TestTranslationFlowServiceRunTerminologyPhasePublishesRunningProgress(t *te
 
 type stubTranslationFlowStore struct {
 	input translationinput.TerminologyInput
+}
+
+type stubSkyrimParser struct {
+	output *skyrim.ParserOutput
+	err    error
+}
+
+func (s *stubSkyrimParser) LoadExtractedJSON(ctx context.Context, path string) (*skyrim.ParserOutput, error) {
+	_ = ctx
+	_ = path
+	if s.err != nil {
+		return nil, s.err
+	}
+	return s.output, nil
 }
 
 func (s *stubTranslationFlowStore) EnsureTask(ctx context.Context, taskID string) error {
