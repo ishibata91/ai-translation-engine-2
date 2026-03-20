@@ -29,8 +29,8 @@
 - `fix-direction` 自身は対象画面の特定、spec 読解、再現、ログ観測を直接行わない
 - `fix-distill` に再現条件、関連仕様、関連コード、既知観測の整理を委譲する
 - `fix-trace` に原因仮説と観測計画の作成を委譲する
-- 再現後は `fix-analysis` にログ整理を委譲する
-- fix scope 確定後に `fix-work` と `fix-review` を順に起動する
+- 追加観測が必要な場合だけ `fix-analysis` にログ整理を委譲する
+- fix scope 確定後に `fix-work` を起動し、review は `fix-direction` だけが `fix-review` を起動する
 
 ## Backend バグの例
 依頼:
@@ -39,8 +39,8 @@
 期待される進め方:
 - `fix-direction` 自身は再現条件固定、spec 照合、ログ確認を直接行わない
 - `fix-distill` と `fix-trace` に停止地点の切り分け材料を集めさせる
-- 再現後は `fix-analysis` に事実整理を委譲する
-- fix scope 確定後に `fix-work` へ最小修正を渡し、最後に `fix-review` を起動する
+- 再現後に追加観測が必要な場合だけ `fix-analysis` に事実整理を委譲する
+- fix scope 確定後に `fix-work` へ最小修正を渡し、review は `fix-direction` が最後に 1 回だけ `fix-review` を起動する
 
 ## 仕様乖離の例
 依頼:
@@ -49,4 +49,4 @@
 切り分け観点:
 - `docs/` に自動展開が明記されているなら実装不備
 - 現行要件では自動展開しないなら、報告内容ではなく spec を優先する
-- spec が曖昧ならユーザー確認を挟む
+- spec が古いまたは曖昧だと確定した場合は `fix-work` を起動せず `plan-direction` へ handoff する

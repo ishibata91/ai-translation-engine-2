@@ -24,13 +24,14 @@ description: AI Translation Engine 2 専用。bugfix 調査で原因仮説と検
 2. 原因仮説と優先調査箇所を整理する。
 3. `scripts/init-debugger-logger.ps1` で `changes/<id>/debugger_logs/` 配下に専用 logger と専用出力を配置する。
 4. 再現後は構造化された観測事実を読み、原因候補を狭める。
-5. bugfix 指揮者へ fix plan の前提となる原因整理を返す。
+5. `fix-direction` へ fix plan の前提となる原因整理を返す。
 
 ## 原則
 - 恒久修正は行わない
 - repo 常設 logger を汚さない
 - 一時ログは後で一括削除しやすい形にする
 - 原因仮説と観測事実を分けて返す
+- 次工程や review の起動は決めず、fix plan の前提事実だけを返す
 
 ## 参照資料
 - handoff には `references/templates.md` を使う。

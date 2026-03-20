@@ -1,3 +1,3 @@
 display_name: fix-work
 short_description: bugfix の確定済み修正方針だけを実装する
-default_prompt: Use $fix-work at skills/fix-work to apply only the confirmed bugfix plan, stay within the owned files, and return verification results.
+default_prompt: Use $fix-work at skills/fix-work to apply only the confirmed bugfix plan, stay within the owned files, return verification results, and do not initiate fresh investigation or review routing yourself.
