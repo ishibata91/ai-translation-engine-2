@@ -238,6 +238,55 @@ func TestRepository_LoadTerminologyInput_NormalizesLegacyRecordTypes(t *testing.
 	}
 }
 
+func TestRepository_LoadTerminologyInput_ExcludesNonDictionaryREC(t *testing.T) {
+	db, cleanup := setupRepositoryTestDB(t)
+	defer cleanup()
+
+	repo := NewRepository(db)
+	editorID := "EditorBook"
+	bookName := "Client Details"
+	bookText := "<font face='$HandwrittenFont'>Deliver the enchanted sword</font>"
+
+	if _, err := repo.SaveParsedOutput(context.Background(), "task-book", `C:\mods\book.json`, &skyrim.ParserOutput{
+		Items: []skyrim.Item{
+			{
+				BaseExtractedRecord: skyrim.BaseExtractedRecord{
+					ID:         "book-full-1",
+					EditorID:   &editorID,
+					Type:       "BOOK FULL",
+					SourceJSON: `C:\mods\book.json`,
+				},
+				Name: &bookName,
+			},
+			{
+				BaseExtractedRecord: skyrim.BaseExtractedRecord{
+					ID:         "book-desc-1",
+					EditorID:   &editorID,
+					Type:       "BOOK DESC",
+					SourceJSON: `C:\mods\book.json`,
+				},
+				Text: &bookText,
+			},
+		},
+	}); err != nil {
+		t.Fatalf("SaveParsedOutput failed: %v", err)
+	}
+
+	input, err := repo.LoadTerminologyInput(context.Background(), "task-book")
+	if err != nil {
+		t.Fatalf("LoadTerminologyInput failed: %v", err)
+	}
+	if len(input.Entries) != 1 {
+		t.Fatalf("unexpected terminology entry count: got=%d want=1", len(input.Entries))
+	}
+	if input.Entries[0].RecordType != "BOOK:FULL" {
+		t.Fatalf("unexpected record type: got=%q want=%q", input.Entries[0].RecordType, "BOOK:FULL")
+	}
+	if input.Entries[0].SourceText != bookName {
+		t.Fatalf("unexpected source text: got=%q want=%q", input.Entries[0].SourceText, bookName)
+	}
+}
+
 func setupRepositoryTestDB(t *testing.T) (*sql.DB, func()) {
 	t.Helper()
 

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/ishibata91/ai-translation-engine-2/pkg/format/parser/skyrim"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/foundation"
 )
 
 const defaultPreviewPageSize = 50
@@ -790,6 +791,9 @@ func appendTerminologyEntry(entries []TerminologyEntry, recordID string, editorI
 	}
 
 	trimmedRecordType := normalizeTerminologyRecordType(recordType)
+	if !foundation.IsDictionaryImportREC(trimmedRecordType) {
+		return entries
+	}
 	entries = append(entries, TerminologyEntry{
 		ID:         recordID,
 		EditorID:   trimStringPtr(editorID),
