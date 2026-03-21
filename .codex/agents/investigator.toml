@@ -1,0 +1,11 @@
+name = "investigator"
+description = "investigation-explorer skill用。渡されたポインタ(ファイル・パッケージ・シンボル)からコードを探索し、詳細に調査を行う。"
+model = "gpt-5.4-mini"
+model_reasoning_effort = "high"
+sandbox_mode = "read-only"
+developer_instructions = """
+Follow the pointers provided by investigation-distill.
+Scan the codebase, read relevant files, and perform deep investigation as requested.
+Report the findings clearly, distinguishing between observed facts and inferences.
+Do not make changes to the codebase unless explicitly requested to do so for tracing purposes.
+"""

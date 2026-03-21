@@ -9,7 +9,7 @@ description: AI Translation Engine 2 専用。確定済み artifacts を実装 p
 
 この skill は実装開始に必要な implementation packet を作る skill。
 plan 側で確定済みの artifact を読み、実装開始に必要な packet を返す。
-
+基本的にMCP経由で走査すること｡
 ## 制約
 - 仕様の再解釈や設計判断を行わない。
 - worker 分割は行わない。
