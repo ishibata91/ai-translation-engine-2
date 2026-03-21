@@ -310,11 +310,11 @@ export function useTranslationFlow(): UseTranslationFlowResult {
 
     useWailsEvent<WailsTerminologyProgressEvent>(TERMINOLOGY_PROGRESS_EVENT, (payload) => {
         const eventTaskId = pickProgressEventString(payload.task_id ?? payload.taskId ?? payload.TaskID);
+        const eventStatus = pickProgressEventString(payload.status ?? payload.Status);
         if (eventTaskId === '' || (taskId !== '' && eventTaskId !== taskId)) {
             return;
         }
 
-        const eventStatus = pickProgressEventString(payload.status ?? payload.Status);
         if (eventStatus !== 'IN_PROGRESS') {
             return;
         }
@@ -389,7 +389,8 @@ export function useTranslationFlow(): UseTranslationFlowResult {
             return resolvedTaskId;
         } catch (error) {
             setIsTerminologyRunning(false);
-            setTerminologyErrorMessage(toErrorMessage(error, '単語翻訳の状態取得に失敗しました'));
+            const message = toErrorMessage(error, '単語翻訳の状態取得に失敗しました');
+            setTerminologyErrorMessage(message);
             return nextTaskId;
         }
     }, [taskId]);
