@@ -71,6 +71,21 @@ function RunProbe() {
     );
 }
 
+function PaginationProbe() {
+    const {state, actions} = useTranslationFlow();
+
+    return (
+        <div>
+            <div data-testid="task-id">{state.taskId}</div>
+            <div data-testid="target-page">{state.terminologyTargetPage.page}</div>
+            <div data-testid="target-rows">{state.terminologyTargetPage.rows.map((row) => row.id).join(',')}</div>
+            <button type="button" onClick={() => void actions.handleTerminologyTargetPageChange(2)}>
+                next page
+            </button>
+        </div>
+    );
+}
+
 function ConfigProbe() {
     const {state, actions} = useTranslationFlow();
 
@@ -386,6 +401,89 @@ describe('useTranslationFlow terminology run', () => {
             expect(screen.getByTestId('terminology-status')).toHaveTextContent('2 / 8 件を処理中');
         });
         expect(screen.getByTestId('terminology-progress')).toHaveTextContent('2/8');
+    });
+});
+
+describe('useTranslationFlow terminology pagination', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        runtimeEventHandlers.clear();
+        vi.mocked(ConfigGetAll).mockResolvedValue(asConfigMap({}));
+        vi.mocked(GetAllTasks).mockResolvedValue(asTaskList([
+            buildTask({id: 'existing-task', updated_at: '2026-03-18T10:00:00.000Z'}),
+        ]));
+        vi.mocked(GetTranslationFlowTerminology).mockResolvedValue(asTerminologyPhaseResult({
+            task_id: 'existing-task',
+            status: 'pending',
+            saved_count: 0,
+            failed_count: 0,
+            progress_mode: 'hidden',
+            progress_current: 0,
+            progress_total: 0,
+            progress_message: '',
+        }));
+        vi.mocked(ListLoadedTranslationFlowFiles).mockResolvedValue(asLoadResult({
+            task_id: 'existing-task',
+            files: [],
+        }));
+        vi.mocked(ListTranslationFlowTerminologyTargets).mockImplementation(async (_taskId: string, page: number) =>
+            asTerminologyTargetPage({
+                task_id: 'existing-task',
+                page,
+                page_size: 50,
+                total_rows: 60,
+                rows: page === 1
+                    ? [{
+                        id: 'row-1',
+                        record_type: 'NPC_:FULL',
+                        editor_id: 'NPC_A_01',
+                        source_text: 'NPC Name A-01',
+                        translated_text: '',
+                        translation_state: 'missing',
+                        variant: 'full',
+                        source_file: 'Update.esm.extract.json',
+                    }]
+                    : [{
+                        id: 'row-51',
+                        record_type: 'NPC_:FULL',
+                        editor_id: 'NPC_B_01',
+                        source_text: 'NPC Name B-01',
+                        translated_text: '',
+                        translation_state: 'missing',
+                        variant: 'full',
+                        source_file: 'Update.esm.extract.json',
+                    }],
+            }),
+        );
+    });
+
+    afterEach(() => {
+        cleanup();
+    });
+
+    it('用語対象のページ変更後に task 初期化 effect で 1 ページ目へ戻さない', async () => {
+        render(
+            <MemoryRouter initialEntries={['/translation_flow']}>
+                <PaginationProbe />
+            </MemoryRouter>,
+        );
+
+        await waitFor(() => {
+            expect(screen.getByTestId('task-id')).toHaveTextContent('existing-task');
+        });
+        await waitFor(() => {
+            expect(screen.getByTestId('target-page')).toHaveTextContent('1');
+        });
+
+        fireEvent.click(screen.getByRole('button', {name: 'next page'}));
+
+        await waitFor(() => {
+            expect(screen.getByTestId('target-page')).toHaveTextContent('2');
+        });
+        expect(screen.getByTestId('target-rows')).toHaveTextContent('row-51');
+        await new Promise((resolve) => window.setTimeout(resolve, 0));
+        expect(screen.getByTestId('target-page')).toHaveTextContent('2');
+        expect(screen.getByTestId('target-rows')).toHaveTextContent('row-51');
     });
 });
 

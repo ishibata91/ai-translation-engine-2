@@ -432,8 +432,8 @@ export function useTranslationFlow(): UseTranslationFlowResult {
 
     const handleRefreshTerminologyTargets = useCallback(async (
         nextTaskId: string,
-        page = terminologyTargetPage.page,
-        pageSize = terminologyTargetPage.pageSize,
+        page: number,
+        pageSize: number,
     ): Promise<TerminologyTargetPreviewPage> => {
         if (nextTaskId === '') {
             const emptyPage = EMPTY_TERMINOLOGY_TARGET_PAGE('', page, pageSize);
@@ -475,7 +475,7 @@ export function useTranslationFlow(): UseTranslationFlowResult {
         } finally {
             setIsTerminologyTargetLoading(false);
         }
-    }, [taskId, terminologyTargetPage.page, terminologyTargetPage.pageSize]);
+    }, [taskId]);
 
     const handleRefreshTerminologyPhase = useCallback(async (nextTaskId = taskId): Promise<void> => {
         if (nextTaskId === '') {
