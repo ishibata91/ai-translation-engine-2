@@ -29,6 +29,7 @@ import type {
 
 const PREVIEW_PAGE_SIZE = 50;
 const TERMINOLOGY_LLM_NAMESPACE = 'translation_flow.terminology.llm';
+const TERMINOLOGY_SELECTED_PROVIDER_KEY = 'selected_provider';
 const TERMINOLOGY_PROMPT_NAMESPACE = 'translation_flow.terminology.prompt';
 const TERMINOLOGY_USER_PROMPT_KEY = 'user_prompt';
 const TERMINOLOGY_SYSTEM_PROMPT_KEY = 'system_prompt';
@@ -241,6 +242,16 @@ const normalizeTerminologyLLMConfig = (loaded: Record<string, string>): MasterPe
     };
 };
 
+const normalizeTerminologyProvider = (value: string | undefined): MasterPersonaLLMConfig['provider'] => {
+    if (value === 'gemini' || value === 'xai' || value === 'lmstudio') {
+        return value;
+    }
+    return DEFAULT_MASTER_PERSONA_LLM_CONFIG.provider;
+};
+
+const terminologyProviderNamespace = (provider: MasterPersonaLLMConfig['provider']): string =>
+    `${TERMINOLOGY_LLM_NAMESPACE}.${provider}`;
+
 const normalizeTerminologyPromptConfig = (loaded: Record<string, string>): MasterPersonaPromptConfig => ({
     userPrompt: loaded[TERMINOLOGY_USER_PROMPT_KEY] ?? DEFAULT_TERMINOLOGY_PROMPT_CONFIG.userPrompt,
     systemPrompt: loaded[TERMINOLOGY_SYSTEM_PROMPT_KEY] ?? DEFAULT_TERMINOLOGY_PROMPT_CONFIG.systemPrompt,
@@ -307,6 +318,25 @@ export function useTranslationFlow(): UseTranslationFlowResult {
     const [isTerminologyPromptHydrated, setIsTerminologyPromptHydrated] = useState(false);
     const llmSaveTimerRef = useRef<number | null>(null);
     const promptSaveTimerRef = useRef<number | null>(null);
+    const latestTerminologyConfigRef = useRef<MasterPersonaLLMConfig>(DEFAULT_MASTER_PERSONA_LLM_CONFIG);
+    const previousTerminologyProviderRef = useRef<MasterPersonaLLMConfig['provider']>(DEFAULT_MASTER_PERSONA_LLM_CONFIG.provider);
+    const isSwitchingTerminologyProviderRef = useRef(false);
+
+    const persistTerminologyLLMConfig = useCallback((current: MasterPersonaLLMConfig): Promise<void> =>
+        Promise.all([
+            ConfigSet(TERMINOLOGY_LLM_NAMESPACE, TERMINOLOGY_SELECTED_PROVIDER_KEY, current.provider),
+            ConfigSet(terminologyProviderNamespace(current.provider), 'model', current.model),
+            ConfigSet(terminologyProviderNamespace(current.provider), 'endpoint', current.endpoint),
+            ConfigSet(
+                terminologyProviderNamespace(current.provider),
+                'api_key',
+                current.provider === 'lmstudio' ? '' : current.apiKey,
+            ),
+            ConfigSet(terminologyProviderNamespace(current.provider), 'temperature', String(current.temperature)),
+            ConfigSet(terminologyProviderNamespace(current.provider), 'context_length', String(current.contextLength)),
+            ConfigSet(terminologyProviderNamespace(current.provider), 'sync_concurrency', String(current.syncConcurrency)),
+            ConfigSet(terminologyProviderNamespace(current.provider), 'bulk_strategy', current.bulkStrategy),
+        ]).then(() => undefined), []);
 
     useWailsEvent<WailsTerminologyProgressEvent>(TERMINOLOGY_PROGRESS_EVENT, (payload) => {
         const eventTaskId = pickProgressEventString(payload.task_id ?? payload.taskId ?? payload.TaskID);
@@ -495,15 +525,37 @@ export function useTranslationFlow(): UseTranslationFlowResult {
     }, [routeTaskID]);
 
     useEffect(() => {
+        latestTerminologyConfigRef.current = terminologyConfig;
+    }, [terminologyConfig]);
+
+    useEffect(() => {
         let alive = true;
+
+        const loadProviderConfig = async (
+            provider: MasterPersonaLLMConfig['provider'],
+            fallback?: Record<string, string>,
+        ): Promise<MasterPersonaLLMConfig> => {
+            const loaded = await ConfigGetAll(terminologyProviderNamespace(provider));
+            const source = Object.keys(loaded).length > 0 ? loaded : (fallback ?? {});
+            return {
+                ...normalizeTerminologyLLMConfig(source),
+                provider,
+            };
+        };
 
         void (async () => {
             try {
-                const loaded = await ConfigGetAll(TERMINOLOGY_LLM_NAMESPACE);
+                const root = await ConfigGetAll(TERMINOLOGY_LLM_NAMESPACE);
+                const selectedProvider = normalizeTerminologyProvider(
+                    root[TERMINOLOGY_SELECTED_PROVIDER_KEY] || root.provider,
+                );
+                const loaded = await loadProviderConfig(selectedProvider, root);
                 if (!alive) {
                     return;
                 }
-                setTerminologyConfig(normalizeTerminologyLLMConfig(loaded));
+                setTerminologyConfig(loaded);
+                latestTerminologyConfigRef.current = loaded;
+                previousTerminologyProviderRef.current = selectedProvider;
             } finally {
                 if (alive) {
                     setIsTerminologyConfigHydrated(true);
@@ -534,20 +586,51 @@ export function useTranslationFlow(): UseTranslationFlowResult {
         if (!isTerminologyConfigHydrated) {
             return;
         }
+        const currentProvider = terminologyConfig.provider;
+        const previousProvider = previousTerminologyProviderRef.current;
+        if (currentProvider === previousProvider) {
+            return;
+        }
+        previousTerminologyProviderRef.current = currentProvider;
+        isSwitchingTerminologyProviderRef.current = true;
+        let alive = true;
+
+        void ConfigGetAll(terminologyProviderNamespace(currentProvider))
+            .then((loaded) => {
+                if (!alive) {
+                    return;
+                }
+                const nextConfig = {
+                    ...normalizeTerminologyLLMConfig(loaded),
+                    provider: currentProvider,
+                };
+                setTerminologyConfig(nextConfig);
+                latestTerminologyConfigRef.current = nextConfig;
+            })
+            .finally(() => {
+                if (alive) {
+                    isSwitchingTerminologyProviderRef.current = false;
+                    void persistTerminologyLLMConfig(latestTerminologyConfigRef.current);
+                }
+            });
+
+        return () => {
+            alive = false;
+        };
+    }, [isTerminologyConfigHydrated, terminologyConfig.provider]);
+
+    useEffect(() => {
+        if (!isTerminologyConfigHydrated) {
+            return;
+        }
+        if (isSwitchingTerminologyProviderRef.current) {
+            return;
+        }
         if (llmSaveTimerRef.current) {
             window.clearTimeout(llmSaveTimerRef.current);
         }
         llmSaveTimerRef.current = window.setTimeout(() => {
-            void Promise.all([
-                ConfigSet(TERMINOLOGY_LLM_NAMESPACE, 'provider', terminologyConfig.provider),
-                ConfigSet(TERMINOLOGY_LLM_NAMESPACE, 'model', terminologyConfig.model),
-                ConfigSet(TERMINOLOGY_LLM_NAMESPACE, 'endpoint', terminologyConfig.endpoint),
-                ConfigSet(TERMINOLOGY_LLM_NAMESPACE, 'api_key', terminologyConfig.provider === 'lmstudio' ? '' : terminologyConfig.apiKey),
-                ConfigSet(TERMINOLOGY_LLM_NAMESPACE, 'temperature', String(terminologyConfig.temperature)),
-                ConfigSet(TERMINOLOGY_LLM_NAMESPACE, 'context_length', String(terminologyConfig.contextLength)),
-                ConfigSet(TERMINOLOGY_LLM_NAMESPACE, 'sync_concurrency', String(terminologyConfig.syncConcurrency)),
-                ConfigSet(TERMINOLOGY_LLM_NAMESPACE, 'bulk_strategy', terminologyConfig.bulkStrategy),
-            ]);
+            void persistTerminologyLLMConfig(latestTerminologyConfigRef.current);
         }, 250);
 
         return () => {
@@ -555,7 +638,7 @@ export function useTranslationFlow(): UseTranslationFlowResult {
                 window.clearTimeout(llmSaveTimerRef.current);
             }
         };
-    }, [isTerminologyConfigHydrated, terminologyConfig]);
+    }, [isTerminologyConfigHydrated, persistTerminologyLLMConfig, terminologyConfig]);
 
     useEffect(() => {
         if (!isTerminologyPromptHydrated) {

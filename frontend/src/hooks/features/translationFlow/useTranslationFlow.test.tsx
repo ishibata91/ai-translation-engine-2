@@ -2,7 +2,7 @@ import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {cleanup, fireEvent, render, screen, waitFor} from '@testing-library/react';
 import {MemoryRouter} from 'react-router-dom';
 import {useTranslationFlow} from './useTranslationFlow';
-import {ConfigGetAll} from '../../../wailsjs/go/controller/ConfigController';
+import {ConfigGetAll, ConfigSet} from '../../../wailsjs/go/controller/ConfigController';
 import {
     GetAllTasks,
     GetTranslationFlowTerminology,
@@ -71,6 +71,27 @@ function RunProbe() {
     );
 }
 
+function ConfigProbe() {
+    const {state, actions} = useTranslationFlow();
+
+    return (
+        <div>
+            <div data-testid="terminology-provider">{state.terminologyConfig.provider}</div>
+            <div data-testid="terminology-model">{state.terminologyConfig.model}</div>
+            <button
+                type="button"
+                onClick={() =>
+                    actions.handleTerminologyConfigChange({
+                        ...state.terminologyConfig,
+                        provider: 'xai',
+                    })}
+            >
+                switch provider
+            </button>
+        </div>
+    );
+}
+
 const buildTask = (overrides: Partial<FrontendTask>): FrontendTask => ({
     id: 'task-default',
     name: 'default task',
@@ -105,6 +126,8 @@ const asTerminologyTargetPage = (
     value: unknown,
 ): Awaited<ReturnType<typeof ListTranslationFlowTerminologyTargets>> =>
     value as Awaited<ReturnType<typeof ListTranslationFlowTerminologyTargets>>;
+
+const asConfigMap = (value: Record<string, string>): Record<string, string> => value;
 
 describe('useTranslationFlow task resolution', () => {
     beforeEach(() => {
@@ -200,9 +223,9 @@ describe('useTranslationFlow terminology run', () => {
         runtimeEventHandlers.clear();
         vi.mocked(ConfigGetAll).mockImplementation(async (namespace: string) => {
             if (namespace === 'translation_flow.terminology.llm') {
-                return {model: 'gemini-2.5-flash', provider: 'gemini'};
+                return asConfigMap({model: 'gemini-2.5-flash', provider: 'gemini'});
             }
-            return {} as Record<string, string>;
+            return asConfigMap({});
         });
         vi.mocked(GetAllTasks).mockResolvedValue(asTaskList([
             buildTask({id: 'existing-task', updated_at: '2026-03-18T10:00:00.000Z'}),
@@ -363,5 +386,136 @@ describe('useTranslationFlow terminology run', () => {
             expect(screen.getByTestId('terminology-status')).toHaveTextContent('2 / 8 件を処理中');
         });
         expect(screen.getByTestId('terminology-progress')).toHaveTextContent('2/8');
+    });
+});
+
+describe('useTranslationFlow terminology config namespace', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        runtimeEventHandlers.clear();
+        vi.mocked(ConfigSet).mockResolvedValue(undefined as never);
+        vi.mocked(GetAllTasks).mockResolvedValue(asTaskList([
+            buildTask({id: 'existing-task', updated_at: '2026-03-18T10:00:00.000Z'}),
+        ]));
+        vi.mocked(GetTranslationFlowTerminology).mockResolvedValue(asTerminologyPhaseResult({
+            task_id: 'existing-task',
+            status: 'pending',
+            saved_count: 0,
+            failed_count: 0,
+            progress_mode: 'hidden',
+            progress_current: 0,
+            progress_total: 0,
+            progress_message: '',
+        }));
+        vi.mocked(ListTranslationFlowTerminologyTargets).mockResolvedValue(asTerminologyTargetPage({
+            task_id: 'existing-task',
+            page: 1,
+            page_size: 50,
+            total_rows: 0,
+            rows: [],
+        }));
+        vi.mocked(ListLoadedTranslationFlowFiles).mockResolvedValue(asLoadResult({
+            task_id: 'existing-task',
+            files: [],
+        }));
+    });
+
+    afterEach(() => {
+        cleanup();
+    });
+
+    it('selected_provider と provider namespace から設定を hydrate する', async () => {
+        vi.mocked(ConfigGetAll).mockImplementation(async (namespace: string) => {
+            if (namespace === 'translation_flow.terminology.llm') {
+                return asConfigMap({selected_provider: 'xai'});
+            }
+            if (namespace === 'translation_flow.terminology.llm.xai') {
+                return asConfigMap({
+                    model: 'grok-3-beta',
+                    endpoint: 'https://api.x.ai/v1',
+                    api_key: 'x-api-key',
+                    temperature: '0.4',
+                    context_length: '8192',
+                    sync_concurrency: '4',
+                    bulk_strategy: 'batch',
+                });
+            }
+            return asConfigMap({});
+        });
+
+        render(
+            <MemoryRouter initialEntries={['/translation_flow']}>
+                <ConfigProbe />
+            </MemoryRouter>,
+        );
+
+        await waitFor(() => {
+            expect(screen.getByTestId('terminology-provider')).toHaveTextContent('xai');
+        });
+        expect(screen.getByTestId('terminology-model')).toHaveTextContent('grok-3-beta');
+        expect(ConfigGetAll).toHaveBeenCalledWith('translation_flow.terminology.llm');
+        expect(ConfigGetAll).toHaveBeenCalledWith('translation_flow.terminology.llm.xai');
+    });
+
+    it('provider 切替時に provider namespace を読み直して selected_provider を保存する', async () => {
+        vi.mocked(ConfigGetAll).mockImplementation(async (namespace: string) => {
+            if (namespace === 'translation_flow.terminology.llm') {
+                return asConfigMap({selected_provider: 'gemini'});
+            }
+            if (namespace === 'translation_flow.terminology.llm.gemini') {
+                return asConfigMap({
+                    model: 'gemini-2.5-flash',
+                    endpoint: '',
+                    api_key: 'gemini-key',
+                    temperature: '0.7',
+                    context_length: '16384',
+                    sync_concurrency: '2',
+                    bulk_strategy: 'sync',
+                });
+            }
+            if (namespace === 'translation_flow.terminology.llm.xai') {
+                return asConfigMap({
+                    model: 'grok-3-beta',
+                    endpoint: 'https://api.x.ai/v1',
+                    api_key: 'x-api-key',
+                    temperature: '0.4',
+                    context_length: '8192',
+                    sync_concurrency: '4',
+                    bulk_strategy: 'batch',
+                });
+            }
+            return asConfigMap({});
+        });
+
+        render(
+            <MemoryRouter initialEntries={['/translation_flow']}>
+                <ConfigProbe />
+            </MemoryRouter>,
+        );
+
+        await waitFor(() => {
+            expect(screen.getByTestId('terminology-provider')).toHaveTextContent('gemini');
+        });
+
+        fireEvent.click(screen.getByRole('button', {name: 'switch provider'}));
+
+        await waitFor(() => {
+            expect(screen.getByTestId('terminology-provider')).toHaveTextContent('xai');
+        });
+        await waitFor(() => {
+            expect(ConfigGetAll).toHaveBeenCalledWith('translation_flow.terminology.llm.xai');
+        });
+        await waitFor(() => {
+            expect(ConfigSet).toHaveBeenCalledWith(
+                'translation_flow.terminology.llm',
+                'selected_provider',
+                'xai',
+            );
+        });
+        expect(ConfigSet).toHaveBeenCalledWith(
+            'translation_flow.terminology.llm.xai',
+            'model',
+            'grok-3-beta',
+        );
     });
 });
