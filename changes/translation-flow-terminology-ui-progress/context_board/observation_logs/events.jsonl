@@ -1,0 +1,1 @@
+{"timestamp":"2026-03-21T05:56:52.881532+09:00","level":"info","module":"translation_flow.workflow","stage":"list_targets.get_translations_error","message":"GetPreviewTranslations failed","fields":{"context_present":true,"error":"get preview translations: query preview translation row_id=0400090E: sql: database is closed","task_id":"bcb47040-1a53-44e2-b5c8-8b2455042ef8"}}

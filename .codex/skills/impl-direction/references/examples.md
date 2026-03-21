@@ -10,9 +10,10 @@
 - `slice と artifact の境界をコードに反映して`
 - `backend の task を進めて`
 
-## 分割して扱う例
+## mixed（分割して扱う）例
 - `画面と API の両方を実装して`
-- まず frontend task と backend task に分ける
+- distill 返却後、task 分割テンプレートで frontend / backend に分割する
+- shared contract（型・API 形式）を先に確定し、その後 worker をそれぞれ起動する
 
 ## plan 依頼の誤投入
 - 依頼: `新しい設定画面の仕様を決めたい`

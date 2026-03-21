@@ -1,3 +1,0 @@
-display_name: impl-workplan
-short_description: implementation packet を work order に分解する
-default_prompt: Use $impl-workplan at skills/impl-workplan to split an implementation packet into independent work orders, resolve shared contracts, and launch the right `sub_implementer` worker skills.

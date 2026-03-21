@@ -48,11 +48,26 @@ func globalAttrsFromEnv() GlobalAttrs {
 	}
 }
 
+// LoggerSet はアプリ起動時に生成されるロガーとその関連ハンドラーのセット。
+type LoggerSet struct {
+	Logger *slog.Logger
+	WailsH *WailsHandler
+	FileH  *fileHandler
+	LogDir string
+}
+
 // ProvideLogger returns a *slog.Logger configured with broadcast handler.
 // グローバル属性（env, app_version, service_name, host_name）がすべての
 // ログに自動付与される。
+//
+// 出力先:
+//   - stdout (JSON)
+//   - {cwd}/logs/YYYY-MM-DD.jsonl (ファイル)
+//   - Wails イベント（startup 後）
+//
 // 戻り値の *WailsHandler は app.startup() 後に SetContext を呼んで Wails context を注入すること。
-func ProvideLogger() (*slog.Logger, *WailsHandler) {
+// 戻り値の *fileHandler は app.shutdown() 後に Close を呼ぶこと。
+func ProvideLogger() (*slog.Logger, *WailsHandler, *fileHandler) {
 	ga := globalAttrsFromEnv()
 
 	globalSlogAttrs := []slog.Attr{
@@ -63,15 +78,25 @@ func ProvideLogger() (*slog.Logger, *WailsHandler) {
 	}
 
 	// Base JSON handler（コンソール出力）
-	baseHandler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+	consoleHandler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: slog.LevelDebug,
 	}).WithAttrs(globalSlogAttrs)
 
-	// Wrap with a custom handler to include trace/span IDs and custom context attrs
-	otelH := &otelHandler{next: baseHandler}
+	// otelHandler でコンテキスト属性（trace_id 等）を自動付与
+	otelH := &otelHandler{next: consoleHandler}
+
+	// ファイルハンドラー（{cwd}/logs/YYYY-MM-DD.jsonl）
+	logDirPath := resolveLogDir()
+	fileH, err := newFileHandler(logDirPath, otelH)
+	if err != nil {
+		// ファイルハンドラー生成失敗はコンソールのみにフォールバック
+		_ = err
+		fileH = &fileHandler{baseDir: logDirPath, next: otelH}
+	}
+	fileHWithAttrs := fileH.WithAttrs(globalSlogAttrs).(*fileHandler)
 
 	// Wails broadcast handler（startup 前は emit をスキップ）
-	wH := newWailsHandler(otelH)
+	wH := newWailsHandler(fileHWithAttrs)
 	// グローバル属性を wailsHandler にも付与しておく（フロントエンドに届ける）
 	wHWithAttrs := wH.WithAttrs(globalSlogAttrs).(*wailsHandler)
 
@@ -80,12 +105,18 @@ func ProvideLogger() (*slog.Logger, *WailsHandler) {
 	// Set as default to catch any direct slog calls
 	slog.SetDefault(logger)
 
-	return logger, wH
+	return logger, wH, fileHWithAttrs
+}
+
+// StartCleanerWithContext はバックグラウンドのログ掃除ゴルーチンを起動する。
+// OnStartup から呼ぶことで ctx キャンセル（アプリ終了）と連動して停止できる。
+func StartCleanerWithContext(ctx context.Context, fh *fileHandler) {
+	StartLogCleaner(ctx, fh.baseDir, LogRetentionDays)
 }
 
 // provideWireLogger exposes only the logger for Wire provider signatures.
 func provideWireLogger() *slog.Logger {
-	logger, _ := ProvideLogger()
+	logger, _, _ := ProvideLogger()
 	return logger
 }
 

@@ -1,0 +1,2 @@
+# telemetry log files – generated at runtime, not committed
+*.jsonl

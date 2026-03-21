@@ -1,7 +1,7 @@
 name = "spec_drafter"
 description = "変更要求・議論から新規差分仕様書を起草する。スコープ・影響範囲・判断根拠を明示する。"
 model = "gpt-5.4"
-model_reasoning_effort = "xhigh"
+model_reasoning_effort = "high"
 sandbox_mode = "workspace-write"
 developer_instructions = """
 Use planning packets to draft or refine delta specs and implementation plans.

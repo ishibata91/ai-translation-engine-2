@@ -1,26 +1,17 @@
-import { useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
-import { z } from 'zod';
-import type { LogEntry } from '../../../components/log/LogDetail';
-import { useUIStore } from '../../../store/uiStore';
-import { UIStateGetJSON, UIStateSetJSON } from '../../../wailsjs/go/controller/ConfigController';
-import { useWailsEvent } from '../../useWailsEvent';
+import {type MouseEvent as ReactMouseEvent, useCallback, useEffect, useRef, useState} from 'react';
+import {z} from 'zod';
+import type {LogEntry} from '../../../components/log/LogDetail';
+import {useUIStore} from '../../../store/uiStore';
+import {UIStateGetJSON, UIStateSetJSON} from '../../../wailsjs/go/controller/ConfigController';
+import {useLogStore} from './useLogStore';
 
-const WAILS_LOG_EVENT = 'telemetry.log';
 const UI_NAMESPACE = 'log-viewer';
 const FILTER_KEY = 'filters';
-const MAX_LOG_ENTRIES = 500;
 
 const logLevelSchema = z.enum(['ALL', 'DEBUG', 'INFO', 'WARN', 'ERROR']);
 const savedFiltersSchema = z.object({
     level: logLevelSchema.optional(),
     traceId: z.string().optional(),
-});
-const logEventSchema = z.object({
-    id: z.union([z.string(), z.number()]).optional(),
-    level: z.enum(['DEBUG', 'INFO', 'WARN', 'ERROR']).optional(),
-    message: z.string().optional(),
-    timestamp: z.string().optional(),
-    attributes: z.record(z.string(), z.unknown()).optional(),
 });
 
 type LogLevel = z.infer<typeof logLevelSchema>;
@@ -41,8 +32,6 @@ const LEVEL_ORDER: Record<LogEntry['level'], number> = {
     WARN: 2,
     ERROR: 3,
 };
-
-let eventCounter = 0;
 
 function matchesFilter(log: LogEntry, filters: LogFilters): boolean {
     if (filters.level !== 'ALL') {
@@ -65,14 +54,17 @@ function matchesFilter(log: LogEntry, filters: LogFilters): boolean {
 
 /**
  * LogViewer の永続化、イベント購読、表示用 state を集約する。
+ * ログの蓄積・定期掃除は useLogStore に委譲する。
  */
 export function useLogViewer() {
     const { logViewerWidth: width, setLogViewerWidth: setWidth, setDetailPane } = useUIStore();
     const [isCollapsed, setIsCollapsed] = useState(true);
     const [isResizing, setIsResizing] = useState(false);
-    const [allLogs, setAllLogs] = useState<LogEntry[]>([]);
     const [filters, setFilters] = useState<LogFilters>(DEFAULT_FILTERS);
     const filtersLoaded = useRef(false);
+
+    // ログ蓄積・定期掃除は useLogStore に委譲
+    const { allLogs, allLogsCount } = useLogStore();
 
     const filteredLogs = allLogs.filter((log) => matchesFilter(log, filters));
 
@@ -145,26 +137,6 @@ export function useLogViewer() {
         });
     }, [filters]);
 
-    useWailsEvent<unknown>(WAILS_LOG_EVENT, (payload) => {
-        const parsed = logEventSchema.safeParse(payload);
-        if (!parsed.success) {
-            return;
-        }
-
-        const entry: LogEntry = {
-            id: `${parsed.data.id ?? Date.now()}-${eventCounter++}`,
-            level: parsed.data.level ?? 'INFO',
-            message: parsed.data.message ?? '',
-            timestamp: parsed.data.timestamp ?? new Date().toISOString(),
-            attributes: parsed.data.attributes ?? {},
-        };
-
-        setAllLogs((prev) => {
-            const next = [entry, ...prev];
-            return next.length > MAX_LOG_ENTRIES ? next.slice(0, MAX_LOG_ENTRIES) : next;
-        });
-    });
-
     const handleLogClick = (log: LogEntry) => {
         setDetailPane(true, 'log', log);
     };
@@ -182,7 +154,7 @@ export function useLogViewer() {
     };
 
     return {
-        allLogsCount: allLogs.length,
+        allLogsCount,
         filteredLogs,
         filters,
         handleLevelChange,

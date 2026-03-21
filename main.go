@@ -76,7 +76,8 @@ func main() {
 	}
 
 	// 3. Setup Task Manager
-	logger, wailsLogH := telemetry.ProvideLogger()
+	logger, wailsLogH, fileLogH := telemetry.ProvideLogger()
+	defer fileLogH.Close()
 	if err := task2.Migrate(context.Background(), taskDB); err != nil {
 		log.Fatalf("failed to run task database migrations: %v", err)
 	}
@@ -184,6 +185,9 @@ func main() {
 	dictionaryController := controller.NewDictionaryController(dictService)
 	fileDialogController := controller.NewFileDialogController()
 
+	// 8. Setup Telemetry Controller（フロントエンド発ログのバックエンド橋渡し）
+	telemetryController := controller.NewTelemetryController(logger)
+
 	// Create an instance of the app structure
 	app := NewApp()
 
@@ -200,6 +204,8 @@ func main() {
 			app.startup(ctx)
 			// Wails ログハンドラにランタイムコンテキストを注入（これ以降 emit が有効になる）
 			wailsLogH.SetContext(ctx)
+			// ログファイル定期掃除ゴルーチンを起動（ctx キャンセルで自動停止）
+			telemetry.StartCleanerWithContext(ctx, fileLogH)
 			// Pass Wails context to TaskManager and Initialize it
 			taskManager.SetContext(ctx)
 			configController.SetContext(ctx)
@@ -209,6 +215,7 @@ func main() {
 			fileDialogController.SetContext(ctx)
 			modelCatalogController.SetContext(ctx)
 			personaController.SetContext(ctx)
+			telemetryController.SetContext(ctx)
 			if err := taskManager.Initialize(ctx); err != nil {
 				log.Printf("failed to initialize task manager: %v", err)
 			}
@@ -226,6 +233,7 @@ func main() {
 			fileDialogController,
 			modelCatalogController,
 			personaController,
+			telemetryController,
 		},
 	})
 

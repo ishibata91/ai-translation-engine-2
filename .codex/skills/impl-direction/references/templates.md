@@ -28,6 +28,24 @@
 - next_action:
 ```
 
+## task 分割（旧 work order）
+impl-distill の packet 返却後、worker を起動する前に必ずこのテンプレートで記録する。
+
+```md
+### Task Split
+- change:
+- routing: frontend | backend | mixed
+- shared_contract:          # mixed 時のみ。型定義・API 契約を worker 起動前に確定する
+- workers:
+  - owner: frontend | backend
+    target_task:
+    owned_paths:            # このワーカーが書いてよいパス
+    forbidden_paths:        # このワーカーが触れてはいけないパス
+    required_reading:       # 読む必要のある artifact
+    validation_commands:    # typecheck / lint:frontend など
+  - owner: ...              # 必要なだけ繰り返す
+```
+
 ## impl-distill 起動
 ```md
 Use $impl-distill at skills/impl-distill with `ctx_loader`.
