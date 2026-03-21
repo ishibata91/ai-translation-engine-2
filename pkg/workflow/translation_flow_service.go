@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/ishibata91/ai-translation-engine-2/pkg/format/parser/skyrim"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/foundation/llmio"
@@ -15,6 +16,7 @@ import (
 
 const defaultTranslationPreviewPageSize = 50
 const terminologyProgressPhase = "terminology"
+const terminologyProgressPersistMaxUpdates = 20
 
 // TranslationFlowService orchestrates parser execution and artifact persistence for load phase.
 type TranslationFlowService struct {
@@ -27,6 +29,15 @@ type TranslationFlowService struct {
 
 type terminologyPhaseExecutor interface {
 	Execute(ctx context.Context, config llmio.ExecutionConfig, requests []llmio.Request) ([]llmio.Response, error)
+}
+
+type terminologyPhaseExecutorWithProgress interface {
+	ExecuteWithProgress(
+		ctx context.Context,
+		config llmio.ExecutionConfig,
+		requests []llmio.Request,
+		progress func(completed, total int),
+	) ([]llmio.Response, error)
 }
 
 // NewTranslationFlowService constructs a translation-flow workflow implementation.
@@ -253,16 +264,20 @@ func (s *TranslationFlowService) RunTerminologyPhase(ctx context.Context, input 
 	}
 
 	if len(requests) > 0 {
-		s.reportTerminologyProgress(ctx, terminologyslice.PhaseSummary{
+		startSummary := terminologyslice.PhaseSummary{
 			TaskID:          trimmedTaskID,
 			Status:          "running",
 			TargetCount:     len(requests),
-			ProgressMode:    "indeterminate",
+			ProgressMode:    "determinate",
 			ProgressCurrent: 0,
 			ProgressTotal:   len(requests),
-			ProgressMessage: "単語翻訳を実行中",
-		})
-		responses, err := s.executor.Execute(ctx, llmio.ExecutionConfig{
+			ProgressMessage: buildTerminologyProgressMessage(0, len(requests)),
+		}
+		if err := s.terminology.UpdatePhaseSummary(ctx, startSummary); err != nil {
+			return TerminologyPhaseResult{}, fmt.Errorf("update running terminology summary task_id=%s: %w", trimmedTaskID, err)
+		}
+		s.reportTerminologyProgress(ctx, startSummary)
+		executionConfig := llmio.ExecutionConfig{
 			Provider:        input.Request.Provider,
 			Model:           input.Request.Model,
 			Endpoint:        input.Request.Endpoint,
@@ -271,7 +286,8 @@ func (s *TranslationFlowService) RunTerminologyPhase(ctx context.Context, input 
 			ContextLength:   input.Request.ContextLength,
 			SyncConcurrency: input.Request.SyncConcurrency,
 			BulkStrategy:    input.Request.BulkStrategy,
-		}, requests)
+		}
+		responses, err := s.executeTerminologyWithProgress(ctx, trimmedTaskID, executionConfig, requests)
 		if err != nil {
 			summary, summaryErr := s.terminology.GetPhaseSummary(ctx, trimmedTaskID)
 			if summaryErr == nil {
@@ -349,4 +365,92 @@ func (s *TranslationFlowService) reportTerminologyProgress(ctx context.Context, 
 		Status:        status,
 		Message:       summary.ProgressMessage,
 	})
+}
+
+func (s *TranslationFlowService) executeTerminologyWithProgress(
+	ctx context.Context,
+	taskID string,
+	config llmio.ExecutionConfig,
+	requests []llmio.Request,
+) ([]llmio.Response, error) {
+	executorWithProgress, ok := s.executor.(terminologyPhaseExecutorWithProgress)
+	if !ok {
+		return s.executor.Execute(ctx, config, requests)
+	}
+
+	total := len(requests)
+	persistStride := terminologyProgressPersistStride(total)
+	lastPersisted := 0
+	var progressMu sync.Mutex
+	return executorWithProgress.ExecuteWithProgress(ctx, config, requests, func(completed, _ int) {
+		progressMu.Lock()
+		defer progressMu.Unlock()
+
+		safeCompleted := completed
+		if safeCompleted < 0 {
+			safeCompleted = 0
+		}
+		if safeCompleted > total {
+			safeCompleted = total
+		}
+		runningSummary := terminologyslice.PhaseSummary{
+			TaskID:          taskID,
+			Status:          "running",
+			TargetCount:     total,
+			ProgressMode:    "determinate",
+			ProgressCurrent: safeCompleted,
+			ProgressTotal:   total,
+			ProgressMessage: buildTerminologyProgressMessage(safeCompleted, total),
+		}
+
+		if shouldPersistTerminologyProgress(safeCompleted, total, lastPersisted, persistStride) {
+			_ = s.terminology.UpdatePhaseSummary(ctx, runningSummary)
+			lastPersisted = safeCompleted
+		}
+		s.reportTerminologyProgress(ctx, runningSummary)
+	})
+}
+
+func terminologyProgressPersistStride(total int) int {
+	if total <= 1 {
+		return 1
+	}
+	stride := total / terminologyProgressPersistMaxUpdates
+	if total%terminologyProgressPersistMaxUpdates != 0 {
+		stride++
+	}
+	// Always throttle intermediate persistence updates.
+	if stride < 2 {
+		return 2
+	}
+	return stride
+}
+
+func shouldPersistTerminologyProgress(current int, total int, lastPersisted int, stride int) bool {
+	if current <= 0 {
+		return false
+	}
+	// Completion summary is persisted by result saving path.
+	if current >= total {
+		return false
+	}
+	if stride < 2 {
+		stride = 2
+	}
+	return current-lastPersisted >= stride
+}
+
+func buildTerminologyProgressMessage(current int, total int) string {
+	if total <= 0 {
+		return "単語翻訳を実行中"
+	}
+	safeCurrent := current
+	if safeCurrent < 0 {
+		safeCurrent = 0
+	}
+	if safeCurrent > total {
+		safeCurrent = total
+	}
+	remaining := total - safeCurrent
+	return fmt.Sprintf("%d / %d 件（残り %d 件）", safeCurrent, total, remaining)
 }

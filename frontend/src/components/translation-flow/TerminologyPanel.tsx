@@ -112,11 +112,9 @@ export function TerminologyPanel({
     const canNext = summary.status === 'completed' || summary.status === 'completed_partial';
     const totalPages = Math.max(1, Math.ceil(targetPage.totalRows / Math.max(1, targetPage.pageSize)));
     const showProgress = summary.progressMode !== 'hidden';
-    const progressLabel = summary.progressMessage !== ''
-        ? summary.progressMessage
-        : summary.progressMode === 'determinate' && summary.progressTotal > 0
-            ? `${summary.progressCurrent} / ${summary.progressTotal}`
-            : '';
+    const progressLabel = summary.progressMode === 'determinate' && summary.progressTotal > 0
+        ? `${summary.progressCurrent} / ${summary.progressTotal} 件（残り ${Math.max(0, summary.progressTotal - summary.progressCurrent)} 件）`
+        : summary.progressMessage;
 
     return (
         <div className={`tab-content-panel flex-col gap-4 h-full overflow-y-auto ${isActive ? 'flex' : 'hidden'}`}>

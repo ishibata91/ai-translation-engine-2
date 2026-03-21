@@ -10,6 +10,7 @@ import (
 	"github.com/ishibata91/ai-translation-engine-2/pkg/artifact/translationinput"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/controller"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/format/parser/skyrim"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/foundation"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/foundation/progress"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/foundation/telemetry"
 	gatewayconfig "github.com/ishibata91/ai-translation-engine-2/pkg/gateway/config"
@@ -32,6 +33,12 @@ import (
 
 //go:embed all:frontend/dist
 var assets embed.FS
+
+func newTermRecordConfig() *terminology.TermRecordConfig {
+	return &terminology.TermRecordConfig{
+		TargetRecordTypes: append([]string(nil), foundation.DictionaryImportRECTypes...),
+	}
+}
 
 func main() {
 	// 1. Initialize DB (config.db)
@@ -131,15 +138,7 @@ func main() {
 	}
 	taskManager.SetTaskRequestCleaner(llmQueue)
 
-	termConfig := &terminology.TermRecordConfig{
-		TargetRecordTypes: []string{
-			"NPC_:FULL", "NPC_:SHRT",
-			"WEAP:FULL", "ARMO:FULL", "AMMO:FULL", "MISC:FULL", "KEYM:FULL", "ALCH:FULL", "BOOK:FULL", "INGR:FULL",
-			"SPEL:FULL", "MGEF:FULL", "ENCH:FULL",
-			"LCTN:FULL", "CELL:FULL", "WRLD:FULL",
-			"MESG:FULL", "QUST:FULL",
-		},
-	}
+	termConfig := newTermRecordConfig()
 	termBuilder := terminology.NewTermRequestBuilder(termConfig)
 	termPromptBuilder, err := terminology.NewTermPromptBuilder("")
 	if err != nil {

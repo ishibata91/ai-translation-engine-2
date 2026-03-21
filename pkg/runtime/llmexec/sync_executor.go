@@ -20,6 +20,16 @@ func NewSyncExecutor(llmManager gatewayllm.LLMManager) *SyncExecutor {
 
 // Execute resolves a client and executes requests in input order.
 func (e *SyncExecutor) Execute(ctx context.Context, config llmio.ExecutionConfig, requests []llmio.Request) ([]llmio.Response, error) {
+	return e.ExecuteWithProgress(ctx, config, requests, nil)
+}
+
+// ExecuteWithProgress resolves a client and executes requests while reporting completed count.
+func (e *SyncExecutor) ExecuteWithProgress(
+	ctx context.Context,
+	config llmio.ExecutionConfig,
+	requests []llmio.Request,
+	progress func(completed, total int),
+) ([]llmio.Response, error) {
 	client, err := e.llmManager.GetClient(ctx, gatewayllm.LLMConfig{
 		Provider: config.Provider,
 		APIKey:   config.APIKey,
@@ -46,7 +56,7 @@ func (e *SyncExecutor) Execute(ctx context.Context, config llmio.ExecutionConfig
 		})
 	}
 
-	responses, err := gatewayllm.ExecuteBulkSync(ctx, client, gatewayReqs, config.SyncConcurrency)
+	responses, err := gatewayllm.ExecuteBulkSyncWithProgress(ctx, client, gatewayReqs, config.SyncConcurrency, progress)
 	if err != nil {
 		return nil, fmt.Errorf("execute bulk sync: %w", err)
 	}

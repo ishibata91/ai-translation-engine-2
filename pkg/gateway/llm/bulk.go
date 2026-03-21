@@ -32,6 +32,38 @@ func ExecuteBulkSync(ctx context.Context, client LLMClient, reqs []Request, conc
 	return results, nil
 }
 
+// ExecuteBulkSyncWithProgress executes bulk requests and reports completed/total.
+// progress callback can be nil.
+func ExecuteBulkSyncWithProgress(
+	ctx context.Context,
+	client LLMClient,
+	reqs []Request,
+	concurrency int,
+	progress func(completed, total int),
+) ([]Response, error) {
+	slog.DebugContext(ctx, "ENTER ExecuteBulkSyncWithProgress",
+		slog.Int("total", len(reqs)),
+		slog.Int("concurrency", concurrency),
+	)
+	defer slog.DebugContext(ctx, "EXIT ExecuteBulkSyncWithProgress", slog.Int("total", len(reqs)))
+
+	if concurrency <= 0 {
+		concurrency = 1
+	}
+
+	results := make([]Response, len(reqs))
+	total := len(reqs)
+	if progress != nil {
+		progress(0, total)
+	}
+
+	if err := runWorkerPoolWithProgress(ctx, client, reqs, concurrency, results, total, progress); err != nil {
+		return results, fmt.Errorf("execute bulk sync: %w", err)
+	}
+
+	return results, nil
+}
+
 // --- Private Methods ---
 
 // runWorkerPool launches worker goroutines up to concurrency, distributes jobs via
@@ -79,6 +111,76 @@ func runWorkerPool(ctx context.Context, client LLMClient, reqs []Request, concur
 	}
 
 	slog.DebugContext(ctx, "EXIT runWorkerPool")
+	return nil
+}
+
+func runWorkerPoolWithProgress(
+	ctx context.Context,
+	client LLMClient,
+	reqs []Request,
+	concurrency int,
+	results []Response,
+	total int,
+	progress func(completed, total int),
+) error {
+	slog.DebugContext(ctx, "ENTER runWorkerPoolWithProgress", slog.Int("workers", concurrency))
+
+	type job struct {
+		index int
+		req   Request
+	}
+
+	jobCh := make(chan job, len(reqs))
+	for i, req := range reqs {
+		jobCh <- job{index: i, req: req}
+	}
+	close(jobCh)
+
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, concurrency)
+	completedCh := make(chan struct{}, len(reqs))
+
+	for j := range jobCh {
+		select {
+		case <-ctx.Done():
+			wg.Wait()
+			return ctx.Err()
+		default:
+		}
+
+		sem <- struct{}{}
+		wg.Add(1)
+		go func(j job) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			results[j.index] = executeOne(ctx, client, j.index, j.req)
+			completedCh <- struct{}{}
+		}(j)
+	}
+
+	go func() {
+		wg.Wait()
+		close(completedCh)
+	}()
+
+	if progress != nil {
+		completed := 0
+		for range completedCh {
+			completed++
+			progress(completed, total)
+		}
+	} else {
+		for range completedCh {
+		}
+	}
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+
+	slog.DebugContext(ctx, "EXIT runWorkerPoolWithProgress")
 	return nil
 }
 

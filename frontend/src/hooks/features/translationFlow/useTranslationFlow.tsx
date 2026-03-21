@@ -324,20 +324,25 @@ export function useTranslationFlow(): UseTranslationFlowResult {
             0,
             pickProgressEventNumber(payload.current ?? payload.Current ?? payload.completed ?? payload.Completed),
         );
-        const progressMessage = pickProgressEventString(
-            payload.message ?? payload.Message,
-            '単語翻訳を実行中',
-        );
+        const incomingMessage = pickProgressEventString(payload.message ?? payload.Message);
 
-        setTerminologySummary((prev) => ({
-            ...prev,
-            taskId: eventTaskId,
-            status: 'running',
-            progressMode: progressTotal > 0 ? 'determinate' : 'indeterminate',
-            progressCurrent,
-            progressTotal,
-            progressMessage,
-        }));
+        setTerminologySummary((prev) => {
+            const monotonicCurrent = Math.max(prev.progressCurrent, progressCurrent);
+            const normalizedTotal = Math.max(progressTotal, monotonicCurrent);
+            const remaining = normalizedTotal > 0 ? Math.max(0, normalizedTotal - monotonicCurrent) : 0;
+            const fallbackMessage = normalizedTotal > 0
+                ? `${monotonicCurrent} / ${normalizedTotal} 件（残り ${remaining} 件）`
+                : '単語翻訳を実行中';
+            return {
+                ...prev,
+                taskId: eventTaskId,
+                status: 'running',
+                progressMode: normalizedTotal > 0 ? 'determinate' : 'indeterminate',
+                progressCurrent: monotonicCurrent,
+                progressTotal: normalizedTotal,
+                progressMessage: incomingMessage || fallbackMessage,
+            };
+        });
         setTerminologyErrorMessage('');
         setTerminologyTargetStatus('loading');
         setIsTerminologyRunning(true);
@@ -698,14 +703,17 @@ export function useTranslationFlow(): UseTranslationFlowResult {
         }
         setIsTerminologyRunning(true);
         setTerminologyErrorMessage('');
+        const initialTotal = Math.max(0, terminologyTargetPage.totalRows);
         setTerminologySummary((prev) => ({
             ...prev,
             taskId,
             status: 'running',
-            progressMode: 'indeterminate',
+            progressMode: initialTotal > 0 ? 'determinate' : 'indeterminate',
             progressCurrent: 0,
-            progressTotal: Math.max(prev.progressTotal, 0),
-            progressMessage: '単語翻訳を実行中',
+            progressTotal: initialTotal > 0 ? initialTotal : Math.max(prev.progressTotal, 0),
+            progressMessage: initialTotal > 0
+                ? `0 / ${initialTotal} 件（残り ${initialTotal} 件）`
+                : '単語翻訳を実行中',
         }));
         setTerminologyTargetErrorMessage('');
 

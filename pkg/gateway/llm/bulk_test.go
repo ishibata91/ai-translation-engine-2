@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/rand"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -257,5 +259,92 @@ func TestExecuteBulkSync(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestExecuteBulkSyncWithProgressReportsCompletedCount(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	client := &mockLLMClient{}
+	reqs := make([]Request, 6)
+	for i := range reqs {
+		reqs[i] = Request{UserPrompt: fmt.Sprintf("prompt-%d", i)}
+	}
+
+	var mu sync.Mutex
+	updates := make([]int, 0, len(reqs)+1)
+	results, err := ExecuteBulkSyncWithProgress(ctx, client, reqs, 3, func(completed, total int) {
+		if total != len(reqs) {
+			t.Errorf("unexpected total: got=%d want=%d", total, len(reqs))
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		updates = append(updates, completed)
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(results) != len(reqs) {
+		t.Fatalf("unexpected result length: got=%d want=%d", len(results), len(reqs))
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(updates) != len(reqs)+1 {
+		t.Fatalf("unexpected progress updates: got=%d want=%d", len(updates), len(reqs)+1)
+	}
+	if updates[0] != 0 {
+		t.Fatalf("unexpected first progress: got=%d want=0", updates[0])
+	}
+	if updates[len(updates)-1] != len(reqs) {
+		t.Fatalf("unexpected last progress: got=%d want=%d", updates[len(updates)-1], len(reqs))
+	}
+}
+
+func TestExecuteBulkSyncWithProgressIsMonotonicWhenConcurrent(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	client := &mockLLMClient{
+		fn: func(ctx context.Context, _ int, req Request) (Response, error) {
+			// Intentionally add jitter to make completion order non-deterministic.
+			_ = req
+			time.Sleep(time.Duration(rand.Intn(20)+1) * time.Millisecond)
+			return Response{Success: true, Content: "ok"}, nil
+		},
+	}
+
+	reqs := make([]Request, 40)
+	for i := range reqs {
+		reqs[i] = Request{UserPrompt: fmt.Sprintf("prompt-%d", i)}
+	}
+
+	var mu sync.Mutex
+	updates := make([]int, 0, len(reqs)+1)
+	_, err := ExecuteBulkSyncWithProgress(ctx, client, reqs, 8, func(completed, total int) {
+		if total != len(reqs) {
+			t.Errorf("unexpected total: got=%d want=%d", total, len(reqs))
+		}
+		mu.Lock()
+		updates = append(updates, completed)
+		mu.Unlock()
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(updates) != len(reqs)+1 {
+		t.Fatalf("unexpected progress updates: got=%d want=%d", len(updates), len(reqs)+1)
+	}
+	for i := 1; i < len(updates); i++ {
+		if updates[i] < updates[i-1] {
+			t.Fatalf("progress must be non-decreasing: prev=%d current=%d index=%d", updates[i-1], updates[i], i)
+		}
+	}
+	if updates[0] != 0 || updates[len(updates)-1] != len(reqs) {
+		t.Fatalf("unexpected progress boundary: first=%d last=%d want_first=0 want_last=%d", updates[0], updates[len(updates)-1], len(reqs))
 	}
 }

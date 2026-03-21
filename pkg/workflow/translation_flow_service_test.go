@@ -3,6 +3,8 @@ package workflow
 import (
 	"context"
 	"errors"
+	"fmt"
+	"slices"
 	"testing"
 
 	"github.com/ishibata91/ai-translation-engine-2/pkg/artifact/translationinput"
@@ -188,6 +190,166 @@ func TestTranslationFlowServiceRunTerminologyPhasePublishesRunningProgress(t *te
 	}
 }
 
+func TestTranslationFlowServiceRunTerminologyPhasePublishesIntermediateProgress(t *testing.T) {
+	notifier := &stubWorkflowProgressNotifier{}
+	service := &TranslationFlowService{
+		terminology: &stubTerminology{
+			preparePromptsResult: []llmio.Request{
+				{Metadata: map[string]interface{}{"source_text": "A"}},
+				{Metadata: map[string]interface{}{"source_text": "B"}},
+				{Metadata: map[string]interface{}{"source_text": "C"}},
+			},
+			summary: terminologyslice.PhaseSummary{
+				TaskID:          "task-4",
+				Status:          "completed",
+				SavedCount:      3,
+				ProgressMode:    "hidden",
+				ProgressCurrent: 3,
+				ProgressTotal:   3,
+				ProgressMessage: "単語翻訳完了",
+			},
+		},
+		executor: &stubTerminologyExecutor{
+			responses: []llmio.Response{{Success: true}, {Success: true}, {Success: true}},
+			steps:     []int{1, 2, 3},
+		},
+		notifier: notifier,
+	}
+
+	if _, err := service.RunTerminologyPhase(context.Background(), RunTerminologyPhaseInput{
+		TaskID: "task-4",
+		Request: TranslationRequestConfig{
+			Model: "gemini-2.5-flash",
+		},
+	}); err != nil {
+		t.Fatalf("RunTerminologyPhase failed: %v", err)
+	}
+
+	if len(notifier.events) < 4 {
+		t.Fatalf("unexpected event count: got=%d want>=%d", len(notifier.events), 4)
+	}
+	if notifier.events[1].Current != 1 || notifier.events[1].Total != 3 {
+		t.Fatalf("unexpected intermediate progress: current=%d total=%d", notifier.events[1].Current, notifier.events[1].Total)
+	}
+}
+
+func TestTranslationFlowServiceRunTerminologyPhaseThrottlesSummaryPersistence(t *testing.T) {
+	total := 500
+	steps := make([]int, 0, total)
+	requests := make([]llmio.Request, 0, total)
+	for i := 0; i < total; i++ {
+		steps = append(steps, i+1)
+		requests = append(requests, llmio.Request{Metadata: map[string]interface{}{"source_text": fmt.Sprintf("row-%d", i)}})
+	}
+
+	terminology := &stubTerminology{
+		preparePromptsResult: requests,
+		summary: terminologyslice.PhaseSummary{
+			TaskID:          "task-5",
+			Status:          "completed",
+			SavedCount:      total,
+			ProgressMode:    "hidden",
+			ProgressCurrent: total,
+			ProgressTotal:   total,
+			ProgressMessage: "単語翻訳完了",
+		},
+	}
+	notifier := &stubWorkflowProgressNotifier{}
+	service := &TranslationFlowService{
+		terminology: terminology,
+		executor: &stubTerminologyExecutor{
+			responses: make([]llmio.Response, total),
+			steps:     steps,
+		},
+		notifier: notifier,
+	}
+
+	if _, err := service.RunTerminologyPhase(context.Background(), RunTerminologyPhaseInput{
+		TaskID: "task-5",
+		Request: TranslationRequestConfig{
+			Model: "gemini-2.5-flash",
+		},
+	}); err != nil {
+		t.Fatalf("RunTerminologyPhase failed: %v", err)
+	}
+
+	if len(terminology.updatedSummaries) >= total {
+		t.Fatalf("summary persistence must be throttled: writes=%d total=%d", len(terminology.updatedSummaries), total)
+	}
+	if len(terminology.updatedSummaries) <= 1 {
+		t.Fatalf("summary persistence must keep intermediate snapshots: writes=%d", len(terminology.updatedSummaries))
+	}
+
+	progressValues := make([]int, 0, len(notifier.events))
+	for _, event := range notifier.events {
+		if event.Status != runtimeprogress.StatusInProgress {
+			continue
+		}
+		progressValues = append(progressValues, event.Current)
+	}
+	if len(progressValues) == 0 {
+		t.Fatalf("expected in-progress events")
+	}
+	if !slices.Contains(progressValues, total) {
+		t.Fatalf("expected progress events to include completion value %d", total)
+	}
+}
+
+func TestTranslationFlowServiceRunTerminologyPhaseThrottlesSummaryPersistenceForSmallTotals(t *testing.T) {
+	testCases := []struct {
+		name  string
+		total int
+	}{
+		{name: "three_rows", total: 3},
+		{name: "ten_rows", total: 10},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			steps := make([]int, 0, tc.total)
+			requests := make([]llmio.Request, 0, tc.total)
+			for i := 0; i < tc.total; i++ {
+				steps = append(steps, i+1)
+				requests = append(requests, llmio.Request{Metadata: map[string]interface{}{"source_text": fmt.Sprintf("row-%d", i)}})
+			}
+
+			terminology := &stubTerminology{
+				preparePromptsResult: requests,
+				summary: terminologyslice.PhaseSummary{
+					TaskID:          "task-small",
+					Status:          "completed",
+					SavedCount:      tc.total,
+					ProgressMode:    "hidden",
+					ProgressCurrent: tc.total,
+					ProgressTotal:   tc.total,
+					ProgressMessage: "単語翻訳完了",
+				},
+			}
+			service := &TranslationFlowService{
+				terminology: terminology,
+				executor: &stubTerminologyExecutor{
+					responses: make([]llmio.Response, tc.total),
+					steps:     steps,
+				},
+				notifier: &stubWorkflowProgressNotifier{},
+			}
+
+			if _, err := service.RunTerminologyPhase(context.Background(), RunTerminologyPhaseInput{
+				TaskID: "task-small",
+				Request: TranslationRequestConfig{
+					Model: "gemini-2.5-flash",
+				},
+			}); err != nil {
+				t.Fatalf("RunTerminologyPhase failed: %v", err)
+			}
+
+			if len(terminology.updatedSummaries) >= tc.total {
+				t.Fatalf("summary persistence must be throttled for small totals: writes=%d total=%d", len(terminology.updatedSummaries), tc.total)
+			}
+		})
+	}
+}
+
 type stubTranslationFlowStore struct {
 	input translationinput.TerminologyInput
 }
@@ -245,6 +407,7 @@ type stubTerminology struct {
 	previewTranslations  map[string]terminologyslice.PreviewTranslation
 	summary              terminologyslice.PhaseSummary
 	updatedSummary       terminologyslice.PhaseSummary
+	updatedSummaries     []terminologyslice.PhaseSummary
 }
 
 func (s *stubTerminology) ID() string {
@@ -280,18 +443,35 @@ func (s *stubTerminology) GetPreviewTranslations(ctx context.Context, entries []
 func (s *stubTerminology) UpdatePhaseSummary(ctx context.Context, summary terminologyslice.PhaseSummary) error {
 	_ = ctx
 	s.updatedSummary = summary
+	s.updatedSummaries = append(s.updatedSummaries, summary)
 	return nil
 }
 
 type stubTerminologyExecutor struct {
 	err       error
 	responses []llmio.Response
+	steps     []int
 }
 
 func (s *stubTerminologyExecutor) Execute(ctx context.Context, config llmio.ExecutionConfig, requests []llmio.Request) ([]llmio.Response, error) {
 	_ = ctx
 	_ = config
 	_ = requests
+	return s.responses, s.err
+}
+
+func (s *stubTerminologyExecutor) ExecuteWithProgress(
+	ctx context.Context,
+	config llmio.ExecutionConfig,
+	requests []llmio.Request,
+	progress func(completed, total int),
+) ([]llmio.Response, error) {
+	_ = ctx
+	_ = config
+	total := len(requests)
+	for _, step := range s.steps {
+		progress(step, total)
+	}
 	return s.responses, s.err
 }
 
