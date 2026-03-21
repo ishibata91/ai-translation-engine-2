@@ -69,14 +69,6 @@
 - 実行した品質ゲート:
 ```
 
-## Context Board Entry
-```md
-### Bugfix Handoff
-- 固定した再現条件:
-- 現在の原因仮説:
-- 確定した観測事実:
-- 次に起動する skill:
-```
 
 ## conflict 応答
 ```md
