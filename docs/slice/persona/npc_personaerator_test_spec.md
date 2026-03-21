@@ -34,6 +34,17 @@
 | PSR-01   | 正常系: ペルソナ参照             | DBに SpeakerID="NPC_01" のペルソナが存在する状態。  | `GetPersona(ctx, "NPC_01")`      | エラーなし。<br>保存済みのペルソナテキストが取得できること。                                                         |
 | PSR-02   | 正常系: 該当なしのフォールバック | DBが空、または該当するSpeakerIDのデータがない状態。 | `GetPersona(ctx, "NPC_UNKNOWN")` | エラーなし。<br>空文字列（または該当なしを示す仕様準拠の戻り値）が返り、呼び出し元がフォールバック処理を行えること。 |
 
+### 2.3 Translation Flow persona phase 統合テスト
+translation flow の persona phase が、既存 Master Persona の再利用、候補統合、retry を正しく扱うことを検証する。
+
+| ケースID | 目的                                                | 初期状態 (入力/設定/モック等)                                                                                         | アクション (関数呼出)                                     | 期待される結果 (出力 / 状態)                                                                                                                                 |
+| :------- | :-------------------------------------------------- | :-------------------------------------------------------------------------------------------------------------------- | :-------------------------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| TFP-01   | preview と execute が既存 final persona を同じく除外する | translation input に NPC[A], NPC[B] が含まれ、`master_persona_artifact` には NPC[A] の final persona が存在する状態。 | `ListPersonaTargets` -> `RunTranslationFlowPersonaPhase` | NPC[A] は preview で `既存 Master Persona` として表示され、request に含まれないこと。NPC[B] だけが生成対象となること。                                   |
+| TFP-02   | 全件再利用では no-op 完了する                       | translation input の全候補が `master_persona_artifact` final に存在する状態。                                        | `RunTranslationFlowPersonaPhase`                          | エラーなし。request 0 件。runtime を呼ばずに phase が完了し、summary が `新規生成 0 件` と `再利用済み` を返すこと。                                      |
+| TFP-03   | 同一 lookup key の重複候補を 1 件へ統合する         | 同じ `source_plugin + speaker_id` を持つ NPC が複数 source file に現れる translation input。                         | `ListPersonaTargets`                                      | preview 上の候補は 1 件だけになり、重複 request 計画が作られないこと。                                                                                       |
+| TFP-04   | retry は failed または未生成候補だけを再送する      | 初回実行で NPC[A] は成功、NPC[B] は失敗した phase 状態。                                                              | 再度 `RunTranslationFlowPersonaPhase`                     | NPC[A] は再送されず、NPC[B] だけが再 request 化されること。成功済み final persona が保持されること。                                                       |
+| TFP-05   | lookup key 正規化が Master Persona と一致する       | `source_plugin` 欠損 input と source file ヒントを持つ候補、または `UNKNOWN` fallback が必要な候補を含む状態。        | `ListPersonaTargets` -> `RunTranslationFlowPersonaPhase` | preview と execute が同じ補完値で lookup し、既存 final persona の誤除外または誤再生成を起こさないこと。                                                   |
+
 ---
 
 ## 3. 構造化ログとデバッグフロー (Log-based Debugging)
