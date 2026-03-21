@@ -51,6 +51,7 @@ description: AI Translation Engine 2 専用。実装依頼、UI 反映、fronten
    - worker ごとに **owned paths** と **forbidden paths** を決定する。
    - mixed 実装の場合は **shared contract**（型定義・API 契約）を `implementer` 起動前に 1 回だけ確定する。
    - 1 つの `implementer` 起動に frontend と backend の品質ゲートを混在させない。
+   - 適切にタスクを分割し､大きすぎるタスクを`implementer`に与えないこと｡
    - 分割結果は `references/templates.md` の「task 分割」テンプレートで記録する。
 9. 分割した task ごとに `implementer` agent を起動する。`implementer` は work order を受け取り、owned paths 内でコードを直接実装する。
 10. 実装完了後、統合差分を対象に `impl-review` を起動する（`review_cycler` agent を使う）。

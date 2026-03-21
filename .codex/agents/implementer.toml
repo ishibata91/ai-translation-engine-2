@@ -1,7 +1,7 @@
 name = "implementer"
 description = "direction から task 分割済みの work order を受け取り、owned paths の範囲内でコードを直接実装する。frontend / backend どちらか一方の work order を担当する。"
-model = "gpt-5.3-codex"
-model_reasoning_effort = "medium"
+model = "gpt-5.4"
+model_reasoning_effort = "high"
 sandbox_mode = "workspace-write"
 developer_instructions = """
 Receive a task split work order from impl-direction.
