@@ -2,25 +2,25 @@ package terminology
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"log/slog"
 	"strings"
 
+	dictionaryartifact "github.com/ishibata91/ai-translation-engine-2/pkg/artifact/dictionary_artifact"
 	telemetry2 "github.com/ishibata91/ai-translation-engine-2/pkg/foundation/telemetry"
 )
 
-// SQLiteTermDictionarySearcher implements TermDictionarySearcher using an existing SQLite dictionary DB.
+// SQLiteTermDictionarySearcher implements TermDictionarySearcher via dictionary artifact repository.
 type SQLiteTermDictionarySearcher struct {
-	db      *sql.DB
+	repo    dictionaryartifact.Repository
 	logger  *slog.Logger
 	stemmer KeywordStemmer
 }
 
 // NewSQLiteTermDictionarySearcher creates a new SQLiteTermDictionarySearcher.
-func NewSQLiteTermDictionarySearcher(db *sql.DB, logger *slog.Logger, stemmer KeywordStemmer) *SQLiteTermDictionarySearcher {
+func NewSQLiteTermDictionarySearcher(repo dictionaryartifact.Repository, logger *slog.Logger, stemmer KeywordStemmer) *SQLiteTermDictionarySearcher {
 	return &SQLiteTermDictionarySearcher{
-		db:      db,
+		repo:    repo,
 		logger:  logger.With("component", "SQLiteTermDictionarySearcher"),
 		stemmer: stemmer,
 	}
@@ -35,25 +35,47 @@ func (s *SQLiteTermDictionarySearcher) SearchExact(ctx context.Context, text str
 		return nil, nil
 	}
 
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT source_text, dest_text
-		FROM artifact_dictionary_entries
-		WHERE source_text = ?
-	`, text)
+	entries, err := s.repo.FindExactBySourceText(ctx, text)
 	if err != nil {
 		s.logger.ErrorContext(ctx, "exact search failed", telemetry2.ErrorAttrs(err)...)
-		return nil, fmt.Errorf("exact search query failed: %w", err)
+		return nil, fmt.Errorf("find exact source text: %w", err)
 	}
-	defer rows.Close()
 
-	terms, err := s.scanReferenceTermRows(rows)
-	if err == nil {
-		s.logger.DebugContext(ctx, "exact search completed", slog.Int("match_count", len(terms)))
-	}
-	if err != nil {
-		return nil, fmt.Errorf("scan exact search results: %w", err)
-	}
+	terms := toReferenceTerms(entries)
+	s.logger.DebugContext(ctx, "exact search completed", slog.Int("match_count", len(terms)))
 	return terms, nil
+}
+
+// SearchExactKeywords searches exact keyword entries without stemming/LIKE fallback.
+func (s *SQLiteTermDictionarySearcher) SearchExactKeywords(ctx context.Context, keywords []string) ([]ReferenceTerm, error) {
+	defer telemetry2.StartSpan(ctx, telemetry2.ActionDBQuery)()
+	s.logger.DebugContext(ctx, "searching exact keywords", slog.Int("keyword_count", len(keywords)))
+
+	if len(keywords) == 0 {
+		return nil, nil
+	}
+
+	seenKeywords := make(map[string]struct{})
+	results := make([]ReferenceTerm, 0, len(keywords))
+	for _, keyword := range keywords {
+		trimmed := strings.TrimSpace(keyword)
+		if trimmed == "" {
+			continue
+		}
+		lower := strings.ToLower(trimmed)
+		if _, exists := seenKeywords[lower]; exists {
+			continue
+		}
+		seenKeywords[lower] = struct{}{}
+
+		entries, err := s.repo.FindExactBySourceTextCI(ctx, trimmed)
+		if err != nil {
+			return nil, fmt.Errorf("exact keyword search keyword=%q: %w", trimmed, err)
+		}
+		results = append(results, toReferenceTerms(entries)...)
+	}
+
+	return dedupeReferenceTerms(results), nil
 }
 
 // SearchKeywords searches the dictionary using stemmed keywords.
@@ -106,13 +128,28 @@ func (s *SQLiteTermDictionarySearcher) SearchBatch(ctx context.Context, texts []
 		return nil, nil
 	}
 
-	resultMap := make(map[string][]ReferenceTerm)
-	for _, t := range texts {
-		res, err := s.SearchExact(ctx, t)
-		if err != nil {
-			return nil, fmt.Errorf("batch exact search text=%q: %w", t, err)
+	entries, err := s.repo.FindExactBySourceTexts(ctx, texts)
+	if err != nil {
+		return nil, fmt.Errorf("batch exact search by texts: %w", err)
+	}
+
+	resultMap := make(map[string][]ReferenceTerm, len(texts))
+	requested := make(map[string]struct{}, len(texts))
+	for _, text := range texts {
+		resultMap[text] = nil
+		requested[text] = struct{}{}
+	}
+	for _, entry := range entries {
+		if _, ok := requested[entry.SourceText]; !ok {
+			continue
 		}
-		resultMap[t] = res
+		resultMap[entry.SourceText] = append(resultMap[entry.SourceText], ReferenceTerm{
+			Source:      entry.SourceText,
+			Translation: entry.DestText,
+		})
+	}
+	for text, terms := range resultMap {
+		resultMap[text] = dedupeReferenceTerms(terms)
 	}
 
 	s.logger.DebugContext(ctx, "batch search completed", slog.Int("result_map_size", len(resultMap)))
@@ -121,9 +158,7 @@ func (s *SQLiteTermDictionarySearcher) SearchBatch(ctx context.Context, texts []
 
 // Close closes the dictionary database connection.
 func (s *SQLiteTermDictionarySearcher) Close() error {
-	if err := s.db.Close(); err != nil {
-		return fmt.Errorf("close terminology dictionary db: %w", err)
-	}
+	// No-op: lifecycle is owned by artifact repository provider.
 	return nil
 }
 
@@ -165,20 +200,15 @@ func (s *SQLiteTermDictionarySearcher) filterConsumedKeywords(keywords []string,
 	return availableKeywords
 }
 
-// scanReferenceTermRows scans rows of (source, translation) pairs into ReferenceTerm slice.
-func (s *SQLiteTermDictionarySearcher) scanReferenceTermRows(rows *sql.Rows) ([]ReferenceTerm, error) {
-	var results []ReferenceTerm
-	for rows.Next() {
-		var term ReferenceTerm
-		if err := rows.Scan(&term.Source, &term.Translation); err != nil {
-			return nil, fmt.Errorf("failed to scan reference term row: %w", err)
-		}
-		results = append(results, term)
+func toReferenceTerms(entries []dictionaryartifact.Entry) []ReferenceTerm {
+	results := make([]ReferenceTerm, 0, len(entries))
+	for _, entry := range entries {
+		results = append(results, ReferenceTerm{
+			Source:      entry.SourceText,
+			Translation: entry.DestText,
+		})
 	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate reference term rows: %w", err)
-	}
-	return results, nil
+	return results
 }
 
 func (s *SQLiteTermDictionarySearcher) searchByKeywords(ctx context.Context, keywords []string, limit int, npcOnly bool) ([]ReferenceTerm, error) {
@@ -191,37 +221,11 @@ func (s *SQLiteTermDictionarySearcher) searchByKeywords(ctx context.Context, key
 			continue
 		}
 
-		args := []any{"%" + trimmed + "%"}
-		args = append(args, limit)
-
-		query := `
-			SELECT source_text, dest_text
-			FROM artifact_dictionary_entries
-			WHERE source_text LIKE ?
-			LIMIT ?
-		`
-		if npcOnly {
-			query = `
-				SELECT source_text, dest_text
-				FROM artifact_dictionary_entries
-				WHERE source_text LIKE ? AND record_type LIKE 'NPC_%'
-				LIMIT ?
-			`
-		}
-
-		rows, err := s.db.QueryContext(ctx, query, args...)
+		entries, err := s.repo.SearchBySourceTextLike(ctx, trimmed, limit, npcOnly)
 		if err != nil {
-			return nil, fmt.Errorf("query keyword=%q: %w", trimmed, err)
+			return nil, fmt.Errorf("search by keyword=%q: %w", trimmed, err)
 		}
-
-		terms, scanErr := s.scanReferenceTermRows(rows)
-		closeErr := rows.Close()
-		if scanErr != nil {
-			return nil, fmt.Errorf("scan keyword=%q: %w", trimmed, scanErr)
-		}
-		if closeErr != nil {
-			return nil, fmt.Errorf("close keyword=%q rows: %w", trimmed, closeErr)
-		}
+		terms := toReferenceTerms(entries)
 
 		for _, term := range terms {
 			key := term.Source + "\x00" + term.Translation
@@ -237,4 +241,21 @@ func (s *SQLiteTermDictionarySearcher) searchByKeywords(ctx context.Context, key
 	}
 
 	return results, nil
+}
+
+func dedupeReferenceTerms(terms []ReferenceTerm) []ReferenceTerm {
+	if len(terms) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(terms))
+	deduped := make([]ReferenceTerm, 0, len(terms))
+	for _, term := range terms {
+		key := term.Source + "\x00" + term.Translation
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		deduped = append(deduped, term)
+	}
+	return deduped
 }

@@ -2,14 +2,17 @@ package terminology
 
 // TermTranslationRequest represents a single term translation request.
 type TermTranslationRequest struct {
-	FormID         string          `json:"form_id"`
-	EditorID       string          `json:"editor_id"`
-	RecordType     string          `json:"record_type"`
-	SourceText     string          `json:"source_text"`
-	ShortName      string          `json:"short_name,omitempty"`
-	SourcePlugin   string          `json:"source_plugin"`
-	SourceFile     string          `json:"source_file"`
-	ReferenceTerms []ReferenceTerm `json:"reference_terms,omitempty"`
+	FormID             string          `json:"form_id"`
+	EditorID           string          `json:"editor_id"`
+	RecordType         string          `json:"record_type"`
+	SourceText         string          `json:"source_text"`
+	OriginalSourceText string          `json:"original_source_text,omitempty"`
+	ReplacedSourceText string          `json:"replaced_source_text,omitempty"`
+	ShortName          string          `json:"short_name,omitempty"`
+	SourcePlugin       string          `json:"source_plugin"`
+	SourceFile         string          `json:"source_file"`
+	Variant            string          `json:"variant,omitempty"`
+	ReferenceTerms     []ReferenceTerm `json:"reference_terms,omitempty"`
 }
 
 // ReferenceTerm represents a reference term (existing translation from dictionary).

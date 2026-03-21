@@ -43,6 +43,24 @@ func TestTranslationFlowServiceListTerminologyTargetsIncludesTranslations(t *tes
 			},
 		},
 		terminology: &stubTerminology{
+			listTargetsResult: []terminologyslice.TerminologyEntry{
+				{
+					ID:         "row-1",
+					EditorID:   "EDID_001",
+					RecordType: "NPC_:FULL",
+					SourceText: "NPC Name",
+					SourceFile: "Update.esm.extract.json",
+					Variant:    "full",
+				},
+				{
+					ID:         "row-2",
+					EditorID:   "EDID_002",
+					RecordType: "BOOK:FULL",
+					SourceText: "Unreadable Book",
+					SourceFile: "Skyrim.esm.extract.json",
+					Variant:    "single",
+				},
+			},
 			previewTranslations: map[string]terminologyslice.PreviewTranslation{
 				"row-1": {
 					RowID:            "row-1",
@@ -72,6 +90,52 @@ func TestTranslationFlowServiceListTerminologyTargetsIncludesTranslations(t *tes
 	}
 	if page.Rows[1].TranslationState != "missing" {
 		t.Fatalf("unexpected missing state: got=%q want=%q", page.Rows[1].TranslationState, "missing")
+	}
+}
+
+func TestTranslationFlowServiceListTerminologyTargetsUsesNormalizedTargets(t *testing.T) {
+	service := &TranslationFlowService{
+		store: &stubTranslationFlowStore{
+			input: translationinput.TerminologyInput{
+				TaskID: "task-norm",
+				Entries: []translationinput.TerminologyEntry{
+					{
+						ID:         "row-ja",
+						EditorID:   "EDID_JA",
+						RecordType: "BOOK:FULL",
+						SourceText: "日本語の項目",
+						SourceFile: "Skyrim.esm.extract.json",
+						Variant:    "single",
+					},
+				},
+			},
+		},
+		terminology: &stubTerminology{
+			listTargetsResult: []terminologyslice.TerminologyEntry{
+				{
+					ID:         "row-en",
+					EditorID:   "EDID_EN",
+					RecordType: "BOOK:FULL",
+					SourceText: "Iron Sword",
+					SourceFile: "Skyrim.esm.extract.json",
+					Variant:    "single",
+				},
+			},
+			previewTranslations: map[string]terminologyslice.PreviewTranslation{
+				"row-en": {RowID: "row-en", TranslationState: "missing"},
+			},
+		},
+	}
+
+	page, err := service.ListTerminologyTargets(context.Background(), "task-norm", 1, 50)
+	if err != nil {
+		t.Fatalf("ListTerminologyTargets failed: %v", err)
+	}
+	if len(page.Rows) != 1 {
+		t.Fatalf("unexpected row count: got=%d want=%d", len(page.Rows), 1)
+	}
+	if page.Rows[0].ID != "row-en" {
+		t.Fatalf("unexpected normalized row id: got=%q want=%q", page.Rows[0].ID, "row-en")
 	}
 }
 
@@ -159,9 +223,9 @@ func TestTranslationFlowServiceRunTerminologyPhasePublishesRunningProgress(t *te
 			summary: terminologyslice.PhaseSummary{
 				TaskID:          "task-3",
 				Status:          "completed",
-				SavedCount:      1,
+				SavedCount:      0,
 				ProgressMode:    "hidden",
-				ProgressCurrent: 1,
+				ProgressCurrent: 0,
 				ProgressTotal:   1,
 				ProgressMessage: "単語翻訳完了",
 			},
@@ -204,9 +268,9 @@ func TestTranslationFlowServiceRunTerminologyPhasePublishesIntermediateProgress(
 			summary: terminologyslice.PhaseSummary{
 				TaskID:          "task-4",
 				Status:          "completed",
-				SavedCount:      3,
+				SavedCount:      0,
 				ProgressMode:    "hidden",
-				ProgressCurrent: 3,
+				ProgressCurrent: 0,
 				ProgressTotal:   3,
 				ProgressMessage: "単語翻訳完了",
 			},
@@ -249,9 +313,9 @@ func TestTranslationFlowServiceRunTerminologyPhaseThrottlesSummaryPersistence(t 
 		summary: terminologyslice.PhaseSummary{
 			TaskID:          "task-5",
 			Status:          "completed",
-			SavedCount:      total,
+			SavedCount:      0,
 			ProgressMode:    "hidden",
-			ProgressCurrent: total,
+			ProgressCurrent: 0,
 			ProgressTotal:   total,
 			ProgressMessage: "単語翻訳完了",
 		},
@@ -320,9 +384,9 @@ func TestTranslationFlowServiceRunTerminologyPhaseThrottlesSummaryPersistenceFor
 				summary: terminologyslice.PhaseSummary{
 					TaskID:          "task-small",
 					Status:          "completed",
-					SavedCount:      tc.total,
+					SavedCount:      0,
 					ProgressMode:    "hidden",
-					ProgressCurrent: tc.total,
+					ProgressCurrent: 0,
 					ProgressTotal:   tc.total,
 					ProgressMessage: "単語翻訳完了",
 				},
@@ -481,6 +545,7 @@ func (s *stubTranslationFlowStore) LoadTerminologyInput(ctx context.Context, tas
 
 type stubTerminology struct {
 	preparePromptsResult []llmio.Request
+	listTargetsResult    []terminologyslice.TerminologyEntry
 	previewTranslations  map[string]terminologyslice.PreviewTranslation
 	summary              terminologyslice.PhaseSummary
 	updatedSummary       terminologyslice.PhaseSummary
@@ -516,6 +581,12 @@ func (s *stubTerminology) GetPreviewTranslations(ctx context.Context, entries []
 	_ = ctx
 	_ = entries
 	return s.previewTranslations, nil
+}
+
+func (s *stubTerminology) ListTargets(ctx context.Context, taskID string) ([]terminologyslice.TerminologyEntry, error) {
+	_ = ctx
+	_ = taskID
+	return append([]terminologyslice.TerminologyEntry(nil), s.listTargetsResult...), nil
 }
 
 func (s *stubTerminology) UpdatePhaseSummary(ctx context.Context, summary terminologyslice.PhaseSummary) error {

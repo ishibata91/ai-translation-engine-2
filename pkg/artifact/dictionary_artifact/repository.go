@@ -88,6 +88,138 @@ func (r *sqliteRepository) DeleteSource(ctx context.Context, id int64) error {
 	return nil
 }
 
+func (r *sqliteRepository) FindExactBySourceText(ctx context.Context, text string) ([]Entry, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id, source_id, edid, record_type, source_text, dest_text
+		FROM artifact_dictionary_entries
+		WHERE source_text = ?
+	`, text)
+	if err != nil {
+		return nil, fmt.Errorf("find exact dictionary entry source_text=%q: %w", text, err)
+	}
+	defer rows.Close()
+
+	entries := make([]Entry, 0)
+	for rows.Next() {
+		var entry Entry
+		if err := rows.Scan(&entry.ID, &entry.SourceID, &entry.EDID, &entry.RecordType, &entry.SourceText, &entry.DestText); err != nil {
+			return nil, fmt.Errorf("scan exact dictionary entry row source_text=%q: %w", text, err)
+		}
+		entries = append(entries, entry)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate exact dictionary entry rows source_text=%q: %w", text, err)
+	}
+	return entries, nil
+}
+
+func (r *sqliteRepository) FindExactBySourceTextCI(ctx context.Context, text string) ([]Entry, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id, source_id, edid, record_type, source_text, dest_text
+		FROM artifact_dictionary_entries
+		WHERE lower(source_text) = lower(?)
+	`, text)
+	if err != nil {
+		return nil, fmt.Errorf("find case-insensitive exact dictionary entry source_text=%q: %w", text, err)
+	}
+	defer rows.Close()
+
+	entries := make([]Entry, 0)
+	for rows.Next() {
+		var entry Entry
+		if err := rows.Scan(&entry.ID, &entry.SourceID, &entry.EDID, &entry.RecordType, &entry.SourceText, &entry.DestText); err != nil {
+			return nil, fmt.Errorf("scan case-insensitive exact dictionary entry row source_text=%q: %w", text, err)
+		}
+		entries = append(entries, entry)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate case-insensitive exact dictionary entry rows source_text=%q: %w", text, err)
+	}
+	return entries, nil
+}
+
+func (r *sqliteRepository) FindExactBySourceTexts(ctx context.Context, texts []string) ([]Entry, error) {
+	if len(texts) == 0 {
+		return nil, nil
+	}
+
+	placeholders := make([]string, 0, len(texts))
+	args := make([]any, 0, len(texts))
+	for _, text := range texts {
+		placeholders = append(placeholders, "?")
+		args = append(args, text)
+	}
+
+	query := `
+		SELECT id, source_id, edid, record_type, source_text, dest_text
+		FROM artifact_dictionary_entries
+		WHERE source_text IN (` + strings.Join(placeholders, ", ") + `)
+	`
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("find exact dictionary entries by texts: %w", err)
+	}
+	defer rows.Close()
+
+	entries := make([]Entry, 0)
+	for rows.Next() {
+		var entry Entry
+		if err := rows.Scan(&entry.ID, &entry.SourceID, &entry.EDID, &entry.RecordType, &entry.SourceText, &entry.DestText); err != nil {
+			return nil, fmt.Errorf("scan exact dictionary entries by texts: %w", err)
+		}
+		entries = append(entries, entry)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate exact dictionary entries by texts: %w", err)
+	}
+	return entries, nil
+}
+
+func (r *sqliteRepository) SearchBySourceTextLike(ctx context.Context, keyword string, limit int, npcOnly bool) ([]Entry, error) {
+	trimmed := strings.TrimSpace(keyword)
+	if trimmed == "" {
+		return nil, nil
+	}
+	if limit <= 0 {
+		limit = 1
+	}
+
+	query := `
+		SELECT id, source_id, edid, record_type, source_text, dest_text
+		FROM artifact_dictionary_entries
+		WHERE source_text LIKE ?
+		LIMIT ?
+	`
+	args := []any{"%" + trimmed + "%", limit}
+	if npcOnly {
+		query = `
+			SELECT id, source_id, edid, record_type, source_text, dest_text
+			FROM artifact_dictionary_entries
+			WHERE source_text LIKE ? AND record_type LIKE 'NPC_%'
+			LIMIT ?
+		`
+	}
+
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("search dictionary entries by like keyword=%q: %w", trimmed, err)
+	}
+	defer rows.Close()
+
+	entries := make([]Entry, 0)
+	for rows.Next() {
+		var entry Entry
+		if err := rows.Scan(&entry.ID, &entry.SourceID, &entry.EDID, &entry.RecordType, &entry.SourceText, &entry.DestText); err != nil {
+			return nil, fmt.Errorf("scan dictionary entries by like keyword=%q: %w", trimmed, err)
+		}
+		entries = append(entries, entry)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate dictionary entries by like keyword=%q: %w", trimmed, err)
+	}
+	return entries, nil
+}
+
 func (r *sqliteRepository) GetEntriesBySourceID(ctx context.Context, sourceID int64) ([]Entry, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT id, source_id, edid, record_type, source_text, dest_text

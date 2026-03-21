@@ -145,7 +145,7 @@ func main() {
 		log.Fatalf("failed to initialize terminology prompt builder: %v", err)
 	}
 	termSearchStemmer := terminology.NewSnowballStemmer("english")
-	termSearcher := terminology.NewSQLiteTermDictionarySearcher(artifactDB, logger, termSearchStemmer)
+	termSearcher := terminology.NewSQLiteTermDictionarySearcher(dictArtifactRepo, logger, termSearchStemmer)
 	termStore := terminology.NewSQLiteModTermStore(terminologyDB, logger)
 	if err := termStore.InitSchema(context.Background()); err != nil {
 		log.Fatalf("failed to initialize terminology store schema: %v", err)

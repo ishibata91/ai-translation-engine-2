@@ -86,6 +86,9 @@ type Terminology interface {
 	// GetPreviewTranslations resolves translated text for one preview page.
 	GetPreviewTranslations(ctx context.Context, entries []TerminologyEntry) (map[string]PreviewTranslation, error)
 
+	// ListTargets returns normalized preview targets shared by preview/execute.
+	ListTargets(ctx context.Context, taskID string) ([]TerminologyEntry, error)
+
 	// UpdatePhaseSummary persists workflow-owned phase snapshot updates.
 	UpdatePhaseSummary(ctx context.Context, summary PhaseSummary) error
 }
@@ -100,6 +103,7 @@ type TermRequestBuilder interface {
 // for reference terms to provide as LLM context.
 type TermDictionarySearcher interface {
 	SearchExact(ctx context.Context, text string) ([]ReferenceTerm, error)
+	SearchExactKeywords(ctx context.Context, keywords []string) ([]ReferenceTerm, error)
 	SearchKeywords(ctx context.Context, keywords []string) ([]ReferenceTerm, error)
 	SearchNPCPartial(ctx context.Context, keywords []string, consumedKeywords []string, isNPC bool) ([]ReferenceTerm, error)
 	SearchBatch(ctx context.Context, texts []string) (map[string][]ReferenceTerm, error)

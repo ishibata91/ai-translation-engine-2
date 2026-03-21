@@ -42,6 +42,10 @@ type Repository interface {
 	CreateSource(ctx context.Context, source *Source) (int64, error)
 	UpdateSourceStatus(ctx context.Context, id int64, status string, count int, errMsg string) error
 	DeleteSource(ctx context.Context, id int64) error
+	FindExactBySourceText(ctx context.Context, text string) ([]Entry, error)
+	FindExactBySourceTextCI(ctx context.Context, text string) ([]Entry, error)
+	FindExactBySourceTexts(ctx context.Context, texts []string) ([]Entry, error)
+	SearchBySourceTextLike(ctx context.Context, keyword string, limit int, npcOnly bool) ([]Entry, error)
 	GetEntriesBySourceID(ctx context.Context, sourceID int64) ([]Entry, error)
 	GetEntriesBySourceIDPaginated(ctx context.Context, sourceID int64, query string, filters map[string]string, limit int, offset int) (*EntryPage, error)
 	SearchAllEntriesPaginated(ctx context.Context, query string, filters map[string]string, limit int, offset int) (*EntryPage, error)

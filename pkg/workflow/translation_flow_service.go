@@ -167,9 +167,9 @@ func (s *TranslationFlowService) ListTerminologyTargets(ctx context.Context, tas
 		return TerminologyTargetPreviewPage{}, fmt.Errorf("task_id is required")
 	}
 
-	input, err := s.store.LoadTerminologyInput(ctx, trimmedTaskID)
+	targets, err := s.terminology.ListTargets(ctx, trimmedTaskID)
 	if err != nil {
-		return TerminologyTargetPreviewPage{}, fmt.Errorf("load terminology input task_id=%s: %w", trimmedTaskID, err)
+		return TerminologyTargetPreviewPage{}, fmt.Errorf("list terminology targets task_id=%s: %w", trimmedTaskID, err)
 	}
 
 	safePage := page
@@ -181,7 +181,7 @@ func (s *TranslationFlowService) ListTerminologyTargets(ctx context.Context, tas
 		safePageSize = defaultTranslationPreviewPageSize
 	}
 
-	totalRows := len(input.Entries)
+	totalRows := len(targets)
 	start := (safePage - 1) * safePageSize
 	if start > totalRows {
 		start = totalRows
@@ -192,20 +192,8 @@ func (s *TranslationFlowService) ListTerminologyTargets(ctx context.Context, tas
 	}
 
 	rows := make([]TerminologyTargetPreviewRow, 0, end-start)
-	pageEntries := input.Entries[start:end]
-	previewEntries := make([]terminologyslice.TerminologyEntry, 0, len(pageEntries))
-	for _, entry := range pageEntries {
-		previewEntries = append(previewEntries, terminologyslice.TerminologyEntry{
-			ID:         entry.ID,
-			EditorID:   entry.EditorID,
-			RecordType: entry.RecordType,
-			SourceText: entry.SourceText,
-			SourceFile: entry.SourceFile,
-			PairKey:    entry.PairKey,
-			Variant:    entry.Variant,
-		})
-	}
-	translations, err := s.terminology.GetPreviewTranslations(ctx, previewEntries)
+	pageEntries := targets[start:end]
+	translations, err := s.terminology.GetPreviewTranslations(ctx, pageEntries)
 	if err != nil {
 		return TerminologyTargetPreviewPage{}, fmt.Errorf("get terminology preview translations task_id=%s: %w", trimmedTaskID, err)
 	}
@@ -264,14 +252,28 @@ func (s *TranslationFlowService) RunTerminologyPhase(ctx context.Context, input 
 	}
 
 	if len(requests) > 0 {
+		baseSummary, err := s.terminology.GetPhaseSummary(ctx, trimmedTaskID)
+		if err != nil {
+			return TerminologyPhaseResult{}, fmt.Errorf("get prepared terminology summary task_id=%s: %w", trimmedTaskID, err)
+		}
+		targetCount := baseSummary.TargetCount
+		if targetCount <= 0 {
+			targetCount = len(requests)
+		}
+		startCurrent := baseSummary.SavedCount
+		if startCurrent < 0 {
+			startCurrent = 0
+		}
 		startSummary := terminologyslice.PhaseSummary{
 			TaskID:          trimmedTaskID,
 			Status:          "running",
-			TargetCount:     len(requests),
+			TargetCount:     targetCount,
+			SavedCount:      baseSummary.SavedCount,
+			FailedCount:     baseSummary.FailedCount,
 			ProgressMode:    "determinate",
-			ProgressCurrent: 0,
-			ProgressTotal:   len(requests),
-			ProgressMessage: buildTerminologyProgressMessage(0, len(requests)),
+			ProgressCurrent: startCurrent,
+			ProgressTotal:   targetCount,
+			ProgressMessage: buildTerminologyProgressMessage(startCurrent, targetCount),
 		}
 		if err := s.terminology.UpdatePhaseSummary(ctx, startSummary); err != nil {
 			return TerminologyPhaseResult{}, fmt.Errorf("update running terminology summary task_id=%s: %w", trimmedTaskID, err)
@@ -287,7 +289,14 @@ func (s *TranslationFlowService) RunTerminologyPhase(ctx context.Context, input 
 			SyncConcurrency: input.Request.SyncConcurrency,
 			BulkStrategy:    input.Request.BulkStrategy,
 		}
-		responses, err := s.executeTerminologyWithProgress(ctx, trimmedTaskID, executionConfig, requests)
+		responses, err := s.executeTerminologyWithProgress(
+			ctx,
+			trimmedTaskID,
+			executionConfig,
+			requests,
+			startSummary.SavedCount,
+			startSummary.TargetCount,
+		)
 		if err != nil {
 			summary, summaryErr := s.terminology.GetPhaseSummary(ctx, trimmedTaskID)
 			if summaryErr == nil {
@@ -372,14 +381,20 @@ func (s *TranslationFlowService) executeTerminologyWithProgress(
 	taskID string,
 	config llmio.ExecutionConfig,
 	requests []llmio.Request,
+	baseSaved int,
+	targetCount int,
 ) ([]llmio.Response, error) {
 	executorWithProgress, ok := s.executor.(terminologyPhaseExecutorWithProgress)
 	if !ok {
 		return s.executor.Execute(ctx, config, requests)
 	}
 
-	total := len(requests)
-	persistStride := terminologyProgressPersistStride(total)
+	requestCount := len(requests)
+	total := targetCount
+	if total <= 0 {
+		total = requestCount
+	}
+	persistStride := terminologyProgressPersistStride(requestCount)
 	lastPersisted := 0
 	var progressMu sync.Mutex
 	return executorWithProgress.ExecuteWithProgress(ctx, config, requests, func(completed, _ int) {
@@ -390,20 +405,24 @@ func (s *TranslationFlowService) executeTerminologyWithProgress(
 		if safeCompleted < 0 {
 			safeCompleted = 0
 		}
-		if safeCompleted > total {
-			safeCompleted = total
+		if safeCompleted > requestCount {
+			safeCompleted = requestCount
+		}
+		progressCurrent := baseSaved + safeCompleted
+		if progressCurrent > total {
+			progressCurrent = total
 		}
 		runningSummary := terminologyslice.PhaseSummary{
 			TaskID:          taskID,
 			Status:          "running",
 			TargetCount:     total,
 			ProgressMode:    "determinate",
-			ProgressCurrent: safeCompleted,
+			ProgressCurrent: progressCurrent,
 			ProgressTotal:   total,
-			ProgressMessage: buildTerminologyProgressMessage(safeCompleted, total),
+			ProgressMessage: buildTerminologyProgressMessage(progressCurrent, total),
 		}
 
-		if shouldPersistTerminologyProgress(safeCompleted, total, lastPersisted, persistStride) {
+		if shouldPersistTerminologyProgress(safeCompleted, requestCount, lastPersisted, persistStride) {
 			_ = s.terminology.UpdatePhaseSummary(ctx, runningSummary)
 			lastPersisted = safeCompleted
 		}

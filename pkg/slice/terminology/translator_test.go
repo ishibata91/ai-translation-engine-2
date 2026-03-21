@@ -5,9 +5,12 @@ import (
 	"database/sql"
 	"log/slog"
 	"os"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
+	dictionaryartifact "github.com/ishibata91/ai-translation-engine-2/pkg/artifact/dictionary_artifact"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/artifact/translationinput"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/foundation"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/foundation/llmio"
@@ -25,13 +28,18 @@ func setupTestDB(t *testing.T) (*sql.DB, *sql.DB, func()) {
 	_, err = dictDB.Exec(`
 		CREATE TABLE artifact_dictionary_entries (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			source_id INTEGER DEFAULT 0,
+			edid TEXT DEFAULT '',
 			source_text TEXT,
 			dest_text TEXT,
 			record_type TEXT
 		);
 		INSERT INTO artifact_dictionary_entries (source_text, dest_text, record_type) VALUES
 			('Iron Sword', '鉄の剣', 'BOOK:FULL'),
-			('Uthgerd the Unbroken', '不屈のウスガルド', 'NPC_:FULL');
+			('Uthgerd the Unbroken', '不屈のウスガルド', 'NPC_:FULL'),
+			('Skeever', 'スキーヴァー', 'BOOK:FULL'),
+			('Broken Tower Redoubt', 'ブロークン・タワー砦', 'BOOK:FULL'),
+			('Tower', '塔', 'BOOK:FULL');
 	`)
 	if err != nil {
 		t.Fatalf("failed to init dict db: %v", err)
@@ -60,6 +68,7 @@ func TestTermTranslatorSlice(t *testing.T) {
 		mockLLMOutput []string
 		expectedTerms map[string]string
 		expectedReqs  int
+		expectedTotal int
 	}{
 		{
 			name: "allowed recs and npc pair are translated",
@@ -111,15 +120,14 @@ func TestTermTranslatorSlice(t *testing.T) {
 				},
 			},
 			mockLLMOutput: []string{
-				"TL: |鉄の剣|",
 				"TL: |鋼鉄の鎧|",
-				"TL: |不屈のウスガルド 不屈|",
 			},
-			expectedReqs: 3,
+			expectedReqs:  1,
+			expectedTotal: 3,
 			expectedTerms: map[string]string{
 				"Iron Sword":           "鉄の剣",
 				"Steel Armor":          "鋼鉄の鎧",
-				"Uthgerd the Unbroken": "不屈のウスガルド 不屈",
+				"Uthgerd the Unbroken": "不屈のウスガルド",
 				"Uthgerd":              "不屈のウスガルド",
 			},
 		},
@@ -155,10 +163,10 @@ func TestTermTranslatorSlice(t *testing.T) {
 				},
 			},
 			mockLLMOutput: []string{
-				"TL: |鉄の剣|",
 				"TL: |鋼鉄の鎧|",
 			},
-			expectedReqs: 2,
+			expectedReqs:  1,
+			expectedTotal: 2,
 			expectedTerms: map[string]string{
 				"Iron Sword":  "鉄の剣",
 				"Steel Armor": "鋼鉄の鎧",
@@ -174,7 +182,8 @@ func TestTermTranslatorSlice(t *testing.T) {
 			repo := &fakeTranslationInputRepository{input: tc.input}
 			builder := NewTermRequestBuilder(&TermRecordConfig{TargetRecordTypes: append([]string(nil), foundation.DictionaryImportRECTypes...)})
 			stemmer := NewSnowballStemmer("english")
-			searcher := NewSQLiteTermDictionarySearcher(dictDB, logger, stemmer)
+			dictRepo := dictionaryartifact.NewRepository(dictDB)
+			searcher := NewSQLiteTermDictionarySearcher(dictRepo, logger, stemmer)
 			store := NewSQLiteModTermStore(modDB, logger)
 			promptBuilder, err := NewTermPromptBuilder("")
 			if err != nil {
@@ -218,8 +227,8 @@ func TestTermTranslatorSlice(t *testing.T) {
 			if err != nil {
 				t.Fatalf("GetPhaseSummary failed: %v", err)
 			}
-			if phaseSummary.TargetCount != tc.expectedReqs {
-				t.Fatalf("unexpected target count: got=%d want=%d", phaseSummary.TargetCount, tc.expectedReqs)
+			if phaseSummary.TargetCount != tc.expectedTotal {
+				t.Fatalf("unexpected target count: got=%d want=%d", phaseSummary.TargetCount, tc.expectedTotal)
 			}
 			if phaseSummary.Status != "completed" {
 				t.Fatalf("unexpected status: got=%q want=%q", phaseSummary.Status, "completed")
@@ -252,6 +261,265 @@ func TestTermTranslatorSlice(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestTermTranslator_PreparePrompts_AppliesPartialReplacement(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	dictDB, modDB, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	input := TerminologyInput{
+		TaskID: "task-partial",
+		Entries: []TerminologyEntry{
+			{
+				ID:         "301",
+				EditorID:   "EditorD",
+				RecordType: "BOOK:FULL",
+				SourceText: "Skeever Den",
+				SourceFile: "mod_partial.json",
+				Variant:    "single",
+			},
+		},
+	}
+	repo := &fakeTranslationInputRepository{input: input}
+	builder := NewTermRequestBuilder(&TermRecordConfig{TargetRecordTypes: append([]string(nil), foundation.DictionaryImportRECTypes...)})
+	stemmer := NewSnowballStemmer("english")
+	dictRepo := dictionaryartifact.NewRepository(dictDB)
+	searcher := NewSQLiteTermDictionarySearcher(dictRepo, logger, stemmer)
+	store := NewSQLiteModTermStore(modDB, logger)
+	promptBuilder, err := NewTermPromptBuilder("")
+	if err != nil {
+		t.Fatalf("failed to create prompt builder: %v", err)
+	}
+	translator := NewTermTranslator(repo, builder, searcher, store, promptBuilder, logger)
+
+	requests, err := translator.PreparePrompts(ctx, "task-partial", PhaseOptions{})
+	if err != nil {
+		t.Fatalf("PreparePrompts failed: %v", err)
+	}
+	if len(requests) != 1 {
+		t.Fatalf("unexpected request count: got=%d want=%d", len(requests), 1)
+	}
+	sourceText, _ := requests[0].Metadata["source_text"].(string)
+	replacedText, _ := requests[0].Metadata["replaced_source_text"].(string)
+	if sourceText != "Skeever Den" {
+		t.Fatalf("unexpected source text metadata: got=%q want=%q", sourceText, "Skeever Den")
+	}
+	if replacedText != "スキーヴァー Den" {
+		t.Fatalf("unexpected replaced source text metadata: got=%q want=%q", replacedText, "スキーヴァー Den")
+	}
+	if requests[0].SystemPrompt == "" || !contains(requests[0].SystemPrompt, "スキーヴァー Den") {
+		t.Fatalf("system prompt must include replaced source text")
+	}
+}
+
+func TestTermTranslator_PreparePrompts_PrefersLongestPhraseInOverlap(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	dictDB, modDB, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	input := TerminologyInput{
+		TaskID: "task-longest-first",
+		Entries: []TerminologyEntry{
+			{
+				ID:         "401",
+				EditorID:   "EditorE",
+				RecordType: "BOOK:FULL",
+				SourceText: "Visit Broken Tower Redoubt",
+				SourceFile: "mod_overlap.json",
+				Variant:    "single",
+			},
+		},
+	}
+	repo := &fakeTranslationInputRepository{input: input}
+	builder := NewTermRequestBuilder(&TermRecordConfig{TargetRecordTypes: append([]string(nil), foundation.DictionaryImportRECTypes...)})
+	stemmer := NewSnowballStemmer("english")
+	dictRepo := dictionaryartifact.NewRepository(dictDB)
+	searcher := NewSQLiteTermDictionarySearcher(dictRepo, logger, stemmer)
+	store := NewSQLiteModTermStore(modDB, logger)
+	promptBuilder, err := NewTermPromptBuilder("")
+	if err != nil {
+		t.Fatalf("failed to create prompt builder: %v", err)
+	}
+	translator := NewTermTranslator(repo, builder, searcher, store, promptBuilder, logger)
+
+	requests, err := translator.PreparePrompts(ctx, "task-longest-first", PhaseOptions{})
+	if err != nil {
+		t.Fatalf("PreparePrompts failed: %v", err)
+	}
+	if len(requests) != 1 {
+		t.Fatalf("unexpected request count: got=%d want=%d", len(requests), 1)
+	}
+	replacedText, _ := requests[0].Metadata["replaced_source_text"].(string)
+	if replacedText != "Visit ブロークン・タワー砦" {
+		t.Fatalf("unexpected longest-first replacement: got=%q want=%q", replacedText, "Visit ブロークン・タワー砦")
+	}
+	if strings.Contains(replacedText, "塔") && replacedText != "Visit ブロークン・タワー砦" {
+		t.Fatalf("short token replacement must not override long phrase: replaced=%q", replacedText)
+	}
+}
+
+func TestTermTranslator_PreparePrompts_ReappliesSameReplacementOnRetry(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	dictDB, modDB, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	input := TerminologyInput{
+		TaskID: "task-retry-reapply",
+		Entries: []TerminologyEntry{
+			{
+				ID:         "501",
+				EditorID:   "EditorF",
+				RecordType: "BOOK:FULL",
+				SourceText: "Skeever Den",
+				SourceFile: "mod_retry.json",
+				Variant:    "single",
+			},
+		},
+	}
+	repo := &fakeTranslationInputRepository{input: input}
+	builder := NewTermRequestBuilder(&TermRecordConfig{TargetRecordTypes: append([]string(nil), foundation.DictionaryImportRECTypes...)})
+	stemmer := NewSnowballStemmer("english")
+	dictRepo := dictionaryartifact.NewRepository(dictDB)
+	searcher := NewSQLiteTermDictionarySearcher(dictRepo, logger, stemmer)
+	store := NewSQLiteModTermStore(modDB, logger)
+	promptBuilder, err := NewTermPromptBuilder("")
+	if err != nil {
+		t.Fatalf("failed to create prompt builder: %v", err)
+	}
+	translator := NewTermTranslator(repo, builder, searcher, store, promptBuilder, logger)
+
+	first, err := translator.PreparePrompts(ctx, "task-retry-reapply", PhaseOptions{})
+	if err != nil {
+		t.Fatalf("PreparePrompts first failed: %v", err)
+	}
+	second, err := translator.PreparePrompts(ctx, "task-retry-reapply", PhaseOptions{})
+	if err != nil {
+		t.Fatalf("PreparePrompts retry failed: %v", err)
+	}
+	if len(first) != 1 || len(second) != 1 {
+		t.Fatalf("unexpected request counts: first=%d second=%d", len(first), len(second))
+	}
+	firstReplaced, _ := first[0].Metadata["replaced_source_text"].(string)
+	secondReplaced, _ := second[0].Metadata["replaced_source_text"].(string)
+	if firstReplaced != "スキーヴァー Den" {
+		t.Fatalf("unexpected first replacement: got=%q want=%q", firstReplaced, "スキーヴァー Den")
+	}
+	if secondReplaced != firstReplaced {
+		t.Fatalf("retry must apply identical replacement rule: first=%q second=%q", firstReplaced, secondReplaced)
+	}
+}
+
+func TestTermDictionarySearcher_SearchExactKeywords_NoLikeLimitMiss(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	dictDB, _, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	for i := 0; i < 260; i++ {
+		_, err := dictDB.Exec(`INSERT INTO artifact_dictionary_entries (source_text, dest_text, record_type) VALUES (?, ?, 'BOOK:FULL')`,
+			"NeedleExact Variant "+strconv.Itoa(i), "ノイズ "+strconv.Itoa(i))
+		if err != nil {
+			t.Fatalf("failed to insert noise row %d: %v", i, err)
+		}
+	}
+	_, err := dictDB.Exec(`INSERT INTO artifact_dictionary_entries (source_text, dest_text, record_type) VALUES ('needleexact', '正解', 'BOOK:FULL')`)
+	if err != nil {
+		t.Fatalf("failed to insert exact row: %v", err)
+	}
+
+	dictRepo := dictionaryartifact.NewRepository(dictDB)
+	stemmer := NewSnowballStemmer("english")
+	searcher := NewSQLiteTermDictionarySearcher(dictRepo, logger, stemmer)
+
+	terms, err := searcher.SearchExactKeywords(ctx, []string{"NeedleExact"})
+	if err != nil {
+		t.Fatalf("SearchExactKeywords failed: %v", err)
+	}
+	found := false
+	for _, term := range terms {
+		if strings.EqualFold(term.Source, "NeedleExact") && term.Translation == "正解" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected exact keyword result not found; terms=%v", terms)
+	}
+}
+
+func TestTermDictionarySearcher_SearchBatch_KeepsInputKeysWithWhitespace(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	dictDB, _, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	dictRepo := dictionaryartifact.NewRepository(dictDB)
+	stemmer := NewSnowballStemmer("english")
+	searcher := NewSQLiteTermDictionarySearcher(dictRepo, logger, stemmer)
+
+	result, err := searcher.SearchBatch(ctx, []string{" Iron Sword "})
+	if err != nil {
+		t.Fatalf("SearchBatch failed: %v", err)
+	}
+	if len(result) != 1 {
+		t.Fatalf("unexpected map size: got=%d want=1", len(result))
+	}
+	if _, ok := result[" Iron Sword "]; !ok {
+		t.Fatalf("input key with whitespace must be preserved")
+	}
+	if terms := result[" Iron Sword "]; len(terms) != 0 {
+		t.Fatalf("whitespace key must not match strict exact search: terms=%v", terms)
+	}
+}
+
+func TestTermDictionarySearcher_SearchBatch_DoesNotCreateUnrequestedKeys(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	dictDB, _, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	dictRepo := dictionaryartifact.NewRepository(dictDB)
+	stemmer := NewSnowballStemmer("english")
+	searcher := NewSQLiteTermDictionarySearcher(dictRepo, logger, stemmer)
+
+	result, err := searcher.SearchBatch(ctx, []string{"Iron Sword", " Iron Sword "})
+	if err != nil {
+		t.Fatalf("SearchBatch failed: %v", err)
+	}
+	if len(result) != 2 {
+		t.Fatalf("unexpected map size: got=%d want=2", len(result))
+	}
+	if _, ok := result["Iron Sword"]; !ok {
+		t.Fatalf("missing requested key: Iron Sword")
+	}
+	if _, ok := result[" Iron Sword "]; !ok {
+		t.Fatalf("missing requested key: space-padded")
+	}
+	for key := range result {
+		if key != "Iron Sword" && key != " Iron Sword " {
+			t.Fatalf("unexpected unrequested key generated: %q", key)
+		}
+	}
+}
+
+func contains(text string, want string) bool {
+	return strings.Contains(text, want)
 }
 
 type fakeTranslationInputRepository struct {

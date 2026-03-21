@@ -17,6 +17,7 @@ type TermTranslatorImpl struct {
 	searcher      TermDictionarySearcher
 	store         ModTermStore
 	promptBuilder TermPromptBuilder
+	matcher       *GreedyLongestMatcher
 	logger        *slog.Logger
 }
 
@@ -35,6 +36,7 @@ func NewTermTranslator(
 		searcher:      searcher,
 		store:         store,
 		promptBuilder: promptBuilder,
+		matcher:       NewGreedyLongestMatcher(),
 		logger:        logger.With("component", "TermTranslatorImpl"),
 	}
 }
@@ -46,56 +48,77 @@ func (t *TermTranslatorImpl) ID() string {
 
 // PreparePrompts implementation for terminology phase.
 func (t *TermTranslatorImpl) PreparePrompts(ctx context.Context, taskID string, options PhaseOptions) ([]llmio.Request, error) {
-	artifactInput, err := t.inputRepo.LoadTerminologyInput(ctx, taskID)
-	if err != nil {
-		return nil, fmt.Errorf("load terminology artifact input task_id=%s: %w", taskID, err)
-	}
-	input := toTerminologyInput(artifactInput)
-	requests, err := t.preparePrompts(ctx, input, options)
+	requests, summary, err := t.preparePrompts(ctx, taskID, options)
 	if err != nil {
 		return nil, fmt.Errorf("prepare terminology prompts task_id=%s: %w", taskID, err)
 	}
-	status := "pending"
-	if len(requests) > 0 {
-		status = "running"
-	}
-	if err := t.store.UpdatePhaseSummary(ctx, PhaseSummary{
-		TaskID:          taskID,
-		Status:          status,
-		TargetCount:     len(requests),
-		ProgressMode:    progressModeForStatus(status),
-		ProgressCurrent: 0,
-		ProgressTotal:   len(requests),
-		ProgressMessage: progressMessageForStatus(status),
-	}); err != nil {
+	if err := t.store.UpdatePhaseSummary(ctx, summary); err != nil {
 		return nil, fmt.Errorf("persist terminology phase running summary task_id=%s: %w", taskID, err)
 	}
 	return requests, nil
 }
 
 // preparePrompts builds LLM requests (Phase 1).
-func (t *TermTranslatorImpl) preparePrompts(ctx context.Context, data TerminologyInput, options PhaseOptions) ([]llmio.Request, error) {
+func (t *TermTranslatorImpl) preparePrompts(ctx context.Context, taskID string, options PhaseOptions) ([]llmio.Request, PhaseSummary, error) {
 	t.logger.InfoContext(ctx, "ENTER TermTranslatorImpl.PreparePrompts")
 	defer t.logger.InfoContext(ctx, "EXIT TermTranslatorImpl.PreparePrompts")
 
+	artifactInput, err := t.inputRepo.LoadTerminologyInput(ctx, taskID)
+	if err != nil {
+		return nil, PhaseSummary{}, fmt.Errorf("load terminology artifact input task_id=%s: %w", taskID, err)
+	}
+	data := toTerminologyInput(artifactInput)
 	requests, err := t.builder.BuildRequests(ctx, data)
 	if err != nil {
-		return nil, fmt.Errorf("failed to build requests: %w", err)
+		return nil, PhaseSummary{}, fmt.Errorf("failed to build requests: %w", err)
 	}
-	t.logger.InfoContext(ctx, "Built translation requests", "count", len(requests))
-
 	if len(requests) == 0 {
-		return nil, nil
+		return nil, PhaseSummary{
+			TaskID:       taskID,
+			Status:       "pending",
+			ProgressMode: "hidden",
+		}, nil
 	}
 
+	targetCount := len(requests)
+	cachedResults := make([]TermTranslationResult, 0, targetCount)
 	llmRequests := make([]llmio.Request, 0, len(requests))
+	cachedGroupCount := 0
 	for _, req := range requests {
-		// Fetch reference terms for LLM context
-		t.fetchReferenceTerms(ctx, &req)
-
-		prompt, err := t.buildPrompt(ctx, req, options)
+		exactRefs, err := t.searcher.SearchExact(ctx, req.SourceText)
 		if err != nil {
-			return nil, fmt.Errorf("failed to build prompt for %s: %w", req.SourceText, err)
+			return nil, PhaseSummary{}, fmt.Errorf("search exact references source=%q: %w", req.SourceText, err)
+		}
+		if len(exactRefs) > 0 {
+			cachedResult := TermTranslationResult{
+				FormID:         req.FormID,
+				EditorID:       req.EditorID,
+				RecordType:     req.RecordType,
+				SourceText:     req.SourceText,
+				TranslatedText: exactRefs[0].Translation,
+				SourcePlugin:   req.SourcePlugin,
+				SourceFile:     req.SourceFile,
+				Status:         "cached",
+			}
+			cachedResults = append(cachedResults, t.expandResult(cachedResult, req)...)
+			cachedGroupCount++
+			continue
+		}
+
+		workingReq := req
+		replacedSourceText, consumedKeywords, err := t.buildReplacedSourceText(ctx, req.SourceText)
+		if err != nil {
+			return nil, PhaseSummary{}, fmt.Errorf("build replaced source text source=%q: %w", req.SourceText, err)
+		}
+		if strings.TrimSpace(replacedSourceText) == "" {
+			replacedSourceText = req.SourceText
+		}
+		workingReq.ReplacedSourceText = replacedSourceText
+		workingReq.ReferenceTerms = t.fetchReferenceTerms(ctx, req, replacedSourceText, consumedKeywords)
+
+		prompt, err := t.buildPrompt(ctx, workingReq, options)
+		if err != nil {
+			return nil, PhaseSummary{}, fmt.Errorf("failed to build prompt for %s: %w", req.SourceText, err)
 		}
 
 		llmRequests = append(llmRequests, llmio.Request{
@@ -103,18 +126,44 @@ func (t *TermTranslatorImpl) preparePrompts(ctx context.Context, data Terminolog
 			UserPrompt:   userPromptOrDefault(options),
 			Temperature:  options.Request.Temperature,
 			Metadata: map[string]interface{}{
-				"source_text":   req.SourceText,
-				"form_id":       req.FormID,
-				"editor_id":     req.EditorID,
-				"record_type":   req.RecordType,
-				"source_plugin": req.SourcePlugin,
-				"source_file":   req.SourceFile,
-				"short_name":    req.ShortName,
+				"source_text":          req.SourceText,
+				"original_source_text": req.SourceText,
+				"replaced_source_text": replacedSourceText,
+				"form_id":              req.FormID,
+				"editor_id":            req.EditorID,
+				"record_type":          req.RecordType,
+				"source_plugin":        req.SourcePlugin,
+				"source_file":          req.SourceFile,
+				"short_name":           req.ShortName,
 			},
 		})
 	}
 
-	return llmRequests, nil
+	if len(cachedResults) > 0 {
+		if err := t.store.SaveTerms(ctx, cachedResults); err != nil {
+			return nil, PhaseSummary{}, fmt.Errorf("save cached exact matches task_id=%s: %w", taskID, err)
+		}
+	}
+
+	status := "running"
+	if len(llmRequests) == 0 {
+		status = "completed"
+	}
+	summary := PhaseSummary{
+		TaskID:          taskID,
+		Status:          status,
+		TargetCount:     targetCount,
+		SavedCount:      cachedGroupCount,
+		FailedCount:     0,
+		ProgressMode:    progressModeForStatus(status),
+		ProgressCurrent: cachedGroupCount,
+		ProgressTotal:   targetCount,
+		ProgressMessage: progressMessageForStatus(status),
+	}
+	if status == "running" {
+		summary.ProgressMessage = buildProgressMessageWithRemaining(cachedGroupCount, targetCount)
+	}
+	return llmRequests, summary, nil
 }
 
 // SaveResults implementation for terminology phase.
@@ -127,8 +176,14 @@ func (t *TermTranslatorImpl) SaveResults(ctx context.Context, taskID string, res
 		return fmt.Errorf("failed to init mod term schema: %w", err)
 	}
 
+	summary, err := t.store.GetPhaseSummary(ctx, taskID)
+	if err != nil {
+		return fmt.Errorf("load terminology phase summary before save task_id=%s: %w", taskID, err)
+	}
+
 	var finalResults []TermTranslationResult
 	failedCount := 0
+	savedGroups := 0
 	for i, res := range responses {
 		// Identify Term from metadata
 		sourceText, _ := res.Metadata["source_text"].(string)
@@ -170,6 +225,7 @@ func (t *TermTranslatorImpl) SaveResults(ctx context.Context, taskID string, res
 		}
 
 		translationResult.TranslatedText = translatedText
+		savedGroups++
 
 		// Expand NPC if needed (FULL/SHRT)
 		// We need to re-construct a partial request for expandResult to work
@@ -189,20 +245,33 @@ func (t *TermTranslatorImpl) SaveResults(ctx context.Context, taskID string, res
 	}
 
 	status := "completed"
-	if len(responses) == 0 {
+	targetCount := summary.TargetCount
+	if targetCount <= 0 {
+		targetCount = len(responses)
+	}
+	savedCount := summary.SavedCount + savedGroups
+	if savedCount > targetCount {
+		savedCount = targetCount
+	}
+	remaining := targetCount - savedCount
+	if remaining < 0 {
+		remaining = 0
+	}
+	finalFailedCount := remaining
+	if len(responses) == 0 && targetCount == 0 {
 		status = "pending"
-	} else if failedCount > 0 {
+	} else if finalFailedCount > 0 || failedCount > 0 {
 		status = "completed_partial"
 	}
 	if err := t.store.UpdatePhaseSummary(ctx, PhaseSummary{
 		TaskID:          taskID,
 		Status:          status,
-		TargetCount:     len(responses),
-		SavedCount:      len(finalResults),
-		FailedCount:     failedCount,
+		TargetCount:     targetCount,
+		SavedCount:      savedCount,
+		FailedCount:     finalFailedCount,
 		ProgressMode:    progressModeForStatus(status),
-		ProgressCurrent: len(responses),
-		ProgressTotal:   len(responses),
+		ProgressCurrent: targetCount,
+		ProgressTotal:   targetCount,
 		ProgressMessage: progressMessageForStatus(status),
 	}); err != nil {
 		return fmt.Errorf("persist terminology phase summary task_id=%s: %w", taskID, err)
@@ -226,6 +295,30 @@ func (t *TermTranslatorImpl) GetPreviewTranslations(ctx context.Context, entries
 		return nil, fmt.Errorf("get preview translations: %w", err)
 	}
 	return translations, nil
+}
+
+// ListTargets returns normalized terminology preview targets.
+func (t *TermTranslatorImpl) ListTargets(ctx context.Context, taskID string) ([]TerminologyEntry, error) {
+	artifactInput, err := t.inputRepo.LoadTerminologyInput(ctx, taskID)
+	if err != nil {
+		return nil, fmt.Errorf("load terminology artifact input task_id=%s: %w", taskID, err)
+	}
+	requests, err := t.builder.BuildRequests(ctx, toTerminologyInput(artifactInput))
+	if err != nil {
+		return nil, fmt.Errorf("build terminology targets task_id=%s: %w", taskID, err)
+	}
+	targets := make([]TerminologyEntry, 0, len(requests))
+	for _, req := range requests {
+		targets = append(targets, TerminologyEntry{
+			ID:         req.FormID,
+			EditorID:   req.EditorID,
+			RecordType: req.RecordType,
+			SourceText: req.SourceText,
+			SourceFile: req.SourceFile,
+			Variant:    req.Variant,
+		})
+	}
+	return targets, nil
 }
 
 // UpdatePhaseSummary persists a workflow-owned phase snapshot.
@@ -309,36 +402,37 @@ func (t *TermTranslatorImpl) LegacySaveResults(ctx context.Context, data Termino
 }
 
 // fetchReferenceTerms retrieves context reference terms based on the record type.
-func (t *TermTranslatorImpl) fetchReferenceTerms(ctx context.Context, req *TermTranslationRequest) {
-	keywords := strings.Fields(req.SourceText)
-	isNPC := strings.HasPrefix(req.RecordType, "NPC")
+func (t *TermTranslatorImpl) fetchReferenceTerms(ctx context.Context, req TermTranslationRequest, replacedSourceText string, consumedKeywords []string) []ReferenceTerm {
+	keywords := extractKeywords(replacedSourceText)
+	contextRefs := make([]ReferenceTerm, 0)
 
-	var contextRefs []ReferenceTerm
-	if isNPC {
-		npcRefs, err := t.searcher.SearchNPCPartial(ctx, keywords, nil, true)
-		if err == nil {
+	kwRefs, err := t.searcher.SearchKeywords(ctx, keywords)
+	if err == nil {
+		contextRefs = append(contextRefs, kwRefs...)
+	}
+	if strings.HasPrefix(req.RecordType, "NPC") {
+		npcRefs, npcErr := t.searcher.SearchNPCPartial(ctx, keywords, consumedKeywords, true)
+		if npcErr == nil {
 			contextRefs = append(contextRefs, npcRefs...)
 		}
-	} else {
-		kwRefs, err := t.searcher.SearchKeywords(ctx, keywords)
-		if err == nil {
-			contextRefs = append(contextRefs, kwRefs...)
-		}
 	}
-
-	req.ReferenceTerms = contextRefs
+	return dedupeReferenceTerms(contextRefs)
 }
 
 func (t *TermTranslatorImpl) buildPrompt(ctx context.Context, request TermTranslationRequest, options PhaseOptions) (string, error) {
+	promptRequest := request
+	if strings.TrimSpace(request.ReplacedSourceText) != "" {
+		promptRequest.SourceText = request.ReplacedSourceText
+	}
 	templateString := strings.TrimSpace(options.Prompt.SystemPrompt)
 	if templateString == "" {
-		return t.promptBuilder.BuildPrompt(ctx, request)
+		return t.promptBuilder.BuildPrompt(ctx, promptRequest)
 	}
 	builder, err := NewTermPromptBuilder(templateString)
 	if err != nil {
 		return "", fmt.Errorf("create terminology prompt builder: %w", err)
 	}
-	return builder.BuildPrompt(ctx, request)
+	return builder.BuildPrompt(ctx, promptRequest)
 }
 
 // expandResult handles NPC paired results or returns a single result.
@@ -425,4 +519,86 @@ func progressMessageForStatus(status string) string {
 	default:
 		return ""
 	}
+}
+
+func (t *TermTranslatorImpl) buildReplacedSourceText(ctx context.Context, sourceText string) (string, []string, error) {
+	keywords := extractKeywords(sourceText)
+	exactKeywordRefs, err := t.searcher.SearchExactKeywords(ctx, keywords)
+	if err != nil {
+		return "", nil, err
+	}
+	matches := t.matcher.MatchSpans(sourceText, exactKeywordRefs)
+	if len(matches) == 0 {
+		return sourceText, nil, nil
+	}
+
+	var builder strings.Builder
+	last := 0
+	consumed := make([]string, 0, len(matches))
+	for _, match := range matches {
+		if match.StartIndex < last || match.EndIndex > len(sourceText) {
+			continue
+		}
+		builder.WriteString(sourceText[last:match.StartIndex])
+		builder.WriteString(match.Term.Translation)
+		last = match.EndIndex
+		consumed = append(consumed, match.Term.Source)
+	}
+	builder.WriteString(sourceText[last:])
+	return builder.String(), consumed, nil
+}
+
+func extractKeywords(text string) []string {
+	if strings.TrimSpace(text) == "" {
+		return nil
+	}
+	rawTokens := strings.Fields(text)
+	tokens := make([]string, 0, len(rawTokens))
+	for _, token := range rawTokens {
+		cleaned := strings.TrimSpace(strings.Trim(token, ".,!?;:\"'()[]{}<>"))
+		if cleaned == "" {
+			continue
+		}
+		tokens = append(tokens, cleaned)
+	}
+	if len(tokens) == 0 {
+		return nil
+	}
+
+	keywords := make([]string, 0, len(tokens)*(len(tokens)+1)/2)
+	seen := make(map[string]struct{}, cap(keywords))
+	addCandidate := func(candidate string) {
+		trimmed := strings.TrimSpace(candidate)
+		if trimmed == "" {
+			return
+		}
+		key := strings.ToLower(trimmed)
+		if _, exists := seen[key]; exists {
+			return
+		}
+		seen[key] = struct{}{}
+		keywords = append(keywords, trimmed)
+	}
+
+	// Add longer n-grams first so downstream matching always receives long-form candidates.
+	for width := len(tokens); width >= 1; width-- {
+		for start := 0; start+width <= len(tokens); start++ {
+			addCandidate(strings.Join(tokens[start:start+width], " "))
+		}
+	}
+	return keywords
+}
+
+func buildProgressMessageWithRemaining(current int, total int) string {
+	if total <= 0 {
+		return progressMessageForStatus("running")
+	}
+	if current < 0 {
+		current = 0
+	}
+	if current > total {
+		current = total
+	}
+	remaining := total - current
+	return fmt.Sprintf("%d / %d 件（残り %d 件）", current, total, remaining)
 }
