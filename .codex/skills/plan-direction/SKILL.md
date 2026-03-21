@@ -28,7 +28,7 @@ description: AI Translation Engine 2 専用。設計依頼、仕様補完、docs
 
 ## agent / skill 対応
 - 判断材料の蒸留は `ctx_loader` に `plan-distill` を使わせる
-- UI / シナリオ / ロジックの作成は `spec_drafter` に `plan-ui` `plan-scenario` `plan-logic` を使わせる
+- UI / シナリオ / ロジックの作成は、それぞれ別々のサブエージェントを起動して `plan-ui` `plan-scenario` `plan-logic` を使わせる
 - 設計レビューは `review_cycler` に `plan-review` を使わせる
 - docs 同期は `spec_syncer` に `plan-sync` を使わせる
 

@@ -41,7 +41,7 @@ description: AI Translation Engine 2 専用。実装依頼、UI 反映、fronten
 ## 手順
 1. 依頼が impl lane に属するかを先に判定する。non-direction skill の直指定や plan / fix lane の要求が含まれるなら conflict として停止する。
 2. 実装依頼と `changes/<id>/` の artifact を読む。
-3. `ui.md` `scenarios.md` `logic.md` `tasks.md` の有無、鮮度、矛盾を確認する。
+3. `ui.md` `scenarios.md` `logic.md` の有無、鮮度、矛盾を確認する。
 4. 不足、古さ、矛盾がある場合は `plan-distill` を起点に plan 系へ handoff する。
 5. 実装に進める場合だけ `impl-distill` を起動する（`ctx_loader` agent を使う）。
 6. `impl-distill` を起動した後は implementation packet を待つ。返却前に自分で追加走査・読解・agent 選定を始めない。
