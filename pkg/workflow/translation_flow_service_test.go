@@ -11,6 +11,8 @@ import (
 	"github.com/ishibata91/ai-translation-engine-2/pkg/format/parser/skyrim"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/foundation/llmio"
 	runtimeprogress "github.com/ishibata91/ai-translation-engine-2/pkg/foundation/progress"
+	gatewayllm "github.com/ishibata91/ai-translation-engine-2/pkg/gateway/llm"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/runtime/llmexec"
 	terminologyslice "github.com/ishibata91/ai-translation-engine-2/pkg/slice/terminology"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/slice/translationflow"
 )
@@ -350,6 +352,81 @@ func TestTranslationFlowServiceRunTerminologyPhaseThrottlesSummaryPersistenceFor
 	}
 }
 
+func TestTranslationFlowServiceRunTerminologyPhase_UsesBatchClientForXAIBatchStrategy(t *testing.T) {
+	terminology := &stubTerminology{
+		preparePromptsResult: []llmio.Request{
+			{
+				Metadata: map[string]interface{}{
+					"source_text": "NPC Name",
+				},
+			},
+		},
+		summary: terminologyslice.PhaseSummary{
+			TaskID:          "task-batch",
+			Status:          "completed",
+			SavedCount:      1,
+			FailedCount:     0,
+			ProgressMode:    "hidden",
+			ProgressCurrent: 1,
+			ProgressTotal:   1,
+			ProgressMessage: "単語翻訳完了",
+		},
+	}
+	batchClient := &stubWorkflowBatchClient{
+		statuses: []gatewayllm.BatchStatus{
+			{State: gatewayllm.BatchStateCompleted, Progress: 1},
+		},
+		results: []gatewayllm.Response{
+			{
+				Success: true,
+				Content: "TL: |NPC 名|",
+				Metadata: map[string]interface{}{
+					gatewayllm.BatchMetadataQueueJobIDKey: "terminology-0",
+				},
+			},
+		},
+	}
+	llmManager := &stubWorkflowLLMManager{
+		batchClient:  batchClient,
+		resolvedBulk: gatewayllm.BulkStrategyBatch,
+	}
+	service := &TranslationFlowService{
+		terminology: terminology,
+		executor:    llmexec.NewSyncExecutor(llmManager),
+		notifier:    &stubWorkflowProgressNotifier{},
+	}
+
+	result, err := service.RunTerminologyPhase(context.Background(), RunTerminologyPhaseInput{
+		TaskID: "task-batch",
+		Request: TranslationRequestConfig{
+			Provider:     "xai",
+			Model:        "grok-3",
+			BulkStrategy: "batch",
+		},
+	})
+	if err != nil {
+		t.Fatalf("RunTerminologyPhase failed: %v", err)
+	}
+	if llmManager.getBatchClientCalls != 1 {
+		t.Fatalf("expected GetBatchClient to be called once, got=%d", llmManager.getBatchClientCalls)
+	}
+	if llmManager.getClientCalls != 0 {
+		t.Fatalf("expected GetClient not to be called, got=%d", llmManager.getClientCalls)
+	}
+	if batchClient.submitCalls != 1 {
+		t.Fatalf("expected SubmitBatch to be called once, got=%d", batchClient.submitCalls)
+	}
+	if len(terminology.savedResponses) != 1 {
+		t.Fatalf("expected saved response count=1, got=%d", len(terminology.savedResponses))
+	}
+	if !terminology.savedResponses[0].Success {
+		t.Fatalf("expected saved response success, got=%+v", terminology.savedResponses[0])
+	}
+	if result.Status != "completed" {
+		t.Fatalf("unexpected terminology phase status: got=%q want=%q", result.Status, "completed")
+	}
+}
+
 type stubTranslationFlowStore struct {
 	input translationinput.TerminologyInput
 }
@@ -408,6 +485,7 @@ type stubTerminology struct {
 	summary              terminologyslice.PhaseSummary
 	updatedSummary       terminologyslice.PhaseSummary
 	updatedSummaries     []terminologyslice.PhaseSummary
+	savedResponses       []llmio.Response
 }
 
 func (s *stubTerminology) ID() string {
@@ -424,7 +502,7 @@ func (s *stubTerminology) PreparePrompts(ctx context.Context, taskID string, opt
 func (s *stubTerminology) SaveResults(ctx context.Context, taskID string, responses []llmio.Response) error {
 	_ = ctx
 	_ = taskID
-	_ = responses
+	s.savedResponses = append([]llmio.Response(nil), responses...)
 	return nil
 }
 
@@ -482,4 +560,66 @@ type stubWorkflowProgressNotifier struct {
 func (s *stubWorkflowProgressNotifier) OnProgress(ctx context.Context, event runtimeprogress.ProgressEvent) {
 	_ = ctx
 	s.events = append(s.events, event)
+}
+
+type stubWorkflowLLMManager struct {
+	batchClient         gatewayllm.BatchClient
+	resolvedBulk        gatewayllm.BulkStrategy
+	getClientCalls      int
+	getBatchClientCalls int
+}
+
+func (s *stubWorkflowLLMManager) GetClient(ctx context.Context, config gatewayllm.LLMConfig) (gatewayllm.LLMClient, error) {
+	_ = ctx
+	_ = config
+	s.getClientCalls++
+	return nil, nil
+}
+
+func (s *stubWorkflowLLMManager) GetBatchClient(ctx context.Context, config gatewayllm.LLMConfig) (gatewayllm.BatchClient, error) {
+	_ = ctx
+	_ = config
+	s.getBatchClientCalls++
+	return s.batchClient, nil
+}
+
+func (s *stubWorkflowLLMManager) ResolveBulkStrategy(ctx context.Context, strategy gatewayllm.BulkStrategy, provider string) gatewayllm.BulkStrategy {
+	_ = ctx
+	_ = strategy
+	_ = provider
+	return s.resolvedBulk
+}
+
+type stubWorkflowBatchClient struct {
+	submitCalls int
+	statusCalls int
+	statuses    []gatewayllm.BatchStatus
+	results     []gatewayllm.Response
+}
+
+func (s *stubWorkflowBatchClient) SubmitBatch(ctx context.Context, reqs []gatewayllm.Request) (gatewayllm.BatchJobID, error) {
+	_ = ctx
+	_ = reqs
+	s.submitCalls++
+	return gatewayllm.BatchJobID{ID: "batch-1", Provider: "xai"}, nil
+}
+
+func (s *stubWorkflowBatchClient) GetBatchStatus(ctx context.Context, id gatewayllm.BatchJobID) (gatewayllm.BatchStatus, error) {
+	_ = ctx
+	_ = id
+	if len(s.statuses) == 0 {
+		return gatewayllm.BatchStatus{State: gatewayllm.BatchStateCompleted, Progress: 1}, nil
+	}
+	idx := s.statusCalls
+	if idx >= len(s.statuses) {
+		idx = len(s.statuses) - 1
+	}
+	s.statusCalls++
+	return s.statuses[idx], nil
+}
+
+func (s *stubWorkflowBatchClient) GetBatchResults(ctx context.Context, id gatewayllm.BatchJobID) ([]gatewayllm.Response, error) {
+	_ = ctx
+	_ = id
+	return append([]gatewayllm.Response(nil), s.results...), nil
 }

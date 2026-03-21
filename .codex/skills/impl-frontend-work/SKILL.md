@@ -22,17 +22,23 @@ work order で指定された所有範囲だけを変更し、frontend 品質ゲ
 - 実行すべき品質ゲート
 
 ## 必読 spec
-- `docs/frontend/frontend-architecture/spec.md`
+- `docs/governance/architecture/spec.md`
+- `docs/governance/backend-coding-standards/spec.md`
 - `docs/frontend/frontend-coding-standards/spec.md`
+- `docs/frontend/frontend-architecture/spec.md`
 
 ## 手順
 1. work order の `required_reading` と `shared_contract` を読む。
-2. `docs/frontend/frontend-architecture/spec.md` と `docs/frontend/frontend-coding-standards/spec.md` を読む。
-3. 自分の所有ファイル範囲だけで実装対象と影響ファイルを特定する。
-4. 小さな変更単位で実装する。
-5. `lint:file -> 修正 -> 再実行` を回す。
-6. `typecheck -> lint:frontend` を実行する。
-7. structured diff 形式で実装結果、実行コマンド、未検証箇所を返す。
+2. 以下の規約およびアーキテクチャ定義に従って実装する。
+   - `docs/governance/architecture/spec.md`
+   - `docs/governance/backend-coding-standards/spec.md`
+   - `docs/frontend/frontend-coding-standards/spec.md`
+3. `docs/frontend/frontend-architecture/spec.md` を読む。
+4. 自分の所有ファイル範囲だけで実装対象と影響ファイルを特定する。
+5. 小さな変更単位で実装する。
+6. `lint:file -> 修正 -> 再実行` を回す。
+7. `typecheck -> lint:frontend` を実行する。
+8. structured diff 形式で実装結果、実行コマンド、未検証箇所を返す。
 
 ## レビュー修正ループ
 - `impl-review` から required delta が返ったら、その解消を最優先で実施する

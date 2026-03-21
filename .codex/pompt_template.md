@@ -1,7 +1,7 @@
 [$fix-direction](F:\ai translation engine 2\.codex\skills\fix-direction\SKILL.md)
 
 ## 不具合概要
-- **画面/機能**: 
+- **画面/機能**: 翻訳プロジェクト/単語翻訳フェーズ
 - **現象**: 
 
 ## 再現手順

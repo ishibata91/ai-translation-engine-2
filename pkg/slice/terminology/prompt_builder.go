@@ -72,7 +72,7 @@ Requirements:
 1. Translate the text idiomatically for Skyrim (e.g. Katakana for names, appropriate Kanji for titles).
 2. Be consistent with the Reference Terms provided.
 3. You MUST output the final translation in the following exact format and nothing else:
-TL: |[translated_text]|
+TL: |translated_text|
 
 Example:
 If translating "Iron Sword", you should output:

@@ -3,10 +3,15 @@ package llmexec
 import (
 	"context"
 	"fmt"
+	"strconv"
+	"strings"
+	"time"
 
 	"github.com/ishibata91/ai-translation-engine-2/pkg/foundation/llmio"
 	gatewayllm "github.com/ishibata91/ai-translation-engine-2/pkg/gateway/llm"
 )
+
+const batchPollingInterval = 1 * time.Second
 
 // SyncExecutor runs workflow-level synchronous LLM requests through the gateway layer.
 type SyncExecutor struct {
@@ -30,7 +35,7 @@ func (e *SyncExecutor) ExecuteWithProgress(
 	requests []llmio.Request,
 	progress func(completed, total int),
 ) ([]llmio.Response, error) {
-	client, err := e.llmManager.GetClient(ctx, gatewayllm.LLMConfig{
+	llmConfig := gatewayllm.LLMConfig{
 		Provider: config.Provider,
 		APIKey:   config.APIKey,
 		Endpoint: config.Endpoint,
@@ -39,28 +44,156 @@ func (e *SyncExecutor) ExecuteWithProgress(
 			"context_length": config.ContextLength,
 		},
 		Concurrency: config.SyncConcurrency,
-	})
+	}
+	strategy := resolveBulkStrategy(config.BulkStrategy)
+	resolvedStrategy := e.llmManager.ResolveBulkStrategy(ctx, strategy, config.Provider)
+	if resolvedStrategy == gatewayllm.BulkStrategyBatch {
+		return e.executeBatch(ctx, llmConfig, requests, progress)
+	}
+	return e.executeSync(ctx, llmConfig, requests, progress)
+}
+
+func (e *SyncExecutor) executeSync(
+	ctx context.Context,
+	llmConfig gatewayllm.LLMConfig,
+	requests []llmio.Request,
+	progress func(completed, total int),
+) ([]llmio.Response, error) {
+	client, err := e.llmManager.GetClient(ctx, llmConfig)
 	if err != nil {
 		return nil, fmt.Errorf("create terminology llm client: %w", err)
 	}
 
+	gatewayReqs := toGatewayRequests(requests, false)
+
+	responses, err := gatewayllm.ExecuteBulkSyncWithProgress(ctx, client, gatewayReqs, llmConfig.Concurrency, progress)
+	if err != nil {
+		return nil, fmt.Errorf("execute bulk sync: %w", err)
+	}
+
+	return toExecutionResponses(responses), nil
+}
+
+func (e *SyncExecutor) executeBatch(
+	ctx context.Context,
+	llmConfig gatewayllm.LLMConfig,
+	requests []llmio.Request,
+	progress func(completed, total int),
+) ([]llmio.Response, error) {
+	batchClient, err := e.llmManager.GetBatchClient(ctx, llmConfig)
+	if err != nil {
+		return nil, fmt.Errorf("create terminology batch client: %w", err)
+	}
+
+	gatewayReqs, requestOrder := toBatchGatewayRequests(requests)
+	jobID, err := batchClient.SubmitBatch(ctx, gatewayReqs)
+	if err != nil {
+		return nil, fmt.Errorf("submit terminology batch: %w", err)
+	}
+	if progress != nil {
+		progress(0, len(requests))
+	}
+
+	for {
+		status, statusErr := batchClient.GetBatchStatus(ctx, jobID)
+		if statusErr != nil {
+			return nil, fmt.Errorf("poll terminology batch status: %w", statusErr)
+		}
+		if progress != nil {
+			progress(batchProgressToCompleted(status.Progress, len(requests)), len(requests))
+		}
+		if isTerminalBatchState(status.State) {
+			break
+		}
+
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(batchPollingInterval):
+		}
+	}
+
+	responses, err := batchClient.GetBatchResults(ctx, jobID)
+	if err != nil {
+		return nil, fmt.Errorf("fetch terminology batch results: %w", err)
+	}
+	if progress != nil {
+		progress(len(requests), len(requests))
+	}
+
+	return toExecutionResponses(reorderBatchResponses(responses, requests, requestOrder)), nil
+}
+
+func toGatewayRequests(requests []llmio.Request, attachSequence bool) []gatewayllm.Request {
 	gatewayReqs := make([]gatewayllm.Request, 0, len(requests))
-	for _, request := range requests {
+	for idx, request := range requests {
+		metadata := copyMetadata(request.Metadata)
+		if attachSequence {
+			metadata[gatewayllm.BatchMetadataQueueRequestSeqKey] = idx
+		}
 		gatewayReqs = append(gatewayReqs, gatewayllm.Request{
 			SystemPrompt:   request.SystemPrompt,
 			UserPrompt:     request.UserPrompt,
 			Temperature:    request.Temperature,
 			ResponseSchema: request.ResponseSchema,
 			StopSequences:  request.StopSequences,
-			Metadata:       request.Metadata,
+			Metadata:       metadata,
 		})
 	}
+	return gatewayReqs
+}
 
-	responses, err := gatewayllm.ExecuteBulkSyncWithProgress(ctx, client, gatewayReqs, config.SyncConcurrency, progress)
-	if err != nil {
-		return nil, fmt.Errorf("execute bulk sync: %w", err)
+func toBatchGatewayRequests(requests []llmio.Request) ([]gatewayllm.Request, []string) {
+	gatewayReqs := make([]gatewayllm.Request, 0, len(requests))
+	requestOrder := make([]string, 0, len(requests))
+	for idx, request := range requests {
+		metadata := copyMetadata(request.Metadata)
+		queueJobID := readQueueJobID(metadata)
+		if queueJobID == "" {
+			queueJobID = buildTerminologyQueueJobID(idx)
+		}
+		metadata[gatewayllm.BatchMetadataQueueJobIDKey] = queueJobID
+		metadata[gatewayllm.BatchMetadataQueueRequestSeqKey] = idx
+		requestOrder = append(requestOrder, queueJobID)
+		gatewayReqs = append(gatewayReqs, gatewayllm.Request{
+			SystemPrompt:   request.SystemPrompt,
+			UserPrompt:     request.UserPrompt,
+			Temperature:    request.Temperature,
+			ResponseSchema: request.ResponseSchema,
+			StopSequences:  request.StopSequences,
+			Metadata:       metadata,
+		})
 	}
+	return gatewayReqs, requestOrder
+}
 
+func copyMetadata(metadata map[string]interface{}) map[string]interface{} {
+	if len(metadata) == 0 {
+		return map[string]interface{}{}
+	}
+	cloned := make(map[string]interface{}, len(metadata))
+	for key, value := range metadata {
+		cloned[key] = value
+	}
+	return cloned
+}
+
+func buildTerminologyQueueJobID(idx int) string {
+	return fmt.Sprintf("terminology-%d", idx)
+}
+
+func readQueueJobID(metadata map[string]interface{}) string {
+	if len(metadata) == 0 {
+		return ""
+	}
+	raw, exists := metadata[gatewayllm.BatchMetadataQueueJobIDKey]
+	if !exists {
+		return ""
+	}
+	return strings.TrimSpace(fmt.Sprintf("%v", raw))
+}
+
+func toExecutionResponses(responses []gatewayllm.Response) []llmio.Response {
 	result := make([]llmio.Response, 0, len(responses))
 	for _, response := range responses {
 		result = append(result, llmio.Response{
@@ -71,5 +204,140 @@ func (e *SyncExecutor) ExecuteWithProgress(
 			Metadata: response.Metadata,
 		})
 	}
-	return result, nil
+	return result
+}
+
+func resolveBulkStrategy(raw string) gatewayllm.BulkStrategy {
+	if strings.EqualFold(strings.TrimSpace(raw), string(gatewayllm.BulkStrategyBatch)) {
+		return gatewayllm.BulkStrategyBatch
+	}
+	return gatewayllm.BulkStrategySync
+}
+
+func isTerminalBatchState(state gatewayllm.BatchState) bool {
+	switch state {
+	case gatewayllm.BatchStateCompleted,
+		gatewayllm.BatchStatePartialFailed,
+		gatewayllm.BatchStateFailed,
+		gatewayllm.BatchStateCancelled:
+		return true
+	default:
+		return false
+	}
+}
+
+func batchProgressToCompleted(progress float32, total int) int {
+	if total <= 0 {
+		return 0
+	}
+	completed := int(progress * float32(total))
+	if completed < 0 {
+		return 0
+	}
+	if completed > total {
+		return total
+	}
+	return completed
+}
+
+func reorderBatchResponses(responses []gatewayllm.Response, requests []llmio.Request, requestOrder []string) []gatewayllm.Response {
+	if len(requests) == 0 {
+		return nil
+	}
+	ordered := make([]gatewayllm.Response, len(requests))
+	filled := make([]bool, len(requests))
+	fallback := make([]gatewayllm.Response, 0, len(responses))
+	idToIndex := make(map[string]int, len(requestOrder))
+	for idx, id := range requestOrder {
+		trimmed := strings.TrimSpace(id)
+		if trimmed == "" {
+			continue
+		}
+		if _, exists := idToIndex[trimmed]; !exists {
+			idToIndex[trimmed] = idx
+		}
+	}
+
+	for _, response := range responses {
+		if idx, ok := findResponseIndex(response.Metadata, idToIndex); ok && !filled[idx] {
+			ordered[idx] = response
+			filled[idx] = true
+			continue
+		}
+		seq, ok := extractRequestSeq(response.Metadata)
+		if !ok || seq < 0 || seq >= len(requests) || filled[seq] {
+			fallback = append(fallback, response)
+			continue
+		}
+		ordered[seq] = response
+		filled[seq] = true
+	}
+
+	fallbackIndex := 0
+	for idx := range ordered {
+		if filled[idx] {
+			ordered[idx].Metadata = mergeMetadata(requests[idx].Metadata, ordered[idx].Metadata)
+			continue
+		}
+		if fallbackIndex < len(fallback) {
+			ordered[idx] = fallback[fallbackIndex]
+			ordered[idx].Metadata = mergeMetadata(requests[idx].Metadata, ordered[idx].Metadata)
+			fallbackIndex++
+			continue
+		}
+		ordered[idx] = gatewayllm.Response{
+			Success:  false,
+			Error:    "batch result missing for request",
+			Metadata: copyMetadata(requests[idx].Metadata),
+		}
+	}
+	return ordered
+}
+
+func findResponseIndex(metadata map[string]interface{}, idToIndex map[string]int) (int, bool) {
+	id := readQueueJobID(metadata)
+	if id == "" {
+		return 0, false
+	}
+	idx, ok := idToIndex[id]
+	return idx, ok
+}
+
+func mergeMetadata(base map[string]interface{}, overlay map[string]interface{}) map[string]interface{} {
+	if len(base) == 0 && len(overlay) == 0 {
+		return map[string]interface{}{}
+	}
+	merged := copyMetadata(base)
+	for key, value := range overlay {
+		merged[key] = value
+	}
+	return merged
+}
+
+func extractRequestSeq(metadata map[string]interface{}) (int, bool) {
+	if len(metadata) == 0 {
+		return 0, false
+	}
+	raw, exists := metadata[gatewayllm.BatchMetadataQueueRequestSeqKey]
+	if !exists {
+		return 0, false
+	}
+	switch value := raw.(type) {
+	case int:
+		return value, true
+	case int32:
+		return int(value), true
+	case int64:
+		return int(value), true
+	case float64:
+		return int(value), true
+	case string:
+		parsed, err := strconv.Atoi(strings.TrimSpace(value))
+		if err != nil {
+			return 0, false
+		}
+		return parsed, true
+	default:
+		return 0, false
+	}
 }

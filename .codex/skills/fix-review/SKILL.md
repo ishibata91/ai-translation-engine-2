@@ -24,10 +24,14 @@ bugfix 差分、関連仕様、検証結果を照合して結果を返す。
 
 ## 手順
 1. bugfix scope と実装差分を照合する。
-2. 退行、未解消リスク、仕様逸脱、未検証を優先して見る。
-3. `severity` `location` `violated_contract` `required_delta` `recheck` を返す。
-4. docs 反映が必要な場合だけ `docs_sync_needed` を示す。
-5. 次工程の起動は行わず、結果だけを `fix-direction` へ返す。
+2. 以下の規約およびアーキテクチャ定義に従っているかチェックする。
+   - `docs/governance/architecture/spec.md`
+   - `docs/governance/backend-coding-standards/spec.md`
+   - `docs/frontend/frontend-coding-standards/spec.md`
+3. 退行、未解消リスク、仕様逸脱、未検証を優先して見る。
+4. `severity` `location` `violated_contract` `required_delta` `recheck` を返す。
+5. docs 反映が必要な場合だけ `docs_sync_needed` を示す。
+6. 次工程の起動は行わず、結果だけを `fix-direction` へ返す。
 
 ## 出力形式
 - `score` (0.0 - 1.0)
