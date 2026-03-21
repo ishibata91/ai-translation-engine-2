@@ -1,7 +1,7 @@
 # Design Doc Init Notes
 
 ## `init-change-design-docs.ps1`
-`scripts/init-change-design-docs.ps1` は `changes/<id>/` に `ui.md` `scenarios.md` `logic.md` の雛形を配置し、`context_board/` を初期化し、`index.md` を自動生成するための補助スクリプト。
+`スキルフォルダ/scripts/init-change-design-docs.ps1` は `changes/<id>/` に `ui.md` `scenarios.md` `logic.md` の雛形を配置し、`context_board/` を初期化し、`index.md` を自動生成するための補助スクリプト。
 
 ## 使うタイミング
 - change 文書がまだ無い

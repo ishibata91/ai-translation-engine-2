@@ -58,7 +58,7 @@ description: AI Translation Engine 2 専用。設計依頼、仕様補完、docs
 ## 参照資料
 - 振り分け例は `references/routing-examples.md` を読む。
 - 順序判断は `references/sequence-checklist.md` を使う。
-- `scripts/init-change-design-docs.ps1` の使いどころは `references/doc-init-notes.md` を読む。
+- `スキルフォルダ/scripts/init-change-design-docs.ps1` の使いどころは `references/doc-init-notes.md` を読む。
 
 ## 下流スキル起動時のスキル名明示
 - 下流スキルのサブエージェントを立ち上げるときは、必ず `references/templates.md` の「下流スキル起動」テンプレートを使い、`invoked_skill` と `invoked_by` を明示すること
