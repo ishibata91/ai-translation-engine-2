@@ -20,6 +20,16 @@
 - 未完了:
 ```
 
+## Blocked 返却メモ
+```md
+### Blocked
+- 対象 section:
+- 停止理由:
+- owned_paths 外で必要になった対象:
+- 該当する別 section または contract:
+- impl-direction へ返す次アクション:
+```
+
 ## 修正返却メモ
 ```md
 ### Fix Summary
