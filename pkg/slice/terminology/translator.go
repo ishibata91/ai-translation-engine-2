@@ -180,7 +180,6 @@ func (t *TermTranslatorImpl) SaveResults(ctx context.Context, taskID string, res
 	if err != nil {
 		return fmt.Errorf("load terminology phase summary before save task_id=%s: %w", taskID, err)
 	}
-
 	var finalResults []TermTranslationResult
 	failedCount := 0
 	savedGroups := 0
@@ -193,7 +192,6 @@ func (t *TermTranslatorImpl) SaveResults(ctx context.Context, taskID string, res
 		sourcePlugin, _ := res.Metadata["source_plugin"].(string)
 		sourceFile, _ := res.Metadata["source_file"].(string)
 		shortName, _ := res.Metadata["short_name"].(string)
-
 		translationResult := TermTranslationResult{
 			FormID:       formID,
 			EditorID:     editorID,
@@ -249,18 +247,23 @@ func (t *TermTranslatorImpl) SaveResults(ctx context.Context, taskID string, res
 	if targetCount <= 0 {
 		targetCount = len(responses)
 	}
-	savedCount := summary.SavedCount + savedGroups
+	// Final failed count must be based on actual LLM response failures only.
+	// Cached exact matches are already saved during PreparePrompts and must not
+	// be re-counted as failures even if intermediate running snapshots reset SavedCount.
+	finalFailedCount := failedCount
+	if finalFailedCount < 0 {
+		finalFailedCount = 0
+	}
+	savedCount := targetCount - finalFailedCount
+	if savedCount < 0 {
+		savedCount = 0
+	}
 	if savedCount > targetCount {
 		savedCount = targetCount
 	}
-	remaining := targetCount - savedCount
-	if remaining < 0 {
-		remaining = 0
-	}
-	finalFailedCount := remaining
 	if len(responses) == 0 && targetCount == 0 {
 		status = "pending"
-	} else if finalFailedCount > 0 || failedCount > 0 {
+	} else if finalFailedCount > 0 {
 		status = "completed_partial"
 	}
 	if err := t.store.UpdatePhaseSummary(ctx, PhaseSummary{

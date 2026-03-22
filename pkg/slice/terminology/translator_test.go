@@ -518,6 +518,199 @@ func TestTermDictionarySearcher_SearchBatch_DoesNotCreateUnrequestedKeys(t *test
 	}
 }
 
+func TestTermTranslator_SaveResults_DoesNotCountCachedAsFailed_WhenRunningSummaryResetsSavedCount(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	dictDB, modDB, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	input := TerminologyInput{
+		TaskID: "task-cached-summary-reset-success",
+		Entries: []TerminologyEntry{
+			{
+				ID:         "601",
+				EditorID:   "EditorG",
+				RecordType: "BOOK:FULL",
+				SourceText: "Iron Sword",
+				SourceFile: "mod_cached_reset.json",
+				Variant:    "single",
+			},
+			{
+				ID:         "602",
+				EditorID:   "EditorG",
+				RecordType: "ARMO:FULL",
+				SourceText: "Steel Armor",
+				SourceFile: "mod_cached_reset.json",
+				Variant:    "single",
+			},
+		},
+	}
+	repo := &fakeTranslationInputRepository{input: input}
+	builder := NewTermRequestBuilder(&TermRecordConfig{TargetRecordTypes: append([]string(nil), foundation.DictionaryImportRECTypes...)})
+	stemmer := NewSnowballStemmer("english")
+	dictRepo := dictionaryartifact.NewRepository(dictDB)
+	searcher := NewSQLiteTermDictionarySearcher(dictRepo, logger, stemmer)
+	store := NewSQLiteModTermStore(modDB, logger)
+	promptBuilder, err := NewTermPromptBuilder("")
+	if err != nil {
+		t.Fatalf("failed to create prompt builder: %v", err)
+	}
+	translator := NewTermTranslator(repo, builder, searcher, store, promptBuilder, logger)
+
+	requests, err := translator.PreparePrompts(ctx, input.TaskID, PhaseOptions{})
+	if err != nil {
+		t.Fatalf("PreparePrompts failed: %v", err)
+	}
+	if len(requests) != 1 {
+		t.Fatalf("unexpected request count: got=%d want=1", len(requests))
+	}
+
+	preparedSummary, err := store.GetPhaseSummary(ctx, input.TaskID)
+	if err != nil {
+		t.Fatalf("GetPhaseSummary before reset failed: %v", err)
+	}
+	if preparedSummary.TargetCount != 2 || preparedSummary.SavedCount != 1 || preparedSummary.FailedCount != 0 {
+		t.Fatalf("unexpected prepared summary: %+v", preparedSummary)
+	}
+
+	if err := translator.UpdatePhaseSummary(ctx, PhaseSummary{
+		TaskID:          input.TaskID,
+		Status:          "running",
+		TargetCount:     preparedSummary.TargetCount,
+		ProgressMode:    "determinate",
+		ProgressCurrent: preparedSummary.SavedCount,
+		ProgressTotal:   preparedSummary.TargetCount,
+		ProgressMessage: "running",
+	}); err != nil {
+		t.Fatalf("UpdatePhaseSummary reset failed: %v", err)
+	}
+	resetSummary, err := store.GetPhaseSummary(ctx, input.TaskID)
+	if err != nil {
+		t.Fatalf("GetPhaseSummary after reset failed: %v", err)
+	}
+	if resetSummary.SavedCount != 0 {
+		t.Fatalf("saved_count reset simulation failed: got=%d want=0", resetSummary.SavedCount)
+	}
+
+	responses := []llmio.Response{
+		{
+			Content:  "TL: |鋼鉄の鎧|",
+			Success:  true,
+			Metadata: requests[0].Metadata,
+		},
+	}
+	if err := translator.SaveResults(ctx, input.TaskID, responses); err != nil {
+		t.Fatalf("SaveResults failed: %v", err)
+	}
+
+	summary, err := store.GetPhaseSummary(ctx, input.TaskID)
+	if err != nil {
+		t.Fatalf("GetPhaseSummary after save failed: %v", err)
+	}
+	if summary.Status != "completed" {
+		t.Fatalf("unexpected status: got=%q want=%q", summary.Status, "completed")
+	}
+	if summary.SavedCount != 2 {
+		t.Fatalf("unexpected saved count: got=%d want=2", summary.SavedCount)
+	}
+	if summary.FailedCount != 0 {
+		t.Fatalf("unexpected failed count: got=%d want=0", summary.FailedCount)
+	}
+}
+
+func TestTermTranslator_SaveResults_KeepsPartialFailureContract_WhenRunningSummaryResetsSavedCount(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	dictDB, modDB, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	input := TerminologyInput{
+		TaskID: "task-cached-summary-reset-partial",
+		Entries: []TerminologyEntry{
+			{
+				ID:         "701",
+				EditorID:   "EditorH",
+				RecordType: "BOOK:FULL",
+				SourceText: "Iron Sword",
+				SourceFile: "mod_cached_partial.json",
+				Variant:    "single",
+			},
+			{
+				ID:         "702",
+				EditorID:   "EditorH",
+				RecordType: "ARMO:FULL",
+				SourceText: "Steel Armor",
+				SourceFile: "mod_cached_partial.json",
+				Variant:    "single",
+			},
+		},
+	}
+	repo := &fakeTranslationInputRepository{input: input}
+	builder := NewTermRequestBuilder(&TermRecordConfig{TargetRecordTypes: append([]string(nil), foundation.DictionaryImportRECTypes...)})
+	stemmer := NewSnowballStemmer("english")
+	dictRepo := dictionaryartifact.NewRepository(dictDB)
+	searcher := NewSQLiteTermDictionarySearcher(dictRepo, logger, stemmer)
+	store := NewSQLiteModTermStore(modDB, logger)
+	promptBuilder, err := NewTermPromptBuilder("")
+	if err != nil {
+		t.Fatalf("failed to create prompt builder: %v", err)
+	}
+	translator := NewTermTranslator(repo, builder, searcher, store, promptBuilder, logger)
+
+	requests, err := translator.PreparePrompts(ctx, input.TaskID, PhaseOptions{})
+	if err != nil {
+		t.Fatalf("PreparePrompts failed: %v", err)
+	}
+	if len(requests) != 1 {
+		t.Fatalf("unexpected request count: got=%d want=1", len(requests))
+	}
+
+	preparedSummary, err := store.GetPhaseSummary(ctx, input.TaskID)
+	if err != nil {
+		t.Fatalf("GetPhaseSummary before reset failed: %v", err)
+	}
+	if err := translator.UpdatePhaseSummary(ctx, PhaseSummary{
+		TaskID:          input.TaskID,
+		Status:          "running",
+		TargetCount:     preparedSummary.TargetCount,
+		ProgressMode:    "determinate",
+		ProgressCurrent: preparedSummary.SavedCount,
+		ProgressTotal:   preparedSummary.TargetCount,
+		ProgressMessage: "running",
+	}); err != nil {
+		t.Fatalf("UpdatePhaseSummary reset failed: %v", err)
+	}
+
+	responses := []llmio.Response{
+		{
+			Success:  false,
+			Error:    "upstream timeout",
+			Metadata: requests[0].Metadata,
+		},
+	}
+	if err := translator.SaveResults(ctx, input.TaskID, responses); err != nil {
+		t.Fatalf("SaveResults failed: %v", err)
+	}
+
+	summary, err := store.GetPhaseSummary(ctx, input.TaskID)
+	if err != nil {
+		t.Fatalf("GetPhaseSummary after save failed: %v", err)
+	}
+	if summary.Status != "completed_partial" {
+		t.Fatalf("unexpected status: got=%q want=%q", summary.Status, "completed_partial")
+	}
+	if summary.SavedCount != 1 {
+		t.Fatalf("unexpected saved count: got=%d want=1", summary.SavedCount)
+	}
+	if summary.FailedCount != 1 {
+		t.Fatalf("unexpected failed count: got=%d want=1", summary.FailedCount)
+	}
+}
+
 func contains(text string, want string) bool {
 	return strings.Contains(text, want)
 }

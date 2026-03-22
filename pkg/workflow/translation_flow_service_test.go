@@ -2,19 +2,26 @@ package workflow
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"log/slog"
 	"slices"
 	"strings"
 	"testing"
 
+	dictionaryartifact "github.com/ishibata91/ai-translation-engine-2/pkg/artifact/dictionary_artifact"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/artifact/translationinput"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/format/parser/skyrim"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/foundation"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/foundation/llmio"
 	runtimeprogress "github.com/ishibata91/ai-translation-engine-2/pkg/foundation/progress"
 	runtimequeue "github.com/ishibata91/ai-translation-engine-2/pkg/runtime/queue"
 	terminologyslice "github.com/ishibata91/ai-translation-engine-2/pkg/slice/terminology"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/slice/translationflow"
+	_ "modernc.org/sqlite"
 )
 
 func TestTranslationFlowServiceListTerminologyTargetsIncludesTranslations(t *testing.T) {
@@ -378,6 +385,181 @@ func TestTranslationFlowServiceRunTerminologyPhaseThrottlesSummaryPersistenceFor
 			}
 		})
 	}
+}
+
+func TestTranslationFlowServiceRunTerminologyPhaseRestoresFinalSummaryAfterRunningSnapshotReset(t *testing.T) {
+	testCases := []struct {
+		name       string
+		responses  []scriptedTerminologyResponse
+		wantStatus string
+		wantSaved  int
+		wantFailed int
+	}{
+		{
+			name: "completed",
+			responses: []scriptedTerminologyResponse{
+				{success: true, content: "TL: |鋼鉄の鎧|"},
+				{success: true, content: "TL: |銀の盾|"},
+				{success: true, content: "TL: |黒檀の弓|"},
+			},
+			wantStatus: "completed",
+			wantSaved:  4,
+			wantFailed: 0,
+		},
+		{
+			name: "completed_partial",
+			responses: []scriptedTerminologyResponse{
+				{success: true, content: "TL: |鋼鉄の鎧|"},
+				{success: false, err: "provider timeout"},
+				{success: true, content: "TL: |黒檀の弓|"},
+			},
+			wantStatus: "completed_partial",
+			wantSaved:  3,
+			wantFailed: 1,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			terminology, store, cleanup := newWorkflowTerminologyHarness(t, "task-cached-mixed")
+			defer cleanup()
+
+			service := &TranslationFlowService{
+				terminology: terminology,
+				executor: &scriptedTerminologyExecutor{
+					responses: tc.responses,
+					steps:     []int{1, 2, 3},
+				},
+				notifier: &stubWorkflowProgressNotifier{},
+			}
+
+			result, err := service.RunTerminologyPhase(context.Background(), RunTerminologyPhaseInput{
+				TaskID: "task-cached-mixed",
+				Request: TranslationRequestConfig{
+					Model: "gemini-2.5-flash",
+				},
+			})
+			if err != nil {
+				t.Fatalf("RunTerminologyPhase failed: %v", err)
+			}
+			if result.Status != tc.wantStatus {
+				t.Fatalf("unexpected status: got=%q want=%q", result.Status, tc.wantStatus)
+			}
+			if result.SavedCount != tc.wantSaved {
+				t.Fatalf("unexpected saved count: got=%d want=%d", result.SavedCount, tc.wantSaved)
+			}
+			if result.FailedCount != tc.wantFailed {
+				t.Fatalf("unexpected failed count: got=%d want=%d", result.FailedCount, tc.wantFailed)
+			}
+
+			foundResetSnapshot := false
+			for _, summary := range store.updatedSummaries {
+				if summary.Status == "running" && summary.SavedCount == 0 && summary.ProgressCurrent == 3 {
+					foundResetSnapshot = true
+					break
+				}
+			}
+			if !foundResetSnapshot {
+				t.Fatalf("running snapshot with saved_count reset was not persisted: %+v", store.updatedSummaries)
+			}
+		})
+	}
+}
+
+func newWorkflowTerminologyHarness(t *testing.T, taskID string) (terminologyslice.Terminology, *recordingTerminologyStore, func()) {
+	t.Helper()
+
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	dictDB, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("failed to open dictionary db: %v", err)
+	}
+	dictDB.SetMaxOpenConns(1)
+	if _, err := dictDB.Exec(`
+		CREATE TABLE artifact_dictionary_entries (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			source_id INTEGER DEFAULT 0,
+			edid TEXT DEFAULT '',
+			source_text TEXT,
+			dest_text TEXT,
+			record_type TEXT
+		);
+		INSERT INTO artifact_dictionary_entries (source_text, dest_text, record_type) VALUES
+			('Iron Sword', '鉄の剣', 'BOOK:FULL');
+	`); err != nil {
+		t.Fatalf("failed to seed dictionary db: %v", err)
+	}
+
+	modDB, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		_ = dictDB.Close()
+		t.Fatalf("failed to open terminology db: %v", err)
+	}
+	modDB.SetMaxOpenConns(1)
+
+	repo := &workflowTerminologyInputRepository{
+		inputs: map[string]translationinput.TerminologyInput{
+			taskID: {
+				TaskID: taskID,
+				Entries: []translationinput.TerminologyEntry{
+					{
+						ID:         "row-1",
+						EditorID:   "EDID_001",
+						RecordType: "BOOK:FULL",
+						SourceText: "Iron Sword",
+						SourceFile: "workflow_cached_mixed.json",
+						Variant:    "single",
+					},
+					{
+						ID:         "row-2",
+						EditorID:   "EDID_002",
+						RecordType: "ARMO:FULL",
+						SourceText: "Steel Armor",
+						SourceFile: "workflow_cached_mixed.json",
+						Variant:    "single",
+					},
+					{
+						ID:         "row-3",
+						EditorID:   "EDID_003",
+						RecordType: "BOOK:FULL",
+						SourceText: "Silver Shield",
+						SourceFile: "workflow_cached_mixed.json",
+						Variant:    "single",
+					},
+					{
+						ID:         "row-4",
+						EditorID:   "EDID_004",
+						RecordType: "WEAP:FULL",
+						SourceText: "Ebony Bow",
+						SourceFile: "workflow_cached_mixed.json",
+						Variant:    "single",
+					},
+				},
+			},
+		},
+	}
+	builder := terminologyslice.NewTermRequestBuilder(&terminologyslice.TermRecordConfig{
+		TargetRecordTypes: append([]string(nil), foundation.DictionaryImportRECTypes...),
+	})
+	dictRepo := dictionaryartifact.NewRepository(dictDB)
+	searcher := terminologyslice.NewSQLiteTermDictionarySearcher(dictRepo, logger, terminologyslice.NewSnowballStemmer("english"))
+	recordingStore := &recordingTerminologyStore{
+		ModTermStore: terminologyslice.NewSQLiteModTermStore(modDB, logger),
+	}
+	promptBuilder, err := terminologyslice.NewTermPromptBuilder("")
+	if err != nil {
+		_ = dictDB.Close()
+		_ = modDB.Close()
+		t.Fatalf("failed to create terminology prompt builder: %v", err)
+	}
+	terminology := terminologyslice.NewTermTranslator(repo, builder, searcher, recordingStore, promptBuilder, logger)
+
+	cleanup := func() {
+		_ = dictDB.Close()
+		_ = modDB.Close()
+	}
+	return terminology, recordingStore, cleanup
 }
 
 func TestTranslationFlowServiceListTranslationFlowPersonaTargetsExcludesExistingMasterPersona(t *testing.T) {
@@ -1066,7 +1248,80 @@ func (s *stubTerminology) UpdatePhaseSummary(ctx context.Context, summary termin
 	_ = ctx
 	s.updatedSummary = summary
 	s.updatedSummaries = append(s.updatedSummaries, summary)
+	s.summary = summary
 	return nil
+}
+
+type workflowTerminologyInputRepository struct {
+	inputs map[string]translationinput.TerminologyInput
+}
+
+func (r *workflowTerminologyInputRepository) LoadTerminologyInput(ctx context.Context, taskID string) (translationinput.TerminologyInput, error) {
+	_ = ctx
+	input, ok := r.inputs[taskID]
+	if !ok {
+		return translationinput.TerminologyInput{}, fmt.Errorf("terminology input is not configured task_id=%s", taskID)
+	}
+	return input, nil
+}
+
+type recordingTerminologyStore struct {
+	terminologyslice.ModTermStore
+	updatedSummaries []terminologyslice.PhaseSummary
+}
+
+func (s *recordingTerminologyStore) UpdatePhaseSummary(ctx context.Context, summary terminologyslice.PhaseSummary) error {
+	s.updatedSummaries = append(s.updatedSummaries, summary)
+	return s.ModTermStore.UpdatePhaseSummary(ctx, summary)
+}
+
+type scriptedTerminologyResponse struct {
+	success bool
+	content string
+	err     string
+}
+
+type scriptedTerminologyExecutor struct {
+	responses []scriptedTerminologyResponse
+	steps     []int
+}
+
+func (s *scriptedTerminologyExecutor) Execute(ctx context.Context, config llmio.ExecutionConfig, requests []llmio.Request) ([]llmio.Response, error) {
+	_ = ctx
+	_ = config
+	return s.buildResponses(requests), nil
+}
+
+func (s *scriptedTerminologyExecutor) ExecuteWithProgress(
+	ctx context.Context,
+	config llmio.ExecutionConfig,
+	requests []llmio.Request,
+	progress func(completed, total int),
+) ([]llmio.Response, error) {
+	_ = ctx
+	_ = config
+	total := len(requests)
+	for _, step := range s.steps {
+		progress(step, total)
+	}
+	return s.buildResponses(requests), nil
+}
+
+func (s *scriptedTerminologyExecutor) buildResponses(requests []llmio.Request) []llmio.Response {
+	responses := make([]llmio.Response, 0, len(s.responses))
+	for index, response := range s.responses {
+		metadata := map[string]interface{}{}
+		if index < len(requests) {
+			metadata = requests[index].Metadata
+		}
+		responses = append(responses, llmio.Response{
+			Content:  response.content,
+			Success:  response.success,
+			Error:    response.err,
+			Metadata: metadata,
+		})
+	}
+	return responses
 }
 
 type stubTerminologyExecutor struct {
