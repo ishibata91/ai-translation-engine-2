@@ -20,7 +20,6 @@
   - 不具合、再現、原因切り分けは `fix-direction`
   - コード/仕様調査は `investigation-direction`
 
-### 利用可能なcliツール
-- jq
-- ast-grep
-  - 原則書き込み､読み込み､検索はast-grepを使うこと
+### 制約
+- 原則検索と置き換えはast-grepを使うこと
+- jsonロード/書き込みはjqを使うこと｡
