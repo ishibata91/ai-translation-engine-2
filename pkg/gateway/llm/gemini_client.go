@@ -208,8 +208,9 @@ func (c *geminiClient) doComplete(ctx context.Context, req Request) (Response, e
 func (c *geminiClient) buildRequest(ctx context.Context, req Request) (*http.Request, error) {
 	c.logger.DebugContext(ctx, "ENTER buildRequest", "model", c.config.Model)
 
-	url := fmt.Sprintf("%s/%s/models/%s:generateContent?key=%s",
-		geminiBaseURL, geminiAPIVersion, c.config.Model, c.config.APIKey)
+	modelPath := normalizeGeminiModelResource(c.config.Model)
+	url := fmt.Sprintf("%s/%s/%s:generateContent?key=%s",
+		geminiBaseURL, geminiAPIVersion, modelPath, c.config.APIKey)
 
 	type part struct {
 		Text string `json:"text"`
@@ -253,7 +254,7 @@ func (c *geminiClient) buildRequest(ctx context.Context, req Request) (*http.Req
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 
-	c.logger.DebugContext(ctx, "EXIT buildRequest", "url_path", fmt.Sprintf("/models/%s:generateContent", c.config.Model))
+	c.logger.DebugContext(ctx, "EXIT buildRequest", "url_path", fmt.Sprintf("/%s:generateContent", modelPath))
 	return httpReq, nil
 }
 
