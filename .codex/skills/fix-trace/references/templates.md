@@ -7,6 +7,8 @@
 - likely layers:
 - primary hypothesis:
 - alternative hypotheses:
+- current_scope:
+- unknowns:
 - next observation:
 ```
 
@@ -16,6 +18,7 @@
 - target files:
 - logger path:
 - output files:
+- summary_update:
 - optional stack trace:
 ```
 
@@ -25,5 +28,6 @@
 - confirmed facts:
 - narrowed cause:
 - remaining uncertainty:
+- next_action:
 - suggested fix scope:
 ```

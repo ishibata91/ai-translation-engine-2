@@ -63,12 +63,39 @@
 - 回帰確認方法:
 ```
 
+## 状態要約
+```md
+### State Summary
+- current_stage:
+- reproduction_status:
+- known_facts:
+- unknowns:
+- active_logs:
+- current_hypothesis:
+- current_scope:
+- latest_review_result:
+- next_action:
+```
+
+> `State Summary` は full history の代替として `fix-direction` が持つ正本。
+> 再現待ち、review loop、cleanup 状態をこの形式で引き継ぐ。
+
 ## 回帰確認
 ```md
 ### Verification
 - 同じ再現手順で確認:
 - 関連ケース:
 - 実行した品質ゲート:
+```
+
+## review 判定
+```md
+### Review Decision
+- review_score:
+- unresolved_fix_scope:
+- external_validation_noise:
+- residual_risks:
+- next_action:
 ```
 
 

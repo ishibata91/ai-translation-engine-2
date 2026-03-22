@@ -17,6 +17,7 @@ description: AI Translation Engine 2 専用。bugfix 調査で原因仮説と検
 
 ## 入力契約
 - `fix-direction` または `fix-distill` から渡された bugfix packet
+- `fix-direction` が保持する state summary
 - 関連する docs
 - 関連コード
 - 再現条件
@@ -27,12 +28,14 @@ description: AI Translation Engine 2 専用。bugfix 調査で原因仮説と検
 2. 原因仮説と優先調査箇所を整理する。
 3. 再現後は構造化された観測事実を読み、原因候補を狭める。
 4. 観測ログが必要かを判断し、必要な場合は「仕込む対象ファイルと観測ポイント一覧」をパケットに含めて、`fix-direction` へ `fix-logging` の起動を要求して返す。ログの実装はこのスキルでは行わない。
-5. `fix-direction` へ fix plan の前提となる原因整理を返す。
+5. `fix-direction` が state summary を更新できるよう、`current_hypothesis` `unknowns` `current_scope` `next_action` を明示して返す。
+6. `fix-direction` へ fix plan の前提となる原因整理を返す。
 
 ## 原則
 - 恒久修正は行わない
 - ログ実装は行わない（`fix-logging` に委譲する）
 - 原因仮説と観測事実を分けて返す
+- full history の要約ではなく、state summary 更新に必要な差分だけを返す
 - 次工程や review の起動は決めず、fix plan の前提事実だけを返す
 
 ## 参照資料

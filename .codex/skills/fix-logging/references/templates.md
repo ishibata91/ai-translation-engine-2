@@ -7,6 +7,7 @@
 - log_prefix: `[fix-trace]`
 - target_files:
 - observation_points:
+- state_summary_ref:
 - reproduce_steps:
 - expected_observation:
 ```
@@ -18,6 +19,7 @@
 - log_prefix: `[fix-trace]`
 - target_files:
 - log_additions:
+- state_summary_ref:
 - cleanup_reason: final accept reached
 ```
 
@@ -28,6 +30,7 @@
 - modified_files:
 - log_additions:
 - log_removals:
+- state_summary_update:
 - reproduce_steps:
 - notes:
 ```

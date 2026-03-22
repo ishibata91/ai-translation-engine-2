@@ -15,6 +15,11 @@
 - files:
   - path:
   - note:
+- summary_update:
+  - known_facts:
+  - unknowns:
+  - current_scope:
+  - next_action:
 ```
 
 ## summary
@@ -23,4 +28,5 @@
 - first event:
 - failure point:
 - last confirmed event:
+- still_unknown:
 ```

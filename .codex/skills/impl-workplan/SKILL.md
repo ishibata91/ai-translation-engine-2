@@ -8,11 +8,11 @@ description: AI Translation Engine 2 専用。`impl-distill` の implementation 
 > **起動確認**: このスキルが起動されたら、まず `invoked_skill` が `impl-workplan` であることを確認する。不一致の場合は作業を開始せずエラーを返す。
 
 この skill は implementation packet を section 単位の実装計画へ変換する skill。
-`impl-distill` が返した packet を読み、モジュール/契約単位の section plan と `changes/<id>/tasks.md` を作る。
+`impl-distill` が返した packet を読み、モジュール/契約単位の section plan、condensed brief、`changes/<id>/tasks.md` を作る。
 基本的にMCP経由で走査すること｡
 
 `Section Plan` `Work Order` `tasks.md format` の schema 正本は `references/templates.md` のみとし、
-worker に渡す前に `owner / depends_on / shared_contract / owned_paths / forbidden_paths / required_reading / validation_commands / acceptance`
+worker に渡す前に `owner / depends_on / shared_contract / condensed_brief / owned_paths / forbidden_paths / required_reading / validation_commands / acceptance`
 を必ず固定する。
 ここで固定する `shared_contract` は、worker が `owned_paths` の中だけで section を完了するために必要十分な契約でなければならない。
 
@@ -21,6 +21,7 @@ worker に渡す前に `owner / depends_on / shared_contract / owned_paths / for
 - implementation packet の validation field は `validation_commands` のみ
 - 対象 change
 - `ui.md` `scenarios.md` `logic.md`
+- 既存 `tasks.md`（resume / reroute で再計画する場合）
 - 関連コード
 
 ## 制約
@@ -29,7 +30,7 @@ worker に渡す前に `owner / depends_on / shared_contract / owned_paths / for
 - frontend と backend の品質ゲートを同一 section に混在させない。
 - unresolved な shared contract が残る場合は worker 起動可能な計画を返さず、unknown として止める。
 - owner 未確定、shared contract 未固定、required field 欠落の section plan は完成扱いにしない。
-- `changes/<id>/tasks.md` の生成または更新は `impl-workplan` だけが行い、worker へ委譲しない。
+- `impl-workplan` は `tasks.md` の section 契約と初期 status snapshot を定義する。runtime 中の status / 実装 / 検証更新は `impl-direction` が行ってよい。
 - docs 同期判断は行わない。
 - worker が `owned_paths` 外に出ないと compile / test / wiring を完了できない section を作ってはならない。
 - constructor / DI / test stub / store contract の追従が別 path に必要なら、その依存を先行 section として分離するか、同一 owner の section へ吸収する。
@@ -50,15 +51,16 @@ worker に渡す前に `owner / depends_on / shared_contract / owned_paths / for
 1. 対象 change と implementation packet を確認する。
 2. `ui.md` `scenarios.md` `logic.md` と関連コードを必要最小限だけ読む。
 3. モジュール/契約単位で section 候補を洗い出す。
-4. 各 section について `section_id / title / owner / goal / depends_on / shared_contract / owned_paths / forbidden_paths / required_reading / validation_commands / acceptance` を確定する。
+4. 各 section について `section_id / title / owner / status / goal / depends_on / shared_contract / condensed_brief / owned_paths / forbidden_paths / required_reading / validation_commands / acceptance` を確定する。
 5. 各 section ごとに、worker が `owned_paths` だけで compile / test / wiring を完了できるかを確認する。別 path の constructor / DI / test stub / store contract 追従が必要なら section を再分割する。
-6. dispatch 順と shared contract 一覧を整理する。
+6. dispatch 順、shared contract 一覧、progress snapshot を整理する。
 7. `references/templates.md` の `tasks.md format` に従い、`impl-workplan` 自身が `changes/<id>/tasks.md` を生成または更新する。
 8. `impl-direction` がそのまま dispatch できる workplan packet を返す。
 
 ## packet 契約
 - `change`: 対象 change
 - `tasks_path`: 生成または更新した `changes/<id>/tasks.md`
+- `progress_snapshot`: section ごとの初期または再計画後 status 一覧
 - `shared_contracts`: section 着手前に固定済みの shared contract 一覧
 - `dispatch_order`: section の実行順
 - `sections`: `references/templates.md` の `Section Plan` schema に一致した一覧
@@ -72,10 +74,11 @@ worker に渡す前に `owner / depends_on / shared_contract / owned_paths / for
 
 ## 原則
 - `tasks.md` は impl lane の正本 artifact として扱う
-- `tasks.md` は `impl-workplan` だけが生成または更新する
+- `tasks.md` の section 契約は `impl-workplan` が定義し、runtime 中の status と検証注記だけを `impl-direction` が更新する
 - section はファイル単位ではなくモジュール/契約単位で切る
 - section に placeholder owner や未固定 shared contract を残したまま worker へ流さない
 - shared contract を worker に判断させない
+- condensed brief は `required_reading` の代替ではなく、worker が履歴全文を再読せず着手するための圧縮本文として固定する
 - shared contract は API 名の列挙ではなく、worker が `owned_paths` 内だけで section を完了するための実装前提として固定する
 - `depends_on` は参照順だけでなく compile 順としても矛盾してはならない
 - worker が blocked を返しそうな constructor / DI / test stub / contract 依存が見えているなら、そのまま dispatch せず workplan 側で解消する

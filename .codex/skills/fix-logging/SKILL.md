@@ -19,6 +19,7 @@ description: AI Translation Engine 2 専用。fix-trace の観測計画に従っ
 - `operation: add | remove`
 - `fix-trace` が返した原因仮説と観測計画（`operation: add` の起動時パケット）
 - 観測を仕込む対象ファイル一覧
+- `fix-direction` の state summary
 - `log_additions` と対象ファイル一覧（`operation: remove` の cleanup パケット）
 
 ## 手順
@@ -27,7 +28,8 @@ description: AI Translation Engine 2 専用。fix-trace の観測計画に従っ
 3. `operation: add` の場合は `[fix-trace]` prefix の観測ログを追加し、追加した import / call site を `log_additions` に記録する。
 4. `operation: remove` の場合は受け取った `log_additions` を正本として、一時ログと不要になった import を削除し、削除内容を `log_removals` に記録する。
 5. 変更したファイル一覧と `log_additions` / `log_removals` を戻り値パケットに含めて返す。
-6. `fix-direction` へ、`add` では「ログ追加完了・再現待ち」、`remove` では「cleanup 完了」を返す。
+6. `fix-direction` が state summary を更新できるよう、`active_logs` または cleanup 完了状態を戻り値に含める。
+7. `fix-direction` へ、`add` では「ログ追加完了・再現待ち」、`remove` では「cleanup 完了」を返す。
 
 ## 原則
 - 恒久修正は行わない
@@ -36,7 +38,7 @@ description: AI Translation Engine 2 専用。fix-trace の観測計画に従っ
 - フロントエンドのログは必ず `src/lib/logger.ts` の `logger.*` を使う（`console.*` は不可）。
 - バックエンドのログは注入済み `*slog.Logger` または `slog.Default()` を使う。
 - import と call site を一括削除して戻せる形で追加し、remove は `log_additions` に基づく最小 cleanup だけを行う
-- `fix-direction` へ返す内容は `operation`、変更ファイル、`log_additions`、`log_removals`、必要な再現ガイドに限定する
+- `fix-direction` へ返す内容は `operation`、変更ファイル、`log_additions`、`log_removals`、必要な再現ガイド、state summary 更新材料に限定する
 
 ## ログ実装ガイド
 
