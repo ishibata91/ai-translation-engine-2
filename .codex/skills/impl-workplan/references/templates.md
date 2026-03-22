@@ -57,6 +57,8 @@
 
 - `Section Plan` `Work Order` `tasks.md format` は `validation_commands` を唯一の validation field として共有する。
 - `owner` は `frontend | backend` のどちらかで確定済みの値だけを書く。
-- `shared_contract` は worker 起動前に固定済みの契約だけを書く。
+- `shared_contract` は worker 起動前に固定済みであり、かつ worker が `owned_paths` 内だけで section を完了するために必要十分な契約だけを書く。
 - owner 未確定、shared contract 未固定、required field 欠落の項目は section にせず `unresolved` 側で止める。
 - `tasks.md` の生成または更新は `impl-workplan` だけが行い、worker skill へ委譲しない。
+- constructor / DI / test stub / compile dependency が `owned_paths` 外に必要な場合は、該当 section をそのまま生成せず先行 section を分離するか `unresolved` に倒す。
+- `depends_on` に書かれた先行 section を実装しても downstream worker が blocked になるなら、section plan は未完成として扱う。
