@@ -12,14 +12,11 @@ description: AI Translation Engine 2 専用。investigation-distill で特定さ
 ## 制約
 - 明示的に指示されない限り、コードの書き換え（修正）は行わない。
 - 調査対象外の広範な探索に逸脱しないよう、渡されたポインタを中心に探索する。
-- `AGENTS.md` の MCP 利用規約に従い、ファイル検索と読取は `server-filesystem`、`pkg/` 以下の構造調査は `go-llm-lens`、`frontend/src/` 以下の構造調査は `ts-lsp` を正本とする。
-- `ts-lsp` を使う場合は、`AGENTS.md` に従って `projectRoot` や `file` に絶対パスを渡すこと。
 
 ## やること
 1. `investigation-direction` （および `investigation-distill` の結果）から渡された調査目的とポインタ（ファイル群・シンボル群）を確認する。
 2. ポインタで指定されたファイルは `server-filesystem` で読み、必要な行や周辺文脈を確認する。
 3. `pkg/` 以下の関数、メソッド、型、実装関係を辿るときは `go-llm-lens` を使い、呼び出し元や関連シンボルの文脈を構築する。
-4. `frontend/src/` 以下の型、参照、定義位置を辿るときは `ts-lsp` を使い、UI 側の文脈を構築する。
 5. 調査の目的に対する回答としての事実、仕様、ロジックの流れを詳細に整理したレポートを作成し、`investigation-direction` 側に返す。
 
 ## 原則

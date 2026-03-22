@@ -21,9 +21,5 @@
   - コード/仕様調査は `investigation-direction`
 
 ## 進め方
-- `go-llm-lens` が入っている。`pkg/` 以下を走査したいときは使うこと。
-- `ts-lsp` が入っている。`frontend/src/` 以下を走査したいときは使うこと。
-- `ts-lsp` を使うときは、`projectRoot` に `F:/ai translation engine 2/frontend` のような実体の絶対パスを渡すこと。
-- `ts-lsp` の `file` 指定も、必要に応じて絶対パスを使うこと。
 - `server-filesystem` MCP が入っている。検索、読み書き、参照は必ずこれを利用すること。
 - 書き込みも原則として `server-filesystem` を利用すること。
