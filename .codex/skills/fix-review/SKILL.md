@@ -29,18 +29,14 @@ bugfix 差分、関連仕様、検証結果を照合して結果を返す。
    - `docs/governance/backend-coding-standards/spec.md`
    - `docs/frontend/frontend-coding-standards/spec.md`
 3. 退行、未解消リスク、仕様逸脱、未検証を優先して見る。
-4. `severity` `location` `violated_contract` `required_delta` `recheck` を返す。
-5. docs 反映が必要な場合だけ `docs_sync_needed` を示す。
+4. `references/templates.md` の `## review feedback` を唯一の schema 正本として、`score` `severity` `location` `violated_contract` `required_delta` `recheck` `docs_sync_needed` をその順で返す。
+5. `score < 0.85` の場合は `required_delta` を欠落させず、review loop を継続できる形で返す。
 6. 次工程の起動は行わず、結果だけを `fix-direction` へ返す。
 
 ## 出力形式
-- `score` (0.0 - 1.0)
-- `severity`
-- `location`
-- `violated_contract`
-- `required_delta`
-- `recheck`
-- `docs_sync_needed`
+- `references/templates.md` の `## review feedback` を唯一の schema 正本として扱う
+- field は `score` `severity` `location` `violated_contract` `required_delta` `recheck` `docs_sync_needed` の 7 個で固定する
+- `score` は `0.0 - 1.0` の範囲で返す
 
 ## `fix-direction` が判断する条件
 - `score >= 0.85` の review だけを次工程へ渡してよい

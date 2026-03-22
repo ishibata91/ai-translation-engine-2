@@ -12,8 +12,17 @@
 
 ## mixed（分割して扱う）例
 - `画面と API の両方を実装して`
-- distill 返却後、task 分割テンプレートで frontend / backend に分割する
-- shared contract（型・API 形式）を先に確定し、その後 worker をそれぞれ起動する
+- distill 返却後、`impl-workplan` でモジュール/契約単位の section plan を作る
+- shared contract（型・API 形式）を先に固定し、その後 section ごとに worker を起動する
+
+## `ui.md` 不在でも frontend を含む例
+- 依頼: `既存画面の状態遷移と backend API を一緒に更新して`
+- 挙動: `ui.md` の有無だけで backend-only にしない
+- 判定: `frontend/src` 変更や frontend 品質ゲートが section signal に含まれるなら frontend section を残す
+
+## review 差し戻し例
+- `impl-review` が `affected_sections` に `ui-state-sync` の full section contract と `required_delta` を返す
+- `impl-direction` は `Review Reroute` を作り、`shared_contract` `required_reading` `validation_commands` `acceptance` を落とさず `ui-state-sync` だけ再 dispatch する
 
 ## plan 依頼の誤投入
 - 依頼: `新しい設定画面の仕様を決めたい`

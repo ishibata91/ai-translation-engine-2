@@ -1,23 +1,28 @@
 ---
 name: aite2-ui-polish-orchestrate
-description: AI Translation Engine 2 専用。既存 UI の見た目を整える。「余白を直して」「レイアウト崩れを直して」と言われたときに起動する。
+description: AI Translation Engine 2 専用。`impl-direction` 配下で既存 UI の見た目調整だけを扱う internal helper。独立した user-facing 入口としては使わない。
 ---
 
 # AITE2 UI Polish Orchestrate
 
-この skill は ui-refine 系作業の指揮者として動き、既存 UI の見た目だけを対象に、観測、修正委譲、review、board handoff の順でデザイン差分を直すための orchestration skill。
+この skill は ui-refine 系作業を `impl-direction` 配下の specialized branch として補助する internal helper であり、独立した user-facing 入口ではない。既存 UI の見た目だけを対象に、観測、修正委譲、review、board handoff の順でデザイン差分を直す。
+
+## 適用境界
+- user-facing 入口の判定は `impl-direction` が担う
+- この skill は `impl-direction` が既存 UI の見た目調整だけを切り出したときにだけ使う
+- この skill への直指定は受け付けず、必要なら `impl-direction` への handoff を返す
 
 ## 使う場面
-- 「余白を直して」と既存 UI の見た目修正を依頼された
-- 「配置が崩れている」「文字が切れている」と既存画面の視認性改善を依頼された
-- ロジックはそのままに、レイアウト、余白、配置、視認性だけを直したい
+- `impl-direction` が「余白を直して」のような既存 UI の見た目修正を specialized branch として切り出した
+- `impl-direction` が「配置が崩れている」「文字が切れている」のような視認性改善だけを扱うと判断した
+- ロジックはそのままに、レイアウト、余白、配置、視認性だけを直す internal helper が必要になった
 
 ## 必読 spec
 - `docs/frontend/ui-rules/spec.md`
 - 補助: `docs/frontend/frontend-coding-standards/spec.md`
 
 ## handoff 前提
-- ui-polish 指揮役は、原則として必要な前段 skill を subagent として起動する
+- ui-polish 指揮役は、`impl-direction` 配下の補助フローとして必要な前段 skill を subagent として起動する
 - change が無い場合は `scripts/init-change-ui-refine-docs.ps1` で `changes/<id>/context_board/` を作る
 - `plan-distill` が初期観測を整理した board を読む
 - 修正方針と変更結果は board に残して次の skill へ渡す

@@ -6,6 +6,7 @@
 - invoked_skill: <起動する下流スキル名 (例: fix-distill)>
 - invoked_by: fix-direction
 - agent: <起動するエージェント名 (例: ctx_loader)>
+- operation: <`fix-logging` を起動する場合のみ `add` または `remove`>
 - 対象 change:
 - 入力:
 - focus:
@@ -14,6 +15,7 @@
 > 下流スキルのサブエージェントを立ち上げるときは必ずこのテンプレートを使い、
 > `invoked_skill` と `invoked_by` を明示すること。
 > サブエージェントは自分がどのスキルで起動されたかをこのフィールドで確認する。
+> `fix-logging` を起動する場合は、このテンプレートに加えて `../fix-logging/references/templates.md` の add/remove packet を併記し、`[fix-trace]` prefix と `log_additions` / `log_removals` 契約を明示する。
 
 ## 再現メモ
 ```md

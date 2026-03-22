@@ -1,12 +1,14 @@
 # Design Fix Examples
 
-## 起動例
+この reference は `impl-direction` が既存 UI polish を specialized branch として切り出すときの internal helper 例を示す。独立した user-facing 入口の起動例ではない。
+
+## impl-direction から specialized branch として渡す例
 - `この画面の余白を直して`
 - `一覧のラベルが切れているのを直して`
 - `ボタン位置がずれて見えるので直して`
 - `このダイアログの配置だけ整えて`
 
-## 起動しない例
+## 独立入口としては起動しない例
 - `この画面の仕様を設計して`
 - `この機能のシナリオを整理して`
 - `保存処理が動かないのを直して`

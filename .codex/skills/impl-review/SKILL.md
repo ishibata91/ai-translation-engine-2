@@ -17,6 +17,7 @@ spec 抜粋、統合差分、検証結果、前回 findings を照合し、requi
 
 ## 入力契約
 - 対象 change
+- `tasks.md` または section map
 - `spec_excerpt`
 - `structured_diff`
 - `verification`
@@ -29,7 +30,7 @@ spec 抜粋、統合差分、検証結果、前回 findings を照合し、requi
    - `docs/governance/backend-coding-standards/spec.md`
    - `docs/frontend/frontend-coding-standards/spec.md`
 3. 退行、contract 逸脱、責務逸脱、未検証を優先して見る。
-4. `severity` `location` `violated_contract` `required_delta` `recheck` を返す。
+4. `severity` `location` `affected_sections` `violated_contract` `required_delta` `recheck` を返す。
 5. docs 反映が必要な仕様差分だけ `docs_sync_needed` に示す。
 6. 自分では修正、差分編集、worker への差し戻し実行を行わず、レビュー結果だけを返して終了する。
 
@@ -37,6 +38,7 @@ spec 抜粋、統合差分、検証結果、前回 findings を照合し、requi
 - `score` (0.0 - 1.0)
 - `severity`
 - `location`
+- `affected_sections`
 - `violated_contract`
 - `required_delta`
 - `recheck`
