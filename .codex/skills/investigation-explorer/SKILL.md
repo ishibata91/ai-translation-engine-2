@@ -15,7 +15,6 @@ description: AI Translation Engine 2 専用。investigation-distill で特定さ
 
 ## やること
 1. `investigation-direction` （および `investigation-distill` の結果）から渡された調査目的とポインタ（ファイル群・シンボル群）を確認する。
-2. ポインタで指定されたファイルは `server-filesystem` で読み、必要な行や周辺文脈を確認する。
 3. `pkg/` 以下の関数、メソッド、型、実装関係を辿るときは `go-llm-lens` を使い、呼び出し元や関連シンボルの文脈を構築する。
 5. 調査の目的に対する回答としての事実、仕様、ロジックの流れを詳細に整理したレポートを作成し、`investigation-direction` 側に返す。
 

@@ -20,6 +20,7 @@
   - 不具合、再現、原因切り分けは `fix-direction`
   - コード/仕様調査は `investigation-direction`
 
-## 進め方
-- `server-filesystem` MCP が入っている。検索、読み書き、参照は必ずこれを利用すること。
-- 書き込みも原則として `server-filesystem` を利用すること。
+### 利用可能なcliツール
+- jq
+- ast-grep
+  - 原則書き込み､読み込み､検索はast-grepを使うこと
