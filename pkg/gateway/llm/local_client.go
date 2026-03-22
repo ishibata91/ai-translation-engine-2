@@ -111,6 +111,7 @@ func (c *lmStudioClient) Complete(ctx context.Context, req Request) (Response, e
 	if c.config.Model == "" {
 		return Response{}, ErrModelRequired
 	}
+	logFinalPrompt(ctx, c.logger, "lmstudio", requestModeAttr(false), req)
 
 	var resp Response
 	err := RetryWithBackoff(ctx, c.retryCfg, func() error {
@@ -134,6 +135,7 @@ func (c *lmStudioClient) GenerateStructured(ctx context.Context, req Request) (R
 	if len(req.ResponseSchema) == 0 {
 		return Response{}, fmt.Errorf("lmstudio: response schema is required for structured generation")
 	}
+	logFinalPrompt(ctx, c.logger, "lmstudio", requestModeAttr(true), req)
 	var resp Response
 	err := RetryWithBackoff(ctx, c.retryCfg, func() error {
 		var innerErr error

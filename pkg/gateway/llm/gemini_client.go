@@ -99,10 +99,7 @@ func (c *geminiClient) ListModels(ctx context.Context) ([]ModelInfo, error) {
 // Complete はテキスト生成リクエストを実行し、結果を返す。
 func (c *geminiClient) Complete(ctx context.Context, req Request) (Response, error) {
 	defer telemetry2.StartSpan(ctx, telemetry2.ActionLLMRequest)()
-	c.logger.DebugContext(ctx, "Gemini request start",
-		slog.Int("system_prompt_len", len(req.SystemPrompt)),
-		slog.Int("user_prompt_len", len(req.UserPrompt)),
-	)
+	logFinalPrompt(ctx, c.logger, "gemini", requestModeAttr(false), req)
 
 	var resp Response
 	err := RetryWithBackoff(ctx, c.retryCfg, func() error {

@@ -317,6 +317,87 @@ func TestSyncExecutorExecuteWithProgress_FallsBackToSyncWhenResolvedStrategyIsSy
 	}
 }
 
+func TestSyncExecutorExecuteWithProgress_LoadsAndUnloadsLifecycleClient(t *testing.T) {
+	lifecycleClient := &stubLifecycleLLMClient{
+		stubLLMClient: stubLLMClient{
+			completeFn: func(req gatewayllm.Request) gatewayllm.Response {
+				return gatewayllm.Response{
+					Success:  true,
+					Content:  "ok",
+					Metadata: req.Metadata,
+				}
+			},
+		},
+	}
+	manager := &stubLLMManager{
+		bulkStrategy: gatewayllm.BulkStrategySync,
+		client:       lifecycleClient,
+	}
+	executor := NewSyncExecutor(manager)
+
+	responses, err := executor.ExecuteWithProgress(context.Background(), llmio.ExecutionConfig{
+		Provider:        "local-llm",
+		Model:           "local-model",
+		SyncConcurrency: 1,
+		ContextLength:   8192,
+	}, []llmio.Request{{Metadata: map[string]interface{}{"source_text": "A"}}}, nil)
+	if err != nil {
+		t.Fatalf("ExecuteWithProgress failed: %v", err)
+	}
+	if len(responses) != 1 || !responses[0].Success {
+		t.Fatalf("unexpected sync response: %+v", responses)
+	}
+	if lifecycleClient.loadCalls != 1 {
+		t.Fatalf("expected LoadModel once, got=%d", lifecycleClient.loadCalls)
+	}
+	if lifecycleClient.unloadCalls != 1 {
+		t.Fatalf("expected UnloadModel once, got=%d", lifecycleClient.unloadCalls)
+	}
+	if lifecycleClient.loadedModel != "local-model" {
+		t.Fatalf("loaded model = %q, want local-model", lifecycleClient.loadedModel)
+	}
+	if lifecycleClient.loadedContextLength != 8192 {
+		t.Fatalf("loaded context length = %d, want 8192", lifecycleClient.loadedContextLength)
+	}
+	if lifecycleClient.unloadedInstanceID != "instance-1" {
+		t.Fatalf("unloaded instance id = %q, want instance-1", lifecycleClient.unloadedInstanceID)
+	}
+}
+
+func TestSyncExecutorExecuteWithProgress_UnloadsLifecycleClientOnCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	lifecycleClient := &stubLifecycleLLMClient{
+		stubLLMClient: stubLLMClient{
+			completeResultFn: func(ctx context.Context, req gatewayllm.Request) (gatewayllm.Response, error) {
+				_ = req
+				cancel()
+				return gatewayllm.Response{}, ctx.Err()
+			},
+		},
+	}
+	manager := &stubLLMManager{
+		bulkStrategy: gatewayllm.BulkStrategySync,
+		client:       lifecycleClient,
+	}
+	executor := NewSyncExecutor(manager)
+
+	_, err := executor.ExecuteWithProgress(ctx, llmio.ExecutionConfig{
+		Provider:        "local-llm",
+		Model:           "local-model",
+		SyncConcurrency: 1,
+		ContextLength:   4096,
+	}, []llmio.Request{{Metadata: map[string]interface{}{"source_text": "A"}}}, nil)
+	if err == nil {
+		t.Fatal("expected cancellation error, got nil")
+	}
+	if lifecycleClient.loadCalls != 1 {
+		t.Fatalf("expected LoadModel once, got=%d", lifecycleClient.loadCalls)
+	}
+	if lifecycleClient.unloadCalls != 1 {
+		t.Fatalf("expected UnloadModel once on cancellation, got=%d", lifecycleClient.unloadCalls)
+	}
+}
+
 func assertProgressEndsAt(t *testing.T, progressLog []int, want int) {
 	t.Helper()
 	if len(progressLog) == 0 {
@@ -393,7 +474,8 @@ func (s *stubBatchClient) GetBatchResults(ctx context.Context, id gatewayllm.Bat
 }
 
 type stubLLMClient struct {
-	completeFn func(req gatewayllm.Request) gatewayllm.Response
+	completeFn       func(req gatewayllm.Request) gatewayllm.Response
+	completeResultFn func(ctx context.Context, req gatewayllm.Request) (gatewayllm.Response, error)
 }
 
 func (s *stubLLMClient) ListModels(ctx context.Context) ([]gatewayllm.ModelInfo, error) {
@@ -402,6 +484,9 @@ func (s *stubLLMClient) ListModels(ctx context.Context) ([]gatewayllm.ModelInfo,
 }
 
 func (s *stubLLMClient) Complete(ctx context.Context, req gatewayllm.Request) (gatewayllm.Response, error) {
+	if s.completeResultFn != nil {
+		return s.completeResultFn(ctx, req)
+	}
 	_ = ctx
 	if s.completeFn == nil {
 		return gatewayllm.Response{Success: true}, nil
@@ -427,5 +512,29 @@ func (s *stubLLMClient) GetEmbedding(ctx context.Context, text string) ([]float3
 
 func (s *stubLLMClient) HealthCheck(ctx context.Context) error {
 	_ = ctx
+	return nil
+}
+
+type stubLifecycleLLMClient struct {
+	stubLLMClient
+	loadCalls           int
+	unloadCalls         int
+	loadedModel         string
+	loadedContextLength int
+	unloadedInstanceID  string
+}
+
+func (s *stubLifecycleLLMClient) LoadModel(ctx context.Context, model string, contextLength int) (string, error) {
+	_ = ctx
+	s.loadCalls++
+	s.loadedModel = model
+	s.loadedContextLength = contextLength
+	return "instance-1", nil
+}
+
+func (s *stubLifecycleLLMClient) UnloadModel(ctx context.Context, instanceID string) error {
+	_ = ctx
+	s.unloadCalls++
+	s.unloadedInstanceID = instanceID
 	return nil
 }

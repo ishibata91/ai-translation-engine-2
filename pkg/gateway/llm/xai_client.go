@@ -91,10 +91,7 @@ func (c *xaiClient) ListModels(ctx context.Context) ([]ModelInfo, error) {
 // Complete はテキスト生成リクエストを実行し、結果を返す。
 func (c *xaiClient) Complete(ctx context.Context, req Request) (Response, error) {
 	defer telemetry2.StartSpan(ctx, telemetry2.ActionLLMRequest)()
-	c.logger.DebugContext(ctx, "xAI request start",
-		slog.Int("system_prompt_len", len(req.SystemPrompt)),
-		slog.Int("user_prompt_len", len(req.UserPrompt)),
-	)
+	logFinalPrompt(ctx, c.logger, "xai", requestModeAttr(false), req)
 
 	var resp Response
 	err := RetryWithBackoff(ctx, c.retryCfg, func() error {
@@ -513,6 +510,7 @@ func (b *xaiBatchClient) addRequests(ctx context.Context, batchID string, reqs [
 
 	batchReqs := make([]batchRequest, 0, len(reqs))
 	for i, req := range reqs {
+		logFinalPrompt(ctx, b.logger, "xai", "batch", req, requestIndexAttr(startIdx+i))
 		msgs := []message{}
 		if req.SystemPrompt != "" {
 			msgs = append(msgs, message{Role: "system", Content: req.SystemPrompt})

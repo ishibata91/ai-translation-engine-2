@@ -2,6 +2,7 @@ package llmexec
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -61,17 +62,61 @@ func (e *SyncExecutor) executeSync(
 ) ([]llmio.Response, error) {
 	client, err := e.llmManager.GetClient(ctx, llmConfig)
 	if err != nil {
-		return nil, fmt.Errorf("create terminology llm client: %w", err)
+		return nil, fmt.Errorf("create llm client: %w", err)
+	}
+
+	var lifecycleClient gatewayllm.ModelLifecycleClient
+	instanceID := ""
+	if lifecycle, ok := client.(gatewayllm.ModelLifecycleClient); ok {
+		lifecycleClient = lifecycle
+		ctxLen := extractContextLength(llmConfig.Parameters)
+		var loadErr error
+		instanceID, loadErr = lifecycleClient.LoadModel(ctx, llmConfig.Model, ctxLen)
+		if loadErr != nil {
+			return nil, fmt.Errorf("load model: %w", loadErr)
+		}
 	}
 
 	gatewayReqs := toGatewayRequests(requests, false)
 
 	responses, err := gatewayllm.ExecuteBulkSyncWithProgress(ctx, client, gatewayReqs, llmConfig.Concurrency, progress)
+	if lifecycleClient != nil {
+		unloadCtx := context.WithoutCancel(ctx)
+		if unloadErr := lifecycleClient.UnloadModel(unloadCtx, instanceID); unloadErr != nil {
+			unloadWrapped := fmt.Errorf("unload model: %w", unloadErr)
+			if err != nil {
+				return nil, errors.Join(err, unloadWrapped)
+			}
+			return nil, unloadWrapped
+		}
+	}
 	if err != nil {
 		return nil, fmt.Errorf("execute bulk sync: %w", err)
 	}
 
 	return toExecutionResponses(responses), nil
+}
+
+func extractContextLength(parameters map[string]interface{}) int {
+	if len(parameters) == 0 {
+		return 0
+	}
+	raw, ok := parameters["context_length"]
+	if !ok {
+		return 0
+	}
+	switch value := raw.(type) {
+	case int:
+		return value
+	case int32:
+		return int(value)
+	case int64:
+		return int(value)
+	case float64:
+		return int(value)
+	default:
+		return 0
+	}
 }
 
 func (e *SyncExecutor) executeBatch(
@@ -88,7 +133,7 @@ func (e *SyncExecutor) executeBatch(
 	gatewayReqs, requestOrder := toBatchGatewayRequests(requests)
 	jobID, err := batchClient.SubmitBatch(ctx, gatewayReqs)
 	if err != nil {
-		return nil, fmt.Errorf("submit terminology batch: %w", err)
+		return nil, fmt.Errorf("submit batch: %w", err)
 	}
 	if progress != nil {
 		progress(0, len(requests))
@@ -97,7 +142,7 @@ func (e *SyncExecutor) executeBatch(
 	for {
 		status, statusErr := batchClient.GetBatchStatus(ctx, jobID)
 		if statusErr != nil {
-			return nil, fmt.Errorf("poll terminology batch status: %w", statusErr)
+			return nil, fmt.Errorf("poll batch status: %w", statusErr)
 		}
 		if progress != nil {
 			progress(batchProgressToCompleted(status.Progress, len(requests)), len(requests))
@@ -115,7 +160,7 @@ func (e *SyncExecutor) executeBatch(
 
 	responses, err := batchClient.GetBatchResults(ctx, jobID)
 	if err != nil {
-		return nil, fmt.Errorf("fetch terminology batch results: %w", err)
+		return nil, fmt.Errorf("fetch batch results: %w", err)
 	}
 	if progress != nil {
 		progress(len(requests), len(requests))

@@ -76,6 +76,7 @@ func (b *geminiBatchClient) SubmitBatch(ctx context.Context, reqs []Request) (Ba
 	body.Batch.DisplayName = fmt.Sprintf("batch-%d", time.Now().UTC().Unix())
 
 	for idx, req := range reqs {
+		logFinalPrompt(ctx, b.logger, "gemini", "batch", req, requestIndexAttr(idx))
 		inlineReq := inlinedRequest{}
 		inlineReq.Request.Contents = []content{{
 			Role:  "user",
