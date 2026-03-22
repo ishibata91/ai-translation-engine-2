@@ -13,8 +13,7 @@ import {useTranslationFlow} from '../hooks/features/translationFlow/useTranslati
 export default function TranslationFlow() {
     const {state, actions} = useTranslationFlow();
     const isTerminologyOperationRunning = state.isTerminologyRunning
-        || state.terminologySummary.status === 'running'
-        || state.terminologyTargetStatus === 'loading';
+        || state.terminologySummary.status === 'running';
 
     useEffect(() => {
         const currentHash = window.location.hash;

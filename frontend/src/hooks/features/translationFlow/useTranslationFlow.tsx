@@ -470,6 +470,7 @@ export function useTranslationFlow(): UseTranslationFlowWithPersonaResult {
     const [terminologyTargetErrorMessage, setTerminologyTargetErrorMessage] = useState('');
     const [isTerminologyTargetLoading, setIsTerminologyTargetLoading] = useState(false);
     const [isTerminologyRunning, setIsTerminologyRunning] = useState(false);
+    const isTerminologyRunInFlightRef = useRef(false);
     const [personaSummary, setPersonaSummary] = useState<PersonaPhaseSummary>(EMPTY_PERSONA_SUMMARY);
     const [personaErrorMessage, setPersonaErrorMessage] = useState('');
     const [personaTargetPage, setPersonaTargetPage] = useState<PersonaTargetPreviewPage>(
@@ -509,6 +510,12 @@ export function useTranslationFlow(): UseTranslationFlowWithPersonaResult {
     useWailsEvent<WailsTerminologyProgressEvent>(TERMINOLOGY_PROGRESS_EVENT, (payload) => {
         const eventTaskId = pickProgressEventString(payload.task_id ?? payload.taskId ?? payload.TaskID);
         const eventStatus = pickProgressEventString(payload.status ?? payload.Status);
+        const progressTotal = Math.max(0, pickProgressEventNumber(payload.total ?? payload.Total));
+        const progressCurrent = Math.max(
+            0,
+            pickProgressEventNumber(payload.current ?? payload.Current ?? payload.completed ?? payload.Completed),
+        );
+        const incomingMessage = pickProgressEventString(payload.message ?? payload.Message);
         if (eventTaskId === '' || (taskId !== '' && eventTaskId !== taskId)) {
             return;
         }
@@ -517,12 +524,12 @@ export function useTranslationFlow(): UseTranslationFlowWithPersonaResult {
             return;
         }
 
-        const progressTotal = Math.max(0, pickProgressEventNumber(payload.total ?? payload.Total));
-        const progressCurrent = Math.max(
-            0,
-            pickProgressEventNumber(payload.current ?? payload.Current ?? payload.completed ?? payload.Completed),
-        );
-        const incomingMessage = pickProgressEventString(payload.message ?? payload.Message);
+        const shouldApplyProgress = isTerminologyRunInFlightRef.current
+            || isTerminologyRunning
+            || terminologySummary.status === 'running';
+        if (!shouldApplyProgress) {
+            return;
+        }
 
         setTerminologySummary((prev) => {
             const monotonicCurrent = Math.max(prev.progressCurrent, progressCurrent);
@@ -578,6 +585,7 @@ export function useTranslationFlow(): UseTranslationFlowWithPersonaResult {
             const payload = await GetTranslationFlowTerminology(nextTaskId);
             const summary = mapTerminologyPhaseResult(payload);
             const resolvedTaskId = summary.taskId || nextTaskId;
+            const nextIsTerminologyRunning = summary.status === 'running';
 
             if (resolvedTaskId !== '' && resolvedTaskId !== taskId) {
                 setTaskID(resolvedTaskId);
@@ -587,7 +595,7 @@ export function useTranslationFlow(): UseTranslationFlowWithPersonaResult {
                 ...summary,
                 taskId: resolvedTaskId,
             });
-            setIsTerminologyRunning(summary.status === 'running');
+            setIsTerminologyRunning(nextIsTerminologyRunning);
             setTerminologyErrorMessage('');
             return resolvedTaskId;
         } catch (error) {
@@ -1185,6 +1193,7 @@ export function useTranslationFlow(): UseTranslationFlowWithPersonaResult {
             return;
         }
         const runStartedAt = Date.now();
+        isTerminologyRunInFlightRef.current = true;
         setIsTerminologyRunning(true);
         setTerminologyErrorMessage('');
         const initialTotal = Math.max(0, terminologyTargetPage.totalRows);
@@ -1244,6 +1253,7 @@ export function useTranslationFlow(): UseTranslationFlowWithPersonaResult {
                     window.setTimeout(resolve, minimumRunningMs - elapsedMs);
                 });
             }
+            isTerminologyRunInFlightRef.current = false;
             setIsTerminologyRunning(false);
         }
     }, [

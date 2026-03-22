@@ -1,5 +1,5 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
-import {cleanup, fireEvent, render, screen, waitFor} from '@testing-library/react';
+import {act, cleanup, fireEvent, render, screen, waitFor} from '@testing-library/react';
 import {MemoryRouter} from 'react-router-dom';
 import {useTranslationFlow} from './useTranslationFlow';
 import {ConfigGetAll, ConfigSet} from '../../../wailsjs/go/controller/ConfigController';
@@ -16,12 +16,16 @@ const runtimeEventHandlers = new Map<string, (payload: unknown) => void>();
 const listPersonaTargetsMock = vi.fn();
 const runPersonaPhaseMock = vi.fn();
 const getPersonaPhaseMock = vi.fn();
+const writeTelemetryLogMock = vi.fn().mockResolvedValue(undefined);
 
 const installPersonaBinding = (): void => {
     (window as unknown as {
         go?: {
             controller?: {
                 TaskController?: Record<string, unknown>;
+                TelemetryController?: {
+                    WriteLog: (payload: unknown) => Promise<void>;
+                };
             };
         };
     }).go = {
@@ -30,6 +34,9 @@ const installPersonaBinding = (): void => {
                 ListTranslationFlowPersonaTargets: listPersonaTargetsMock,
                 RunTranslationFlowPersona: runPersonaPhaseMock,
                 GetTranslationFlowPersona: getPersonaPhaseMock,
+            },
+            TelemetryController: {
+                WriteLog: writeTelemetryLogMock,
             },
         },
     };
@@ -81,10 +88,13 @@ function RunProbe() {
         <div>
             <div data-testid="task-id">{state.taskId}</div>
             <div data-testid="terminology-status">{state.terminologyStatusLabel}</div>
+            <div data-testid="terminology-summary-status">{state.terminologySummary.status}</div>
+            <div data-testid="terminology-running-flag">{state.isTerminologyRunning ? 'true' : 'false'}</div>
             <div data-testid="terminology-error">{state.terminologyErrorMessage}</div>
             <div data-testid="terminology-progress">
                 {state.terminologySummary.progressCurrent}/{state.terminologySummary.progressTotal}
             </div>
+            <div data-testid="terminology-target-total">{state.terminologyTargetPage.totalRows}</div>
             <button type="button" onClick={() => void actions.handleRunTerminologyPhase()}>
                 run terminology
             </button>
@@ -500,6 +510,57 @@ describe('useTranslationFlow terminology run', () => {
         });
     });
 
+    it('未開始 phase では IN_PROGRESS イベント単独で running にしない', async () => {
+        vi.mocked(ListTranslationFlowTerminologyTargets).mockResolvedValue(asTerminologyTargetPage({
+            task_id: 'existing-task',
+            page: 1,
+            page_size: 50,
+            total_rows: 1,
+            rows: [{
+                id: 'row-1',
+                record_type: 'NPC_:FULL',
+                editor_id: 'NPC_B_03',
+                source_text: 'NPC Name B-03',
+                translated_text: '',
+                translation_state: 'missing',
+                variant: 'full',
+                source_file: 'Update.esm.extract.json',
+            }],
+        }));
+
+        render(
+            <MemoryRouter initialEntries={['/translation_flow']}>
+                <RunProbe />
+            </MemoryRouter>,
+        );
+
+        await waitFor(() => {
+            expect(screen.getByTestId('task-id')).toHaveTextContent('existing-task');
+        });
+        await waitFor(() => {
+            expect(screen.getByTestId('terminology-summary-status')).toHaveTextContent('pending');
+        });
+        expect(screen.getByTestId('terminology-running-flag')).toHaveTextContent('false');
+
+        const handler = runtimeEventHandlers.get('translation_flow.terminology.progress');
+        expect(handler).toBeDefined();
+        await act(async () => {
+            handler?.({
+                TaskID: 'existing-task',
+                Status: 'IN_PROGRESS',
+                Current: 1,
+                Total: 8,
+                Message: '1 / 8 件を処理中',
+            });
+        });
+
+        await waitFor(() => {
+            expect(screen.getByTestId('terminology-summary-status')).toHaveTextContent('pending');
+        });
+        expect(screen.getByTestId('terminology-running-flag')).toHaveTextContent('false');
+        expect(screen.getByTestId('terminology-progress')).toHaveTextContent('0/0');
+    });
+
     it('terminology progress イベントで実行中ラベルと進捗値を更新する', async () => {
         vi.mocked(RunTranslationFlowTerminology).mockImplementation(
             async () => new Promise((resolve) => {
@@ -550,6 +611,9 @@ describe('useTranslationFlow terminology run', () => {
 
         await waitFor(() => {
             expect(screen.getByTestId('task-id')).toHaveTextContent('existing-task');
+        });
+        await waitFor(() => {
+            expect(screen.getByTestId('terminology-target-total')).toHaveTextContent('1');
         });
 
         fireEvent.click(screen.getByRole('button', {name: 'run terminology'}));
