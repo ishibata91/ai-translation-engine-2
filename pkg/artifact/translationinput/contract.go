@@ -53,6 +53,43 @@ type TerminologyEntry struct {
 	Variant    string
 }
 
+// PersonaInput groups raw NPC/dialogue inputs for one persona-generation run.
+type PersonaInput struct {
+	TaskID    string
+	NPCs      map[string]PersonaNPC
+	Dialogues []PersonaDialogue
+}
+
+// PersonaNPC represents one NPC row projected for persona candidate planning.
+type PersonaNPC struct {
+	SpeakerID      string
+	SourceRecordID string
+	NPCKey         string
+	EditorID       string
+	RecordType     string
+	NPCName        string
+	Race           string
+	Sex            string
+	VoiceType      string
+	SourcePlugin   string
+	SourceHint     string
+}
+
+// PersonaDialogue represents one dialogue row projected for persona candidate planning.
+type PersonaDialogue struct {
+	ID               string
+	SpeakerID        string
+	EditorID         string
+	GroupEditorID    string
+	RecordType       string
+	Text             string
+	QuestID          string
+	SourcePlugin     string
+	SourceHint       string
+	IsServicesBranch bool
+	Order            int
+}
+
 // Repository defines artifact persistence operations for translation-flow input data.
 type Repository interface {
 	EnsureTask(ctx context.Context, taskID string) error
@@ -60,4 +97,5 @@ type Repository interface {
 	ListFiles(ctx context.Context, taskID string) ([]InputFile, error)
 	ListPreviewRows(ctx context.Context, fileID int64, page int, pageSize int) (PreviewPage, error)
 	LoadTerminologyInput(ctx context.Context, taskID string) (TerminologyInput, error)
+	LoadPersonaInput(ctx context.Context, taskID string) (PersonaInput, error)
 }

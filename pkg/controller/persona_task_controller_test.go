@@ -1,11 +1,13 @@
 package controller
 
 import (
+	"context"
 	"errors"
 	"testing"
 
 	runtimequeue "github.com/ishibata91/ai-translation-engine-2/pkg/runtime/queue"
 	personataskcontrollertest "github.com/ishibata91/ai-translation-engine-2/pkg/tests/api_tests/personataskcontroller"
+	"github.com/ishibata91/ai-translation-engine-2/pkg/workflow"
 	task "github.com/ishibata91/ai-translation-engine-2/pkg/workflow/task"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -131,7 +133,7 @@ func TestPersonaTaskController_API_TableDriven(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			env := personataskcontrollertest.Build(t, tc.name)
-			controller := NewPersonaTaskController(env.Manager, env.Workflow)
+			controller := NewPersonaTaskController(env.Manager, &masterPersonaWorkflowAdapter{FakeWorkflow: env.Workflow})
 			controller.SetContext(env.TestEnv.Ctx)
 			tc.run(t, controller, env)
 		})
@@ -160,4 +162,16 @@ func TestPersonaTaskController_NilWorkflowGuards(t *testing.T) {
 	assert.Contains(t, err.Error(), "not configured")
 
 	assert.NotPanics(t, func() { controller.CancelTask("task-1") })
+}
+
+type masterPersonaWorkflowAdapter struct {
+	*personataskcontrollertest.FakeWorkflow
+}
+
+func (a *masterPersonaWorkflowAdapter) RunPersonaPhase(context.Context, workflow.PersonaExecutionInput) error {
+	return nil
+}
+
+func (a *masterPersonaWorkflowAdapter) ListPersonaRuntime(context.Context, string) ([]workflow.PersonaRuntimeEntry, error) {
+	return nil, nil
 }

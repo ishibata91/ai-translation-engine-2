@@ -13,6 +13,27 @@ import {
 import type {FrontendTask} from '../../../types/task';
 
 const runtimeEventHandlers = new Map<string, (payload: unknown) => void>();
+const listPersonaTargetsMock = vi.fn();
+const runPersonaPhaseMock = vi.fn();
+const getPersonaPhaseMock = vi.fn();
+
+const installPersonaBinding = (): void => {
+    (window as unknown as {
+        go?: {
+            controller?: {
+                TaskController?: Record<string, unknown>;
+            };
+        };
+    }).go = {
+        controller: {
+            TaskController: {
+                ListTranslationFlowPersonaTargets: listPersonaTargetsMock,
+                RunTranslationFlowPersona: runPersonaPhaseMock,
+                GetTranslationFlowPersona: getPersonaPhaseMock,
+            },
+        },
+    };
+};
 
 vi.mock('../../../wailsjs/go/controller/ConfigController', () => ({
     ConfigGetAll: vi.fn(),
@@ -107,6 +128,40 @@ function ConfigProbe() {
     );
 }
 
+function PersonaProbe() {
+    const {state, actions} = useTranslationFlow();
+
+    return (
+        <div>
+            <div data-testid="task-id">{state.taskId}</div>
+            <div data-testid="active-tab">{state.activeTab}</div>
+            <div data-testid="persona-status">{state.personaTargetStatus}</div>
+            <div data-testid="persona-label">{state.personaStatusLabel}</div>
+            <div data-testid="persona-error">{state.personaErrorMessage}</div>
+            <div data-testid="persona-selected-speaker">{state.selectedPersonaTarget?.speakerId ?? ''}</div>
+            <div data-testid="terminology-provider">{state.terminologyConfig.provider}</div>
+            <button type="button" onClick={() => void actions.handleRunPersonaPhase()}>
+                run persona
+            </button>
+            <button type="button" onClick={() => void actions.handleRetryPersonaPhase()}>
+                retry persona
+            </button>
+            <button type="button" onClick={() => actions.handleTabChange(2)}>
+                go persona tab
+            </button>
+            <button type="button" onClick={() => actions.handleTabChange(3)}>
+                go summary tab
+            </button>
+            <button type="button" onClick={() => actions.handleAdvanceFromPersona()}>
+                advance persona
+            </button>
+            <button type="button" onClick={() => actions.handleSelectPersonaTarget('Skyrim.esm', 'npc-b')}>
+                select npc-b
+            </button>
+        </div>
+    );
+}
+
 const buildTask = (overrides: Partial<FrontendTask>): FrontendTask => ({
     id: 'task-default',
     name: 'default task',
@@ -144,10 +199,103 @@ const asTerminologyTargetPage = (
 
 const asConfigMap = (value: Record<string, string>): Record<string, string> => value;
 
+const buildLoadedFilesResult = (taskId: string) => asLoadResult({
+    task_id: taskId,
+    files: [{
+        file_id: 1,
+        file_path: 'Data/Update.esm.extract.json',
+        file_name: 'Update.esm.extract.json',
+        parse_status: 'ready',
+        preview_count: 1,
+        preview: {
+            file_id: 1,
+            page: 1,
+            page_size: 50,
+            total_rows: 1,
+            rows: [{
+                id: 'load-row-1',
+                section: 'dialogue',
+                record_type: 'NPC_:FULL',
+                editor_id: 'NPC_A_01',
+                source_text: 'NPC Name A-01',
+            }],
+        },
+    }],
+});
+
+const buildPersonaPhaseResult = (overrides: Record<string, unknown> = {}): Record<string, unknown> => ({
+    task_id: 'existing-task',
+    status: 'ready',
+    detected_count: 2,
+    reused_count: 1,
+    pending_count: 1,
+    generated_count: 0,
+    failed_count: 0,
+    progress_mode: 'hidden',
+    progress_current: 0,
+    progress_total: 0,
+    progress_message: '',
+    ...overrides,
+});
+
+const buildPersonaTargetRow = (overrides: Record<string, unknown> = {}): Record<string, unknown> => ({
+    source_plugin: 'Skyrim.esm',
+    speaker_id: 'npc-a',
+    editor_id: 'NPC_A_01',
+    npc_name: 'NPC A',
+    race: 'Nord',
+    sex: 'female',
+    voice_type: 'FemaleNord',
+    view_state: 'pending',
+    persona_text: '',
+    error_message: '',
+    dialogues: [{
+        record_type: 'DIAL',
+        editor_id: 'DIAL_001',
+        source_text: 'Hello there',
+        quest_id: 'QST_001',
+        is_services_branch: false,
+        order: 1,
+    }],
+    ...overrides,
+});
+
+const buildPersonaTargetPage = (
+    taskId: string,
+    rows: Record<string, unknown>[] = [buildPersonaTargetRow()],
+    overrides: Record<string, unknown> = {},
+): Record<string, unknown> => ({
+    task_id: taskId,
+    page: 1,
+    page_size: 50,
+    total_rows: rows.length,
+    rows,
+    ...overrides,
+});
+
+const installDefaultPersonaMocks = (taskId: string): void => {
+    installPersonaBinding();
+    listPersonaTargetsMock.mockResolvedValue(buildPersonaTargetPage(taskId, []));
+    runPersonaPhaseMock.mockResolvedValue(buildPersonaPhaseResult({
+        task_id: taskId,
+        status: 'completed',
+        pending_count: 0,
+        generated_count: 1,
+    }));
+    getPersonaPhaseMock.mockResolvedValue(buildPersonaPhaseResult({
+        task_id: taskId,
+        status: 'empty',
+        detected_count: 0,
+        reused_count: 0,
+        pending_count: 0,
+    }));
+};
+
 describe('useTranslationFlow task resolution', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         runtimeEventHandlers.clear();
+        installDefaultPersonaMocks('resolved-task');
         vi.mocked(ConfigGetAll).mockResolvedValue({});
         vi.mocked(GetTranslationFlowTerminology).mockResolvedValue(asTerminologyPhaseResult({
             task_id: 'resolved-task',
@@ -201,6 +349,14 @@ describe('useTranslationFlow task resolution', () => {
             task_id: 'existing-task',
             files: [],
         }));
+        getPersonaPhaseMock.mockResolvedValue(buildPersonaPhaseResult({
+            task_id: 'existing-task',
+            status: 'empty',
+            detected_count: 0,
+            reused_count: 0,
+            pending_count: 0,
+        }));
+        listPersonaTargetsMock.mockResolvedValue(buildPersonaTargetPage('existing-task', []));
 
         render(
             <MemoryRouter initialEntries={[{pathname: '/translation_flow', state: {taskId: 'deleted-task'}}]}>
@@ -236,6 +392,7 @@ describe('useTranslationFlow terminology run', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         runtimeEventHandlers.clear();
+        installDefaultPersonaMocks('existing-task');
         vi.mocked(ConfigGetAll).mockImplementation(async (namespace: string) => {
             if (namespace === 'translation_flow.terminology.llm') {
                 return asConfigMap({model: 'gemini-2.5-flash', provider: 'gemini'});
@@ -408,6 +565,7 @@ describe('useTranslationFlow terminology pagination', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         runtimeEventHandlers.clear();
+        installDefaultPersonaMocks('existing-task');
         vi.mocked(ConfigGetAll).mockResolvedValue(asConfigMap({}));
         vi.mocked(GetAllTasks).mockResolvedValue(asTaskList([
             buildTask({id: 'existing-task', updated_at: '2026-03-18T10:00:00.000Z'}),
@@ -491,6 +649,7 @@ describe('useTranslationFlow terminology config namespace', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         runtimeEventHandlers.clear();
+        installDefaultPersonaMocks('existing-task');
         vi.mocked(ConfigSet).mockResolvedValue(undefined as never);
         vi.mocked(GetAllTasks).mockResolvedValue(asTaskList([
             buildTask({id: 'existing-task', updated_at: '2026-03-18T10:00:00.000Z'}),
@@ -615,5 +774,365 @@ describe('useTranslationFlow terminology config namespace', () => {
             'model',
             'grok-3-beta',
         );
+    });
+});
+
+describe('useTranslationFlow persona phase', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        runtimeEventHandlers.clear();
+        installPersonaBinding();
+        vi.mocked(ConfigSet).mockResolvedValue(undefined as never);
+        vi.mocked(ConfigGetAll).mockImplementation(async (namespace: string) => {
+            if (namespace === 'translation_flow.terminology.llm') {
+                return asConfigMap({selected_provider: 'xai'});
+            }
+            if (namespace === 'translation_flow.terminology.llm.xai') {
+                return asConfigMap({
+                    model: 'grok-3-beta',
+                    endpoint: 'https://api.x.ai/v1',
+                    api_key: 'persona-api-key',
+                    temperature: '0.2',
+                    context_length: '12288',
+                    sync_concurrency: '3',
+                    bulk_strategy: 'batch',
+                });
+            }
+            if (namespace === 'translation_flow.terminology.prompt') {
+                return asConfigMap({
+                    user_prompt: 'persona-user-prompt',
+                    system_prompt: 'persona-system-prompt',
+                });
+            }
+            return asConfigMap({});
+        });
+        vi.mocked(GetAllTasks).mockResolvedValue(asTaskList([
+            buildTask({id: 'existing-task', updated_at: '2026-03-18T10:00:00.000Z'}),
+        ]));
+        vi.mocked(GetTranslationFlowTerminology).mockResolvedValue(asTerminologyPhaseResult({
+            task_id: 'existing-task',
+            status: 'completed',
+            saved_count: 8,
+            failed_count: 0,
+            progress_mode: 'hidden',
+            progress_current: 8,
+            progress_total: 8,
+            progress_message: '',
+        }));
+        vi.mocked(ListTranslationFlowTerminologyTargets).mockResolvedValue(asTerminologyTargetPage({
+            task_id: 'existing-task',
+            page: 1,
+            page_size: 50,
+            total_rows: 1,
+            rows: [{
+                id: 'row-1',
+                record_type: 'NPC_:FULL',
+                editor_id: 'NPC_A_01',
+                source_text: 'NPC Name A-01',
+                translated_text: 'NPC 名 A-01',
+                translation_state: 'translated',
+                variant: 'full',
+                source_file: 'Update.esm.extract.json',
+            }],
+        }));
+        vi.mocked(ListLoadedTranslationFlowFiles).mockResolvedValue(buildLoadedFilesResult('existing-task'));
+        getPersonaPhaseMock.mockResolvedValue(buildPersonaPhaseResult({
+            task_id: 'existing-task',
+            status: 'ready',
+            detected_count: 2,
+            reused_count: 1,
+            pending_count: 1,
+        }));
+        listPersonaTargetsMock.mockResolvedValue(buildPersonaTargetPage('existing-task', [
+            buildPersonaTargetRow({
+                source_plugin: 'Skyrim.esm',
+                speaker_id: 'npc-a',
+                view_state: 'reused',
+                persona_text: 'cached persona',
+            }),
+            buildPersonaTargetRow({
+                source_plugin: 'Skyrim.esm',
+                speaker_id: 'npc-b',
+                editor_id: 'NPC_B_01',
+                npc_name: 'NPC B',
+                view_state: 'pending',
+                persona_text: '',
+            }),
+        ]));
+        runPersonaPhaseMock.mockResolvedValue(buildPersonaPhaseResult({
+            task_id: 'existing-task',
+            status: 'completed',
+            detected_count: 2,
+            reused_count: 1,
+            pending_count: 0,
+            generated_count: 1,
+            failed_count: 0,
+        }));
+    });
+
+    afterEach(() => {
+        cleanup();
+    });
+
+    it('resume 時に persona summary と target 一覧を再読込し、選択状態を更新できる', async () => {
+        getPersonaPhaseMock.mockResolvedValue(buildPersonaPhaseResult({
+            task_id: 'existing-task',
+            status: 'partial_failed',
+            detected_count: 2,
+            reused_count: 1,
+            pending_count: 0,
+            generated_count: 0,
+            failed_count: 1,
+        }));
+        listPersonaTargetsMock.mockResolvedValue(buildPersonaTargetPage('existing-task', [
+            buildPersonaTargetRow({
+                source_plugin: 'Skyrim.esm',
+                speaker_id: 'npc-a',
+                view_state: 'reused',
+                persona_text: 'cached persona',
+            }),
+            buildPersonaTargetRow({
+                source_plugin: 'Skyrim.esm',
+                speaker_id: 'npc-b',
+                editor_id: 'NPC_B_01',
+                npc_name: 'NPC B',
+                view_state: 'failed',
+                error_message: 'llm timeout',
+            }),
+        ]));
+
+        render(
+            <MemoryRouter initialEntries={['/translation_flow']}>
+                <PersonaProbe />
+            </MemoryRouter>,
+        );
+
+        await waitFor(() => {
+            expect(screen.getByTestId('task-id')).toHaveTextContent('existing-task');
+        });
+        await waitFor(() => {
+            expect(screen.getByTestId('persona-status')).toHaveTextContent('partialFailed');
+        });
+        expect(getPersonaPhaseMock).toHaveBeenCalledWith('existing-task');
+        expect(listPersonaTargetsMock).toHaveBeenCalledWith('existing-task', 1, 50);
+        expect(screen.getByTestId('persona-selected-speaker')).toHaveTextContent('npc-a');
+
+        fireEvent.click(screen.getByRole('button', {name: 'select npc-b'}));
+
+        await waitFor(() => {
+            expect(screen.getByTestId('persona-selected-speaker')).toHaveTextContent('npc-b');
+        });
+    });
+
+    it('persona status が empty のときは実行不可で、次 phase への advance は可能', async () => {
+        getPersonaPhaseMock.mockResolvedValue(buildPersonaPhaseResult({
+            task_id: 'existing-task',
+            status: 'empty',
+            detected_count: 0,
+            reused_count: 0,
+            pending_count: 0,
+            generated_count: 0,
+            failed_count: 0,
+        }));
+        listPersonaTargetsMock.mockResolvedValue(buildPersonaTargetPage('existing-task', []));
+
+        render(
+            <MemoryRouter initialEntries={['/translation_flow']}>
+                <PersonaProbe />
+            </MemoryRouter>,
+        );
+
+        await waitFor(() => {
+            expect(screen.getByTestId('persona-status')).toHaveTextContent('empty');
+        });
+
+        fireEvent.click(screen.getByRole('button', {name: 'run persona'}));
+
+        await waitFor(() => {
+            expect(screen.getByTestId('persona-error')).toHaveTextContent('ペルソナ生成対象 NPC がありません。');
+        });
+        expect(runPersonaPhaseMock).not.toHaveBeenCalled();
+
+        fireEvent.click(screen.getByRole('button', {name: 'advance persona'}));
+
+        await waitFor(() => {
+            expect(screen.getByTestId('active-tab')).toHaveTextContent('3');
+        });
+    });
+
+    it('persona status が cachedOnly のときは実行せず、次 phase への advance は可能', async () => {
+        getPersonaPhaseMock.mockResolvedValue(buildPersonaPhaseResult({
+            task_id: 'existing-task',
+            status: 'cached_only',
+            detected_count: 1,
+            reused_count: 1,
+            pending_count: 0,
+            generated_count: 0,
+            failed_count: 0,
+        }));
+        listPersonaTargetsMock.mockResolvedValue(buildPersonaTargetPage('existing-task', [
+            buildPersonaTargetRow({
+                source_plugin: 'Skyrim.esm',
+                speaker_id: 'npc-a',
+                view_state: 'reused',
+                persona_text: 'cached persona',
+            }),
+        ]));
+
+        render(
+            <MemoryRouter initialEntries={['/translation_flow']}>
+                <PersonaProbe />
+            </MemoryRouter>,
+        );
+
+        await waitFor(() => {
+            expect(screen.getByTestId('persona-status')).toHaveTextContent('cachedOnly');
+        });
+
+        fireEvent.click(screen.getByRole('button', {name: 'run persona'}));
+        expect(runPersonaPhaseMock).not.toHaveBeenCalled();
+
+        fireEvent.click(screen.getByRole('button', {name: 'advance persona'}));
+
+        await waitFor(() => {
+            expect(screen.getByTestId('active-tab')).toHaveTextContent('3');
+        });
+    });
+
+    it('persona status が running のときは再実行も次 phase 遷移もできない', async () => {
+        getPersonaPhaseMock.mockResolvedValue(buildPersonaPhaseResult({
+            task_id: 'existing-task',
+            status: 'running',
+            detected_count: 2,
+            reused_count: 1,
+            pending_count: 1,
+            generated_count: 0,
+            failed_count: 0,
+            progress_mode: 'determinate',
+            progress_current: 1,
+            progress_total: 2,
+            progress_message: '1 / 2 件（残り 1 件）',
+        }));
+        listPersonaTargetsMock.mockResolvedValue(buildPersonaTargetPage('existing-task', [
+            buildPersonaTargetRow({
+                source_plugin: 'Skyrim.esm',
+                speaker_id: 'npc-a',
+                view_state: 'reused',
+                persona_text: 'cached persona',
+            }),
+            buildPersonaTargetRow({
+                source_plugin: 'Skyrim.esm',
+                speaker_id: 'npc-b',
+                view_state: 'running',
+            }),
+        ]));
+
+        render(
+            <MemoryRouter initialEntries={['/translation_flow']}>
+                <PersonaProbe />
+            </MemoryRouter>,
+        );
+
+        await waitFor(() => {
+            expect(screen.getByTestId('persona-status')).toHaveTextContent('running');
+        });
+
+        fireEvent.click(screen.getByRole('button', {name: 'run persona'}));
+        fireEvent.click(screen.getByRole('button', {name: 'advance persona'}));
+
+        expect(runPersonaPhaseMock).not.toHaveBeenCalled();
+        expect(screen.getByTestId('active-tab')).toHaveTextContent('0');
+    });
+
+    it('partialFailed では retry でき、実行時に terminology 設定と prompt を再利用する', async () => {
+        getPersonaPhaseMock.mockResolvedValue(buildPersonaPhaseResult({
+            task_id: 'existing-task',
+            status: 'partial_failed',
+            detected_count: 2,
+            reused_count: 1,
+            pending_count: 0,
+            generated_count: 0,
+            failed_count: 1,
+        }));
+        listPersonaTargetsMock.mockResolvedValue(buildPersonaTargetPage('existing-task', [
+            buildPersonaTargetRow({
+                source_plugin: 'Skyrim.esm',
+                speaker_id: 'npc-a',
+                view_state: 'reused',
+                persona_text: 'cached persona',
+            }),
+            buildPersonaTargetRow({
+                source_plugin: 'Skyrim.esm',
+                speaker_id: 'npc-b',
+                view_state: 'failed',
+                error_message: 'llm timeout',
+            }),
+        ]));
+
+        render(
+            <MemoryRouter initialEntries={['/translation_flow']}>
+                <PersonaProbe />
+            </MemoryRouter>,
+        );
+
+        await waitFor(() => {
+            expect(screen.getByTestId('persona-status')).toHaveTextContent('partialFailed');
+        });
+        await waitFor(() => {
+            expect(screen.getByTestId('terminology-provider')).toHaveTextContent('xai');
+        });
+
+        fireEvent.click(screen.getByRole('button', {name: 'retry persona'}));
+
+        await waitFor(() => {
+            expect(runPersonaPhaseMock).toHaveBeenCalled();
+        });
+        expect(runPersonaPhaseMock).toHaveBeenCalledWith(
+            'existing-task',
+            expect.objectContaining({
+                provider: 'xai',
+                model: 'grok-3-beta',
+                endpoint: 'https://api.x.ai/v1',
+                api_key: 'persona-api-key',
+                temperature: 0.2,
+                context_length: 12288,
+                sync_concurrency: 3,
+                bulk_strategy: 'batch',
+            }),
+            expect.objectContaining({
+                user_prompt: 'persona-user-prompt',
+                system_prompt: 'persona-system-prompt',
+            }),
+        );
+    });
+
+    it('tab 遷移は persona 完了前は summary を拒否し、完了後に許可する', async () => {
+        render(
+            <MemoryRouter initialEntries={['/translation_flow']}>
+                <PersonaProbe />
+            </MemoryRouter>,
+        );
+
+        await waitFor(() => {
+            expect(screen.getByTestId('persona-status')).toHaveTextContent('ready');
+        });
+
+        fireEvent.click(screen.getByRole('button', {name: 'go summary tab'}));
+        expect(screen.getByTestId('active-tab')).toHaveTextContent('0');
+
+        fireEvent.click(screen.getByRole('button', {name: 'go persona tab'}));
+        await waitFor(() => {
+            expect(screen.getByTestId('active-tab')).toHaveTextContent('2');
+        });
+
+        fireEvent.click(screen.getByRole('button', {name: 'run persona'}));
+        await waitFor(() => {
+            expect(screen.getByTestId('persona-status')).toHaveTextContent('completed');
+        });
+
+        fireEvent.click(screen.getByRole('button', {name: 'go summary tab'}));
+        await waitFor(() => {
+            expect(screen.getByTestId('active-tab')).toHaveTextContent('3');
+        });
     });
 });

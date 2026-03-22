@@ -116,6 +116,24 @@ func TestTaskController_TranslationFlowAPI_TableDriven(t *testing.T) {
 			{ID: "row-1", RecordType: "NPC_:FULL", EditorID: "EDID_001", SourceText: "Uthgerd the Unbroken", Variant: "full", SourceFile: "Skyrim.esm.extract.json"},
 		},
 	}
+	personaPreview := workflow.PersonaTargetPreviewPage{
+		TaskID:    "task-1",
+		Page:      1,
+		PageSize:  20,
+		TotalRows: 1,
+		Rows: []workflow.PersonaTargetPreviewRow{
+			{SourcePlugin: "Skyrim.esm", SpeakerID: "npc_1", EditorID: "NPC_Uthgerd", NPCName: "Uthgerd the Unbroken", ViewState: "pending"},
+		},
+	}
+	personaResult := workflow.PersonaPhaseResult{
+		TaskID:         "task-1",
+		Status:         "completed",
+		DetectedCount:  3,
+		ReusedCount:    1,
+		PendingCount:   0,
+		GeneratedCount: 2,
+		FailedCount:    0,
+	}
 
 	testCases := []struct {
 		name string
@@ -231,6 +249,78 @@ func TestTaskController_TranslationFlowAPI_TableDriven(t *testing.T) {
 				assert.ErrorIs(t, err, workflowErr)
 			},
 		},
+		{
+			name: "ListTranslationFlowPersonaTargets resolves task id and returns preview",
+			run: func(t *testing.T, controller *TaskController, env *taskcontrollertest.Env, wf *fakeTranslationFlowWorkflow) {
+				env.Manager.EnsureTaskResolvedID = "task-resolved"
+				wf.personaPreviewResult = personaPreview
+				got, err := controller.ListTranslationFlowPersonaTargets("task-1", 1, 20)
+				require.NoError(t, err)
+				assert.Equal(t, personaPreview, got)
+				assert.Equal(t, "task-1", env.Manager.EnsureTaskInput)
+				assert.Equal(t, "task-resolved", wf.lastPersonaPreviewTaskID)
+				assert.Equal(t, 1, wf.lastPersonaPreviewPage)
+				assert.Equal(t, 20, wf.lastPersonaPreviewPageSize)
+			},
+		},
+		{
+			name: "ListTranslationFlowPersonaTargets returns workflow error",
+			run: func(t *testing.T, controller *TaskController, env *taskcontrollertest.Env, wf *fakeTranslationFlowWorkflow) {
+				wf.personaPreviewErr = workflowErr
+				_, err := controller.ListTranslationFlowPersonaTargets("task-3", 2, 10)
+				require.Error(t, err)
+				assert.Equal(t, "task-3", env.Manager.EnsureTaskInput)
+				assert.ErrorIs(t, err, workflowErr)
+			},
+		},
+		{
+			name: "RunTranslationFlowPersona resolves task id and returns result",
+			run: func(t *testing.T, controller *TaskController, env *taskcontrollertest.Env, wf *fakeTranslationFlowWorkflow) {
+				env.Manager.EnsureTaskResolvedID = "task-resolved"
+				wf.personaResult = personaResult
+				request := workflow.TranslationRequestConfig{Provider: "openai", Model: "gpt-4.1-mini"}
+				prompt := workflow.TranslationPromptConfig{UserPrompt: "persona", SystemPrompt: "system"}
+				got, err := controller.RunTranslationFlowPersona("task-1", request, prompt)
+				require.NoError(t, err)
+				assert.Equal(t, personaResult, got)
+				assert.Equal(t, "task-1", env.Manager.EnsureTaskInput)
+				assert.Equal(t, "task-resolved", wf.lastPersonaInput.TaskID)
+				assert.Equal(t, request, wf.lastPersonaInput.Request)
+				assert.Equal(t, prompt, wf.lastPersonaInput.Prompt)
+			},
+		},
+		{
+			name: "RunTranslationFlowPersona returns workflow error",
+			run: func(t *testing.T, controller *TaskController, env *taskcontrollertest.Env, wf *fakeTranslationFlowWorkflow) {
+				wf.personaErr = workflowErr
+				_, err := controller.RunTranslationFlowPersona("task-4", workflow.TranslationRequestConfig{}, workflow.TranslationPromptConfig{})
+				require.Error(t, err)
+				assert.Equal(t, "task-4", env.Manager.EnsureTaskInput)
+				assert.ErrorIs(t, err, workflowErr)
+			},
+		},
+		{
+			name: "GetTranslationFlowPersona resolves task id and returns result",
+			run: func(t *testing.T, controller *TaskController, env *taskcontrollertest.Env, wf *fakeTranslationFlowWorkflow) {
+				env.Manager.EnsureTaskResolvedID = "task-resolved"
+				wf.personaResult = personaResult
+				got, err := controller.GetTranslationFlowPersona("task-1")
+				require.NoError(t, err)
+				assert.Equal(t, personaResult, got)
+				assert.Equal(t, "task-1", env.Manager.EnsureTaskInput)
+				assert.Equal(t, "task-resolved", wf.lastGetPersonaTaskID)
+			},
+		},
+		{
+			name: "GetTranslationFlowPersona returns workflow error",
+			run: func(t *testing.T, controller *TaskController, env *taskcontrollertest.Env, wf *fakeTranslationFlowWorkflow) {
+				wf.personaErr = workflowErr
+				_, err := controller.GetTranslationFlowPersona("task-5")
+				require.Error(t, err)
+				assert.Equal(t, "task-5", env.Manager.EnsureTaskInput)
+				assert.ErrorIs(t, err, workflowErr)
+			},
+		},
 	}
 
 	for _, tc := range testCases {
@@ -268,6 +358,18 @@ func TestTaskController_TranslationFlowAPI_NilWorkflowGuard(t *testing.T) {
 	_, err = controller.ListTranslationFlowTerminologyTargets("task-1", 1, 50)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not configured")
+
+	_, err = controller.ListTranslationFlowPersonaTargets("task-1", 1, 20)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not configured")
+
+	_, err = controller.RunTranslationFlowPersona("task-1", workflow.TranslationRequestConfig{}, workflow.TranslationPromptConfig{})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not configured")
+
+	_, err = controller.GetTranslationFlowPersona("task-1")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not configured")
 }
 
 type fakeTranslationFlowWorkflow struct {
@@ -281,6 +383,11 @@ type fakeTranslationFlowWorkflow struct {
 	lastTerminologyPreviewPage     int
 	lastTerminologyPreviewPageSize int
 	lastTerminologyInput           workflow.RunTerminologyPhaseInput
+	lastPersonaPreviewTaskID       string
+	lastPersonaPreviewPage         int
+	lastPersonaPreviewPageSize     int
+	lastPersonaInput               workflow.RunTranslationFlowPersonaPhaseInput
+	lastGetPersonaTaskID           string
 
 	loadResult               workflow.TranslationLoadResult
 	loadErr                  error
@@ -292,6 +399,10 @@ type fakeTranslationFlowWorkflow struct {
 	terminologyPreviewErr    error
 	terminologyResult        workflow.TerminologyPhaseResult
 	terminologyErr           error
+	personaPreviewResult     workflow.PersonaTargetPreviewPage
+	personaPreviewErr        error
+	personaResult            workflow.PersonaPhaseResult
+	personaErr               error
 }
 
 func (f *fakeTranslationFlowWorkflow) LoadFiles(ctx context.Context, input workflow.LoadTranslationFlowInput) (workflow.TranslationLoadResult, error) {
@@ -332,4 +443,24 @@ func (f *fakeTranslationFlowWorkflow) GetTerminologyPhase(ctx context.Context, t
 	f.lastCtx = ctx
 	f.lastListTaskID = taskID
 	return f.terminologyResult, f.terminologyErr
+}
+
+func (f *fakeTranslationFlowWorkflow) ListTranslationFlowPersonaTargets(ctx context.Context, taskID string, page int, pageSize int) (workflow.PersonaTargetPreviewPage, error) {
+	f.lastCtx = ctx
+	f.lastPersonaPreviewTaskID = taskID
+	f.lastPersonaPreviewPage = page
+	f.lastPersonaPreviewPageSize = pageSize
+	return f.personaPreviewResult, f.personaPreviewErr
+}
+
+func (f *fakeTranslationFlowWorkflow) RunTranslationFlowPersonaPhase(ctx context.Context, input workflow.RunTranslationFlowPersonaPhaseInput) (workflow.PersonaPhaseResult, error) {
+	f.lastCtx = ctx
+	f.lastPersonaInput = input
+	return f.personaResult, f.personaErr
+}
+
+func (f *fakeTranslationFlowWorkflow) GetTranslationFlowPersonaPhase(ctx context.Context, taskID string) (workflow.PersonaPhaseResult, error) {
+	f.lastCtx = ctx
+	f.lastGetPersonaTaskID = taskID
+	return f.personaResult, f.personaErr
 }

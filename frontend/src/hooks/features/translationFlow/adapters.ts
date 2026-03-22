@@ -1,9 +1,19 @@
 import type {
     LoadedTranslationFile,
+    PersonaDialogueView,
+    PersonaPhaseSummary,
+    PersonaTargetPreviewPage,
+    PersonaTargetPreviewRow,
+    PersonaTargetRowState,
+    PersonaTargetViewState,
     TerminologyPhaseSummary,
     TerminologyTargetPreviewPage,
     TerminologyTargetPreviewRow,
     TranslationTargetRow,
+    WailsPersonaDialogueView,
+    WailsPersonaPhaseResult,
+    WailsPersonaTargetPreviewPage,
+    WailsPersonaTargetPreviewRow,
     WailsTerminologyPhaseResult,
     WailsTerminologyTargetPreviewPage,
     WailsTerminologyTargetPreviewRow,
@@ -44,6 +54,74 @@ const mapTerminologyTargetPreviewRow = (payload: WailsTerminologyTargetPreviewRo
     variant: pickString(payload.variant),
     sourceFile: pickString(payload.source_file ?? payload.sourceFile),
 });
+
+const mapPersonaTargetViewState = (value: unknown): PersonaTargetViewState => {
+    const normalized = pickString(value).trim().toLowerCase();
+    switch (normalized) {
+    case 'loadingtargets':
+    case 'loading_targets':
+    case 'loading':
+        return 'loadingTargets';
+    case 'empty':
+        return 'empty';
+    case 'ready':
+        return 'ready';
+    case 'cachedonly':
+    case 'cached_only':
+        return 'cachedOnly';
+    case 'running':
+        return 'running';
+    case 'completed':
+        return 'completed';
+    case 'partialfailed':
+    case 'partial_failed':
+        return 'partialFailed';
+    case 'failed':
+        return 'failed';
+    default:
+        return 'loadingTargets';
+    }
+};
+
+const mapPersonaTargetRowState = (value: unknown): PersonaTargetRowState => {
+    const normalized = pickString(value).trim().toLowerCase();
+    switch (normalized) {
+    case 'reused':
+    case 'pending':
+    case 'running':
+    case 'generated':
+    case 'failed':
+        return normalized;
+    default:
+        return 'pending';
+    }
+};
+
+const mapPersonaDialogueView = (payload: WailsPersonaDialogueView): PersonaDialogueView => ({
+    recordType: pickString(payload.record_type ?? payload.recordType),
+    editorId: pickString(payload.editor_id ?? payload.editorId),
+    sourceText: pickString(payload.source_text ?? payload.sourceText),
+    questId: pickString(payload.quest_id ?? payload.questId),
+    isServicesBranch: Boolean(payload.is_services_branch ?? payload.isServicesBranch),
+    order: Math.max(0, pickNumber(payload.order)),
+});
+
+const mapPersonaTargetPreviewRow = (payload: WailsPersonaTargetPreviewRow): PersonaTargetPreviewRow => {
+    const rawDialogues = Array.isArray(payload.dialogues) ? payload.dialogues : [];
+    return {
+        sourcePlugin: pickString(payload.source_plugin ?? payload.sourcePlugin),
+        speakerId: pickString(payload.speaker_id ?? payload.speakerId),
+        editorId: pickString(payload.editor_id ?? payload.editorId),
+        npcName: pickString(payload.npc_name ?? payload.npcName),
+        race: pickString(payload.race),
+        sex: pickString(payload.sex),
+        voiceType: pickString(payload.voice_type ?? payload.voiceType),
+        viewState: mapPersonaTargetRowState(payload.view_state ?? payload.viewState),
+        personaText: pickString(payload.persona_text ?? payload.personaText),
+        errorMessage: pickString(payload.error_message ?? payload.errorMessage),
+        dialogues: rawDialogues.map(mapPersonaDialogueView),
+    };
+};
 
 export const mapPreviewPage = (payload: unknown): {
     fileId: number;
@@ -123,5 +201,36 @@ export const mapTerminologyTargetPreviewPage = (payload: unknown): TerminologyTa
         pageSize: Math.max(1, pickNumber(pagePayload.pageSize ?? pagePayload.page_size, 50)),
         totalRows: Math.max(0, pickNumber(pagePayload.totalRows ?? pagePayload.total_rows, 0)),
         rows: rawRows.map(mapTerminologyTargetPreviewRow),
+    };
+};
+
+export const mapPersonaTargetPreviewPage = (payload: unknown): PersonaTargetPreviewPage => {
+    const pagePayload = (asRecord(payload) ?? {}) as WailsPersonaTargetPreviewPage;
+    const rawRows = Array.isArray(pagePayload.rows) ? pagePayload.rows : [];
+
+    return {
+        taskId: pickString(pagePayload.task_id ?? pagePayload.taskId),
+        page: Math.max(1, pickNumber(pagePayload.page, 1)),
+        pageSize: Math.max(1, pickNumber(pagePayload.pageSize ?? pagePayload.page_size, 50)),
+        totalRows: Math.max(0, pickNumber(pagePayload.totalRows ?? pagePayload.total_rows, 0)),
+        rows: rawRows.map(mapPersonaTargetPreviewRow),
+    };
+};
+
+export const mapPersonaPhaseResult = (payload: unknown): PersonaPhaseSummary => {
+    const resultPayload = (asRecord(payload) ?? {}) as WailsPersonaPhaseResult;
+
+    return {
+        taskId: pickString(resultPayload.task_id ?? resultPayload.taskId),
+        status: mapPersonaTargetViewState(resultPayload.status),
+        detectedCount: Math.max(0, pickNumber(resultPayload.detected_count ?? resultPayload.detectedCount, 0)),
+        reusedCount: Math.max(0, pickNumber(resultPayload.reused_count ?? resultPayload.reusedCount, 0)),
+        pendingCount: Math.max(0, pickNumber(resultPayload.pending_count ?? resultPayload.pendingCount, 0)),
+        generatedCount: Math.max(0, pickNumber(resultPayload.generated_count ?? resultPayload.generatedCount, 0)),
+        failedCount: Math.max(0, pickNumber(resultPayload.failed_count ?? resultPayload.failedCount, 0)),
+        progressMode: pickString(resultPayload.progress_mode ?? resultPayload.progressMode, 'hidden'),
+        progressCurrent: Math.max(0, pickNumber(resultPayload.progress_current ?? resultPayload.progressCurrent, 0)),
+        progressTotal: Math.max(0, pickNumber(resultPayload.progress_total ?? resultPayload.progressTotal, 0)),
+        progressMessage: pickString(resultPayload.progress_message ?? resultPayload.progressMessage),
     };
 };

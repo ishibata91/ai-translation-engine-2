@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -305,6 +306,152 @@ func (r *sqliteRepository) LoadTerminologyInput(ctx context.Context, taskID stri
 	}
 	if err := rows.Err(); err != nil {
 		return TerminologyInput{}, fmt.Errorf("iterate terminology entries task_id=%s: %w", trimmedTaskID, err)
+	}
+
+	return input, nil
+}
+
+// LoadPersonaInput projects raw persona candidates from saved translation input rows.
+func (r *sqliteRepository) LoadPersonaInput(ctx context.Context, taskID string) (PersonaInput, error) {
+	trimmedTaskID := strings.TrimSpace(taskID)
+	if trimmedTaskID == "" {
+		return PersonaInput{}, fmt.Errorf("task_id is required")
+	}
+
+	files, err := r.ListFiles(ctx, trimmedTaskID)
+	if err != nil {
+		return PersonaInput{}, fmt.Errorf("list persona source files task_id=%s: %w", trimmedTaskID, err)
+	}
+
+	input := PersonaInput{
+		TaskID:    trimmedTaskID,
+		NPCs:      make(map[string]PersonaNPC, len(files)),
+		Dialogues: make([]PersonaDialogue, 0),
+	}
+
+	npcRows, err := r.db.QueryContext(ctx, `
+		SELECT
+			COALESCE(n.source_record_id, ''),
+			COALESCE(n.npc_key, ''),
+			COALESCE(n.editor_id, ''),
+			COALESCE(n.record_type, ''),
+			COALESCE(n.name, ''),
+			COALESCE(n.race, ''),
+			COALESCE(n.sex, ''),
+			COALESCE(n.voice, ''),
+			COALESCE(f.source_file_name, ''),
+			COALESCE(n.source_json_path, ''),
+			COALESCE(n.source, '')
+		FROM translation_input_npcs n
+		JOIN translation_input_files f ON f.id = n.file_id
+		WHERE f.task_id = ?
+		ORDER BY f.id, n.id
+	`, trimmedTaskID)
+	if err != nil {
+		return PersonaInput{}, fmt.Errorf("load persona npcs task_id=%s: %w", trimmedTaskID, err)
+	}
+	defer npcRows.Close()
+
+	for npcRows.Next() {
+		var npc PersonaNPC
+		var sourceFileName string
+		var sourceJSONPath string
+		var source string
+		if err := npcRows.Scan(
+			&npc.SourceRecordID,
+			&npc.NPCKey,
+			&npc.EditorID,
+			&npc.RecordType,
+			&npc.NPCName,
+			&npc.Race,
+			&npc.Sex,
+			&npc.VoiceType,
+			&sourceFileName,
+			&sourceJSONPath,
+			&source,
+		); err != nil {
+			return PersonaInput{}, fmt.Errorf("scan persona npc task_id=%s: %w", trimmedTaskID, err)
+		}
+
+		npc.SpeakerID = strings.TrimSpace(npc.SourceRecordID)
+		if npc.SpeakerID == "" {
+			continue
+		}
+		npc.SourcePlugin = resolvePersonaSourcePlugin(sourceFileName, sourceJSONPath, source)
+		npc.SourceHint = resolvePersonaSourceHint(sourceFileName, sourceJSONPath, source)
+		input.NPCs[npc.SpeakerID] = npc
+	}
+	if err := npcRows.Err(); err != nil {
+		return PersonaInput{}, fmt.Errorf("iterate persona npcs task_id=%s: %w", trimmedTaskID, err)
+	}
+
+	dialogueRows, err := r.db.QueryContext(ctx, `
+		SELECT
+			COALESCE(r.source_record_id, ''),
+			COALESCE(r.speaker_id, ''),
+			COALESCE(r.editor_id, ''),
+			COALESCE(g.editor_id, ''),
+			COALESCE(r.record_type, ''),
+			COALESCE(r.text, ''),
+			COALESCE(g.quest_id, ''),
+			g.is_services_branch,
+			r.response_order,
+			COALESCE(f.source_file_name, ''),
+			COALESCE(r.source_json_path, ''),
+			COALESCE(g.source_json_path, ''),
+			COALESCE(r.source, ''),
+			COALESCE(g.source, '')
+		FROM translation_input_dialogue_responses r
+		JOIN translation_input_dialogue_groups g ON g.id = r.dialogue_group_id
+		JOIN translation_input_files f ON f.id = g.file_id
+		WHERE f.task_id = ?
+		  AND TRIM(COALESCE(r.text, '')) <> ''
+		  AND TRIM(COALESCE(r.speaker_id, '')) <> ''
+		ORDER BY f.id, g.id, r.response_order, r.id
+	`, trimmedTaskID)
+	if err != nil {
+		return PersonaInput{}, fmt.Errorf("load persona dialogues task_id=%s: %w", trimmedTaskID, err)
+	}
+	defer dialogueRows.Close()
+
+	for dialogueRows.Next() {
+		var dialogue PersonaDialogue
+		var isServicesBranch int
+		var sourceFileName string
+		var responseSourceJSONPath string
+		var groupSourceJSONPath string
+		var responseSource string
+		var groupSource string
+		if err := dialogueRows.Scan(
+			&dialogue.ID,
+			&dialogue.SpeakerID,
+			&dialogue.EditorID,
+			&dialogue.GroupEditorID,
+			&dialogue.RecordType,
+			&dialogue.Text,
+			&dialogue.QuestID,
+			&isServicesBranch,
+			&dialogue.Order,
+			&sourceFileName,
+			&responseSourceJSONPath,
+			&groupSourceJSONPath,
+			&responseSource,
+			&groupSource,
+		); err != nil {
+			return PersonaInput{}, fmt.Errorf("scan persona dialogue task_id=%s: %w", trimmedTaskID, err)
+		}
+
+		dialogue.SpeakerID = strings.TrimSpace(dialogue.SpeakerID)
+		if dialogue.SpeakerID == "" {
+			continue
+		}
+		dialogue.IsServicesBranch = isServicesBranch != 0
+		dialogue.SourcePlugin = resolvePersonaSourcePlugin(sourceFileName, responseSourceJSONPath, groupSourceJSONPath, responseSource, groupSource)
+		dialogue.SourceHint = resolvePersonaSourceHint(sourceFileName, responseSourceJSONPath, groupSourceJSONPath, responseSource, groupSource)
+		input.Dialogues = append(input.Dialogues, dialogue)
+	}
+	if err := dialogueRows.Err(); err != nil {
+		return PersonaInput{}, fmt.Errorf("iterate persona dialogues task_id=%s: %w", trimmedTaskID, err)
 	}
 
 	return input, nil
@@ -842,6 +989,28 @@ func trimStringPtr(value *string) string {
 		return ""
 	}
 	return strings.TrimSpace(*value)
+}
+
+var sourcePluginPattern = regexp.MustCompile(`(?i)[^\\/:*?"<>|]+\.(esm|esl|esp)`)
+
+func resolvePersonaSourcePlugin(candidates ...string) string {
+	for _, candidate := range candidates {
+		match := sourcePluginPattern.FindString(strings.TrimSpace(candidate))
+		if match != "" {
+			return match
+		}
+	}
+	return ""
+}
+
+func resolvePersonaSourceHint(candidates ...string) string {
+	for _, candidate := range candidates {
+		trimmed := strings.TrimSpace(candidate)
+		if trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
 }
 
 const previewUnionSQL = `

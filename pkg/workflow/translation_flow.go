@@ -100,7 +100,63 @@ type TerminologyPhaseResult struct {
 	ProgressMessage string `json:"progress_message"`
 }
 
-// TranslationFlow defines controller-facing workflow APIs for translation load phase.
+// PersonaDialogueView is one dialogue excerpt rendered in persona detail panes.
+type PersonaDialogueView struct {
+	RecordType       string `json:"record_type"`
+	EditorID         string `json:"editor_id"`
+	SourceText       string `json:"source_text"`
+	QuestID          string `json:"quest_id"`
+	IsServicesBranch bool   `json:"is_services_branch"`
+	Order            int    `json:"order"`
+}
+
+// PersonaTargetPreviewRow is one persona-target row shown before or after execution.
+type PersonaTargetPreviewRow struct {
+	SourcePlugin string                `json:"source_plugin"`
+	SpeakerID    string                `json:"speaker_id"`
+	EditorID     string                `json:"editor_id"`
+	NPCName      string                `json:"npc_name"`
+	Race         string                `json:"race"`
+	Sex          string                `json:"sex"`
+	VoiceType    string                `json:"voice_type"`
+	ViewState    string                `json:"view_state"`
+	PersonaText  string                `json:"persona_text"`
+	ErrorMessage string                `json:"error_message"`
+	Dialogues    []PersonaDialogueView `json:"dialogues"`
+}
+
+// PersonaTargetPreviewPage is one paged response for persona targets.
+type PersonaTargetPreviewPage struct {
+	TaskID    string                    `json:"task_id"`
+	Page      int                       `json:"page"`
+	PageSize  int                       `json:"page_size"`
+	TotalRows int                       `json:"total_rows"`
+	Rows      []PersonaTargetPreviewRow `json:"rows"`
+}
+
+// RunTranslationFlowPersonaPhaseInput is the controller-facing DTO for persona phase execution.
+type RunTranslationFlowPersonaPhaseInput struct {
+	TaskID  string                   `json:"task_id"`
+	Request TranslationRequestConfig `json:"request"`
+	Prompt  TranslationPromptConfig  `json:"prompt"`
+}
+
+// PersonaPhaseResult is the aggregate response for persona phase status.
+type PersonaPhaseResult struct {
+	TaskID          string `json:"task_id"`
+	Status          string `json:"status"`
+	DetectedCount   int    `json:"detected_count"`
+	ReusedCount     int    `json:"reused_count"`
+	PendingCount    int    `json:"pending_count"`
+	GeneratedCount  int    `json:"generated_count"`
+	FailedCount     int    `json:"failed_count"`
+	ProgressMode    string `json:"progress_mode"`
+	ProgressCurrent int    `json:"progress_current"`
+	ProgressTotal   int    `json:"progress_total"`
+	ProgressMessage string `json:"progress_message"`
+}
+
+// TranslationFlow defines controller-facing workflow APIs for translation-flow phases.
 type TranslationFlow interface {
 	LoadFiles(ctx context.Context, input LoadTranslationFlowInput) (TranslationLoadResult, error)
 	ListFiles(ctx context.Context, taskID string) (TranslationLoadResult, error)
@@ -108,4 +164,7 @@ type TranslationFlow interface {
 	ListTerminologyTargets(ctx context.Context, taskID string, page int, pageSize int) (TerminologyTargetPreviewPage, error)
 	RunTerminologyPhase(ctx context.Context, input RunTerminologyPhaseInput) (TerminologyPhaseResult, error)
 	GetTerminologyPhase(ctx context.Context, taskID string) (TerminologyPhaseResult, error)
+	ListTranslationFlowPersonaTargets(ctx context.Context, taskID string, page int, pageSize int) (PersonaTargetPreviewPage, error)
+	RunTranslationFlowPersonaPhase(ctx context.Context, input RunTranslationFlowPersonaPhaseInput) (PersonaPhaseResult, error)
+	GetTranslationFlowPersonaPhase(ctx context.Context, taskID string) (PersonaPhaseResult, error)
 }

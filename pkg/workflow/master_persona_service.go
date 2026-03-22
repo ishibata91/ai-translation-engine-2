@@ -99,6 +99,79 @@ func (s *MasterPersonaService) StartMasterPersona(ctx context.Context, input Sta
 	return taskID, nil
 }
 
+// RunPersonaPhase bootstraps requests on first run and resumes runtime only when requests already exist.
+func (s *MasterPersonaService) RunPersonaPhase(ctx context.Context, input PersonaExecutionInput) error {
+	trimmedTaskID := strings.TrimSpace(input.TaskID)
+	if trimmedTaskID == "" {
+		return fmt.Errorf("task_id is required")
+	}
+	if s.queue == nil {
+		return fmt.Errorf("request queue is not configured")
+	}
+
+	runtimeEntries, err := s.ListPersonaRuntime(ctx, trimmedTaskID)
+	if err != nil {
+		return fmt.Errorf("list persona runtime task_id=%s: %w", trimmedTaskID, err)
+	}
+	if len(runtimeEntries) == 0 {
+		sourceJSONPath := strings.TrimSpace(input.SourceJSONPath)
+		if sourceJSONPath == "" {
+			return fmt.Errorf("source_json_path is required for persona bootstrap task_id=%s", trimmedTaskID)
+		}
+
+		bootstrapInput := StartMasterPersonaInput{
+			SourceJSONPath:    sourceJSONPath,
+			OverwriteExisting: input.OverwriteExisting,
+		}
+		bootstrapCtx := withPersonaPhaseRunConfig(ctx, input.Request, input.Prompt)
+		if err := s.executeRequestPreparation(bootstrapCtx, trimmedTaskID, bootstrapInput, func(_ string, _ float64) {}); err != nil {
+			return fmt.Errorf("bootstrap persona requests task_id=%s: %w", trimmedTaskID, err)
+		}
+		return nil
+	}
+
+	if err := s.runPersonaRuntime(ctx, input); err != nil {
+		return fmt.Errorf("resume persona runtime task_id=%s: %w", trimmedTaskID, err)
+	}
+	return nil
+}
+
+// ListPersonaRuntime returns task-scoped runtime snapshot without exposing queue internals.
+func (s *MasterPersonaService) ListPersonaRuntime(ctx context.Context, taskID string) ([]PersonaRuntimeEntry, error) {
+	trimmedTaskID := strings.TrimSpace(taskID)
+	if trimmedTaskID == "" {
+		return nil, fmt.Errorf("task_id is required")
+	}
+	if s.queue == nil {
+		return nil, fmt.Errorf("request queue is not configured")
+	}
+
+	requests, err := s.queue.GetTaskRequests(ctx, trimmedTaskID)
+	if err != nil {
+		return nil, fmt.Errorf("get task requests task_id=%s: %w", trimmedTaskID, err)
+	}
+
+	entries := make([]PersonaRuntimeEntry, 0, len(requests))
+	for _, request := range requests {
+		sourcePlugin, speakerID, hasLookupKey := parsePersonaRuntimeLookupFromRequestJSON(request.RequestJSON)
+		entry := PersonaRuntimeEntry{
+			RequestID:    request.ID,
+			SourcePlugin: sourcePlugin,
+			SpeakerID:    speakerID,
+			RequestState: request.RequestState,
+			ResumeCursor: request.ResumeCursor,
+			UpdatedAt:    request.UpdatedAt,
+			HasResponse:  request.ResponseJSON != nil,
+			HasLookupKey: hasLookupKey,
+		}
+		if request.ErrorMessage != nil {
+			entry.ErrorMessage = strings.TrimSpace(*request.ErrorMessage)
+		}
+		entries = append(entries, entry)
+	}
+	return entries, nil
+}
+
 // ResumeMasterPersona resumes queued work for one task.
 func (s *MasterPersonaService) ResumeMasterPersona(ctx context.Context, taskID string) error {
 	if err := s.manager.ResumeTaskWithContext(ctx, taskID); err != nil {
@@ -179,6 +252,43 @@ func (s *MasterPersonaService) Run(ctx context.Context, currentTask *task2.Task,
 		return fmt.Errorf("unsupported task type for workflow runner")
 	}
 	return s.runPersonaExecution(ctx, currentTask, update)
+}
+
+func (s *MasterPersonaService) runPersonaRuntime(ctx context.Context, input PersonaExecutionInput) error {
+	if s.manager == nil {
+		return fmt.Errorf("task manager is not configured")
+	}
+	if s.queue == nil || s.worker == nil {
+		return fmt.Errorf("request queue worker is not configured")
+	}
+
+	trimmedTaskID := strings.TrimSpace(input.TaskID)
+	if trimmedTaskID == "" {
+		return fmt.Errorf("task_id is required")
+	}
+
+	metadata := personaExecutionConfigMetadata(input.Request, input.Prompt)
+	metadata["entrypoint"] = "translation_flow_persona_phase"
+	metadata["phase"] = phaseRequestEnqueued
+	if strings.TrimSpace(input.SourceJSONPath) != "" {
+		metadata["source_json_path"] = strings.TrimSpace(input.SourceJSONPath)
+	}
+	metadata["overwrite_existing"] = input.OverwriteExisting
+
+	if existing, err := s.manager.Store().GetMetadata(ctx, trimmedTaskID); err == nil {
+		metadata = mergeTaskMetadata(existing, metadata)
+	}
+
+	currentTask := &task2.Task{
+		ID:       trimmedTaskID,
+		Type:     task2.TypePersonaExtraction,
+		Metadata: metadata,
+	}
+	runCtx := withPersonaPhaseRunConfig(ctx, input.Request, input.Prompt)
+	if err := s.runPersonaExecution(runCtx, currentTask, func(_ string, _ float64) {}); err != nil {
+		return fmt.Errorf("run persona runtime task_id=%s: %w", trimmedTaskID, err)
+	}
+	return nil
 }
 
 func (s *MasterPersonaService) reportProgress(ctx context.Context, correlationID string, completed int, status string, message string) {
@@ -374,6 +484,10 @@ func (s *MasterPersonaService) executeRequestPreparation(ctx context.Context, ta
 		)
 		return wrappedErr
 	}
+	requestCfg, promptCfg, hasExecutionOverrides := personaPhaseRunConfigFromContext(runCtx)
+	if hasExecutionOverrides {
+		requests = applyPersonaExecutionOverrides(requests, requestCfg, promptCfg)
+	}
 
 	taskMetadata := task2.TaskMetadata{
 		"source_json_path":   input.SourceJSONPath,
@@ -382,6 +496,9 @@ func (s *MasterPersonaService) executeRequestPreparation(ctx context.Context, ta
 		"phase":              phaseRequestEnqueued,
 		"resume_cursor":      0,
 		"request_count":      len(requests),
+	}
+	if hasExecutionOverrides {
+		taskMetadata = mergeTaskMetadata(taskMetadata, personaExecutionConfigMetadata(requestCfg, promptCfg))
 	}
 
 	if s.queue == nil {
@@ -734,6 +851,119 @@ func mergeMetadata(primary map[string]interface{}, fallback map[string]interface
 		merged[k] = v
 	}
 	return merged
+}
+
+func personaExecutionConfigMetadata(request TranslationRequestConfig, prompt TranslationPromptConfig) task2.TaskMetadata {
+	requestMetadata := map[string]interface{}{
+		"provider":         strings.TrimSpace(request.Provider),
+		"model":            strings.TrimSpace(request.Model),
+		"endpoint":         strings.TrimSpace(request.Endpoint),
+		"temperature":      request.Temperature,
+		"context_length":   request.ContextLength,
+		"sync_concurrency": request.SyncConcurrency,
+		"bulk_strategy":    strings.TrimSpace(request.BulkStrategy),
+	}
+	promptMetadata := map[string]interface{}{
+		"user_prompt":   strings.TrimSpace(prompt.UserPrompt),
+		"system_prompt": strings.TrimSpace(prompt.SystemPrompt),
+	}
+	return task2.TaskMetadata{
+		"request_config": requestMetadata,
+		"prompt_config":  promptMetadata,
+	}
+}
+
+func applyPersonaExecutionOverrides(requests []llmio.Request, request TranslationRequestConfig, prompt TranslationPromptConfig) []llmio.Request {
+	if len(requests) == 0 {
+		return requests
+	}
+
+	overridden := make([]llmio.Request, 0, len(requests))
+	userPromptOverride := strings.TrimSpace(prompt.UserPrompt)
+	systemPromptOverride := strings.TrimSpace(prompt.SystemPrompt)
+	for _, req := range requests {
+		current := req
+		if current.Metadata == nil {
+			current.Metadata = map[string]interface{}{}
+		}
+		if userPromptOverride != "" {
+			current.UserPrompt = mergePersonaUserPrompt(current.UserPrompt, userPromptOverride)
+		}
+		if systemPromptOverride != "" {
+			current.SystemPrompt = systemPromptOverride
+		}
+		if request.Temperature > 0 {
+			current.Temperature = request.Temperature
+		}
+
+		if provider := strings.TrimSpace(request.Provider); provider != "" {
+			current.Metadata["execution_provider"] = provider
+		}
+		if model := strings.TrimSpace(request.Model); model != "" {
+			current.Metadata["execution_model"] = model
+		}
+		if endpoint := strings.TrimSpace(request.Endpoint); endpoint != "" {
+			current.Metadata["execution_endpoint"] = endpoint
+		}
+		if bulkStrategy := strings.TrimSpace(request.BulkStrategy); bulkStrategy != "" {
+			current.Metadata["execution_bulk_strategy"] = bulkStrategy
+		}
+		if request.SyncConcurrency > 0 {
+			current.Metadata["execution_sync_concurrency"] = request.SyncConcurrency
+		}
+		if request.ContextLength > 0 {
+			current.Metadata["execution_context_length"] = request.ContextLength
+		}
+		current.Metadata["execution_temperature"] = current.Temperature
+		if userPromptOverride != "" {
+			current.Metadata["execution_user_prompt"] = userPromptOverride
+		}
+		if systemPromptOverride != "" {
+			current.Metadata["execution_system_prompt"] = systemPromptOverride
+		}
+		overridden = append(overridden, current)
+	}
+	return overridden
+}
+
+func mergePersonaUserPrompt(original string, override string) string {
+	trimmedOverride := strings.TrimSpace(override)
+	if trimmedOverride == "" {
+		return original
+	}
+
+	const profileDelimiter = "\n\nNPC Profile:\n"
+	idx := strings.Index(original, profileDelimiter)
+	if idx < 0 {
+		return trimmedOverride
+	}
+	return trimmedOverride + original[idx:]
+}
+
+func parsePersonaRuntimeLookupFromRequestJSON(rawRequest string) (sourcePlugin string, speakerID string, ok bool) {
+	var payload struct {
+		Metadata map[string]interface{} `json:"metadata"`
+	}
+	if err := json.Unmarshal([]byte(rawRequest), &payload); err != nil {
+		return "", "", false
+	}
+
+	rawSpeakerID, hasSpeaker := payload.Metadata["speaker_id"]
+	if !hasSpeaker {
+		return "", "", false
+	}
+	speakerIDText, ok := rawSpeakerID.(string)
+	if !ok {
+		return "", "", false
+	}
+	trimmedSpeakerID := strings.TrimSpace(speakerIDText)
+	if trimmedSpeakerID == "" {
+		return "", "", false
+	}
+
+	sourcePluginRaw, _ := payload.Metadata["source_plugin"].(string)
+	normalizedSourcePlugin := normalizePersonaSourcePlugin(sourcePluginRaw, "")
+	return normalizedSourcePlugin, trimmedSpeakerID, true
 }
 
 func metadataBool(raw interface{}) bool {

@@ -17,8 +17,19 @@ import {
     type MasterPersonaLLMConfig,
     type MasterPersonaPromptConfig,
 } from '../../../types/masterPersona';
-import {mapLoadResult, mapPreviewPage, mapTerminologyPhaseResult, mapTerminologyTargetPreviewPage} from './adapters';
+import {
+    mapLoadResult,
+    mapPersonaPhaseResult,
+    mapPersonaTargetPreviewPage,
+    mapPreviewPage,
+    mapTerminologyPhaseResult,
+    mapTerminologyTargetPreviewPage,
+} from './adapters';
 import type {
+    PersonaPhaseSummary,
+    PersonaTargetPreviewPage,
+    PersonaTargetPreviewRow,
+    PersonaTargetViewState,
     TerminologyPhaseSummary,
     TerminologyTargetPreviewPage,
     TerminologyTargetViewState,
@@ -89,6 +100,32 @@ const EMPTY_TERMINOLOGY_TARGET_PAGE = (
     rows: [],
 });
 
+const EMPTY_PERSONA_SUMMARY: PersonaPhaseSummary = {
+    taskId: '',
+    status: 'loadingTargets',
+    detectedCount: 0,
+    reusedCount: 0,
+    pendingCount: 0,
+    generatedCount: 0,
+    failedCount: 0,
+    progressMode: 'hidden',
+    progressCurrent: 0,
+    progressTotal: 0,
+    progressMessage: '',
+};
+
+const EMPTY_PERSONA_TARGET_PAGE = (
+    taskId = '',
+    page = 1,
+    pageSize = PREVIEW_PAGE_SIZE,
+): PersonaTargetPreviewPage => ({
+    taskId,
+    page,
+    pageSize,
+    totalRows: 0,
+    rows: [],
+});
+
 const TABS: TranslationFlowTab[] = [
     {label: 'データロード'},
     {label: '単語翻訳'},
@@ -98,7 +135,35 @@ const TABS: TranslationFlowTab[] = [
     {label: 'エクスポート'},
 ];
 
+interface PersonaHookState {
+    personaSummary: PersonaPhaseSummary;
+    personaStatusLabel: string;
+    personaErrorMessage: string;
+    personaTargetPage: PersonaTargetPreviewPage;
+    personaTargetStatus: PersonaTargetViewState;
+    personaTargetErrorMessage: string;
+    isPersonaTargetLoading: boolean;
+    isPersonaRunning: boolean;
+    selectedPersonaTargetKey: string;
+    selectedPersonaTarget: PersonaTargetPreviewRow | null;
+}
+
+interface PersonaHookActions {
+    handleRunPersonaPhase: () => Promise<void>;
+    handleRetryPersonaPhase: () => Promise<void>;
+    handleRefreshPersonaPhase: () => Promise<void>;
+    handlePersonaTargetPageChange: (page: number) => Promise<void>;
+    handleSelectPersonaTarget: (sourcePlugin: string, speakerId: string) => void;
+    handleAdvanceFromPersona: () => void;
+}
+
+type UseTranslationFlowWithPersonaResult = UseTranslationFlowResult & {
+    state: UseTranslationFlowResult['state'] & PersonaHookState;
+    actions: UseTranslationFlowResult['actions'] & PersonaHookActions;
+};
+
 const TO_TASK_RESOLVE_ERROR = 'translation_project task の取得に失敗しました';
+const NO_PERSONA_TARGETS_MESSAGE = 'ペルソナ生成対象 NPC がありません。';
 
 const toErrorMessage = (error: unknown, fallback: string): string => {
     if (error instanceof Error && error.message.trim() !== '') {
@@ -242,6 +307,64 @@ const normalizeTerminologyLLMConfig = (loaded: Record<string, string>): MasterPe
     };
 };
 
+type TaskControllerPersonaBinding = {
+    ListTranslationFlowPersonaTargets?: (taskID: string, page: number, pageSize: number) => Promise<unknown>;
+    RunTranslationFlowPersona?: (taskID: string, request: unknown, prompt: unknown) => Promise<unknown>;
+    GetTranslationFlowPersona?: (taskID: string) => Promise<unknown>;
+};
+
+const getTaskControllerPersonaBinding = (): TaskControllerPersonaBinding | null => {
+    const goBridge = (window as unknown as {
+        go?: {
+            controller?: {
+                TaskController?: TaskControllerPersonaBinding;
+            };
+        };
+    }).go;
+    return goBridge?.controller?.TaskController ?? null;
+};
+
+const listTranslationFlowPersonaTargetsBinding = async (
+    taskID: string,
+    page: number,
+    pageSize: number,
+): Promise<unknown> => {
+    const binding = getTaskControllerPersonaBinding();
+    if (!binding?.ListTranslationFlowPersonaTargets) {
+        throw new Error('ListTranslationFlowPersonaTargets binding is not available');
+    }
+    return binding.ListTranslationFlowPersonaTargets(taskID, page, pageSize);
+};
+
+const runTranslationFlowPersonaBinding = async (
+    taskID: string,
+    request: unknown,
+    prompt: unknown,
+): Promise<unknown> => {
+    const binding = getTaskControllerPersonaBinding();
+    if (!binding?.RunTranslationFlowPersona) {
+        throw new Error('RunTranslationFlowPersona binding is not available');
+    }
+    return binding.RunTranslationFlowPersona(taskID, request, prompt);
+};
+
+const getTranslationFlowPersonaBinding = async (taskID: string): Promise<unknown> => {
+    const binding = getTaskControllerPersonaBinding();
+    if (!binding?.GetTranslationFlowPersona) {
+        throw new Error('GetTranslationFlowPersona binding is not available');
+    }
+    return binding.GetTranslationFlowPersona(taskID);
+};
+
+const isTerminologyCompleted = (status: string): boolean =>
+    status === 'completed' || status === 'completed_partial';
+
+const isPersonaAdvanceAllowed = (status: PersonaTargetViewState): boolean =>
+    status === 'completed' || status === 'cachedOnly' || status === 'empty' || status === 'partialFailed';
+
+const normalizePersonaRowKey = (row: PersonaTargetPreviewRow): string =>
+    `${row.sourcePlugin}::${row.speakerId}`.trim();
+
 const normalizeTerminologyProvider = (value: string | undefined): MasterPersonaLLMConfig['provider'] => {
     if (value === 'gemini' || value === 'xai' || value === 'lmstudio') {
         return value;
@@ -261,6 +384,12 @@ const terminologyStatusLabel = (
     summary: TerminologyPhaseSummary,
     targetStatus: TerminologyTargetViewState,
 ): string => {
+    const isNoTargetsState = targetStatus === 'empty'
+        || (targetStatus === 'ready'
+            && summary.status === 'pending'
+            && summary.savedCount === 0
+            && summary.failedCount === 0
+            && summary.progressTotal === 0);
     if (summary.status === 'running' && summary.progressMessage !== '') {
         return summary.progressMessage;
     }
@@ -270,7 +399,7 @@ const terminologyStatusLabel = (
     if (targetStatus === 'error') {
         return '対象単語リスト取得失敗';
     }
-    if (targetStatus === 'empty') {
+    if (isNoTargetsState) {
         return '用語翻訳対象なし';
     }
     switch (summary.status) {
@@ -287,10 +416,39 @@ const terminologyStatusLabel = (
     }
 };
 
+const personaStatusLabel = (
+    summary: PersonaPhaseSummary,
+    targetStatus: PersonaTargetViewState,
+): string => {
+    if (summary.status === 'running' && summary.progressMessage !== '') {
+        return summary.progressMessage;
+    }
+    switch (targetStatus) {
+    case 'loadingTargets':
+        return 'ペルソナ対象を読込中';
+    case 'empty':
+        return 'ペルソナ対象 NPC はありません';
+    case 'cachedOnly':
+        return '既存 Master Persona を再利用';
+    case 'ready':
+        return 'ペルソナ生成を開始できます';
+    case 'running':
+        return 'ペルソナ生成を実行中';
+    case 'completed':
+        return 'ペルソナ生成完了';
+    case 'partialFailed':
+        return 'ペルソナ生成完了（一部失敗あり）';
+    case 'failed':
+        return 'ペルソナ生成に失敗しました';
+    default:
+        return 'ペルソナ対象を読込中';
+    }
+};
+
 /**
  * TranslationFlow 画面のロードフェーズ状態を headless に管理する。
  */
-export function useTranslationFlow(): UseTranslationFlowResult {
+export function useTranslationFlow(): UseTranslationFlowWithPersonaResult {
     const location = useLocation();
     const navState = location.state as {taskId?: string} | null;
 
@@ -312,6 +470,16 @@ export function useTranslationFlow(): UseTranslationFlowResult {
     const [terminologyTargetErrorMessage, setTerminologyTargetErrorMessage] = useState('');
     const [isTerminologyTargetLoading, setIsTerminologyTargetLoading] = useState(false);
     const [isTerminologyRunning, setIsTerminologyRunning] = useState(false);
+    const [personaSummary, setPersonaSummary] = useState<PersonaPhaseSummary>(EMPTY_PERSONA_SUMMARY);
+    const [personaErrorMessage, setPersonaErrorMessage] = useState('');
+    const [personaTargetPage, setPersonaTargetPage] = useState<PersonaTargetPreviewPage>(
+        EMPTY_PERSONA_TARGET_PAGE(routeTaskID),
+    );
+    const [personaTargetStatus, setPersonaTargetStatus] = useState<PersonaTargetViewState>('loadingTargets');
+    const [personaTargetErrorMessage, setPersonaTargetErrorMessage] = useState('');
+    const [isPersonaTargetLoading, setIsPersonaTargetLoading] = useState(false);
+    const [isPersonaRunning, setIsPersonaRunning] = useState(false);
+    const [selectedPersonaTargetKey, setSelectedPersonaTargetKey] = useState('');
     const [terminologyConfig, setTerminologyConfig] = useState<MasterPersonaLLMConfig>(DEFAULT_MASTER_PERSONA_LLM_CONFIG);
     const [terminologyPromptConfig, setTerminologyPromptConfig] = useState<MasterPersonaPromptConfig>(DEFAULT_TERMINOLOGY_PROMPT_CONFIG);
     const [isTerminologyConfigHydrated, setIsTerminologyConfigHydrated] = useState(false);
@@ -463,7 +631,9 @@ export function useTranslationFlow(): UseTranslationFlowResult {
             }
 
             setTerminologyTargetPage(nextPage);
-            setTerminologyTargetStatus(nextPage.totalRows > 0 ? 'ready' : 'empty');
+            const hasTargets = nextPage.totalRows > 0;
+            setTerminologyTargetStatus('ready');
+            setTerminologyErrorMessage(hasTargets ? '' : NO_TERMINOLOGY_TARGETS_MESSAGE);
             return nextPage;
         } catch (error) {
             const message = toErrorMessage(error, '対象単語リストの取得に失敗しました');
@@ -474,6 +644,100 @@ export function useTranslationFlow(): UseTranslationFlowResult {
             return emptyPage;
         } finally {
             setIsTerminologyTargetLoading(false);
+        }
+    }, [taskId]);
+
+    const handleRefreshPersonaSummary = useCallback(async (nextTaskId: string): Promise<PersonaPhaseSummary> => {
+        if (nextTaskId === '') {
+            setPersonaSummary(EMPTY_PERSONA_SUMMARY);
+            setPersonaErrorMessage('');
+            return EMPTY_PERSONA_SUMMARY;
+        }
+
+        try {
+            const payload = await getTranslationFlowPersonaBinding(nextTaskId);
+            const summary = mapPersonaPhaseResult(payload);
+            const resolvedTaskID = summary.taskId || nextTaskId;
+            const nextSummary = {
+                ...summary,
+                taskId: resolvedTaskID,
+            };
+            if (resolvedTaskID !== '' && resolvedTaskID !== taskId) {
+                setTaskID(resolvedTaskID);
+            }
+            setPersonaSummary(nextSummary);
+            setPersonaTargetStatus(nextSummary.status);
+            setPersonaErrorMessage('');
+            setIsPersonaRunning(nextSummary.status === 'running');
+            return nextSummary;
+        } catch (error) {
+            const message = toErrorMessage(error, 'ペルソナ生成の状態取得に失敗しました');
+            setPersonaErrorMessage(message);
+            setIsPersonaRunning(false);
+            return {
+                ...EMPTY_PERSONA_SUMMARY,
+                taskId: nextTaskId,
+                status: 'failed',
+            };
+        }
+    }, [taskId]);
+
+    const handleRefreshPersonaTargets = useCallback(async (
+        nextTaskId: string,
+        page: number,
+        pageSize: number,
+        statusFallback: PersonaTargetViewState,
+    ): Promise<PersonaTargetPreviewPage> => {
+        if (nextTaskId === '') {
+            const emptyPage = EMPTY_PERSONA_TARGET_PAGE('', page, pageSize);
+            setPersonaTargetPage(emptyPage);
+            setPersonaTargetStatus('empty');
+            setPersonaTargetErrorMessage('');
+            setSelectedPersonaTargetKey('');
+            setIsPersonaTargetLoading(false);
+            return emptyPage;
+        }
+
+        setIsPersonaTargetLoading(true);
+        setPersonaTargetStatus('loadingTargets');
+        setPersonaTargetErrorMessage('');
+        setPersonaTargetPage(EMPTY_PERSONA_TARGET_PAGE(nextTaskId, page, pageSize));
+
+        try {
+            const payload = await listTranslationFlowPersonaTargetsBinding(nextTaskId, page, pageSize);
+            const mapped = mapPersonaTargetPreviewPage(payload);
+            const resolvedTaskID = mapped.taskId || nextTaskId;
+            const nextPage = {
+                ...mapped,
+                taskId: resolvedTaskID,
+            };
+            if (resolvedTaskID !== '' && resolvedTaskID !== taskId) {
+                setTaskID(resolvedTaskID);
+            }
+            setPersonaTargetPage(nextPage);
+            setSelectedPersonaTargetKey((previous) => {
+                if (nextPage.rows.length === 0) {
+                    return '';
+                }
+                const hasPrevious = nextPage.rows.some((row) => normalizePersonaRowKey(row) === previous);
+                if (hasPrevious) {
+                    return previous;
+                }
+                return normalizePersonaRowKey(nextPage.rows[0]);
+            });
+            const nextStatus = nextPage.totalRows > 0 ? statusFallback : 'empty';
+            setPersonaTargetStatus(nextStatus);
+            return nextPage;
+        } catch (error) {
+            const message = toErrorMessage(error, 'ペルソナ対象一覧の取得に失敗しました');
+            setPersonaTargetErrorMessage(message);
+            setPersonaTargetStatus('failed');
+            const emptyPage = EMPTY_PERSONA_TARGET_PAGE(nextTaskId, page, pageSize);
+            setPersonaTargetPage(emptyPage);
+            setSelectedPersonaTargetKey('');
+            return emptyPage;
+        } finally {
+            setIsPersonaTargetLoading(false);
         }
     }, [taskId]);
 
@@ -490,6 +754,134 @@ export function useTranslationFlow(): UseTranslationFlowResult {
         const resolvedTaskId = await handleRefreshTerminologySummary(nextTaskId);
         await handleRefreshTerminologyTargets(resolvedTaskId || nextTaskId, 1, PREVIEW_PAGE_SIZE);
     }, [handleRefreshTerminologySummary, handleRefreshTerminologyTargets, taskId]);
+
+    const handleRefreshPersonaPhase = useCallback(async (nextTaskId = taskId): Promise<void> => {
+        if (nextTaskId === '') {
+            setPersonaSummary(EMPTY_PERSONA_SUMMARY);
+            setPersonaErrorMessage('');
+            setPersonaTargetPage(EMPTY_PERSONA_TARGET_PAGE('', 1, PREVIEW_PAGE_SIZE));
+            setPersonaTargetStatus('empty');
+            setPersonaTargetErrorMessage('');
+            setSelectedPersonaTargetKey('');
+            setIsPersonaRunning(false);
+            return;
+        }
+
+        const summary = await handleRefreshPersonaSummary(nextTaskId);
+        const resolvedTaskID = summary.taskId || nextTaskId;
+        await handleRefreshPersonaTargets(resolvedTaskID, 1, PREVIEW_PAGE_SIZE, summary.status);
+    }, [handleRefreshPersonaSummary, handleRefreshPersonaTargets, taskId]);
+
+    const handlePersonaTargetPageChange = useCallback(async (page: number): Promise<void> => {
+        if (taskId === '') {
+            return;
+        }
+        const safePage = Math.max(1, page);
+        await handleRefreshPersonaTargets(taskId, safePage, personaTargetPage.pageSize, personaSummary.status);
+    }, [handleRefreshPersonaTargets, personaSummary.status, personaTargetPage.pageSize, taskId]);
+
+    const handleSelectPersonaTarget = useCallback((sourcePlugin: string, speakerId: string) => {
+        const normalizedSourcePlugin = sourcePlugin.trim();
+        const normalizedSpeakerID = speakerId.trim();
+        if (normalizedSpeakerID === '') {
+            return;
+        }
+        setSelectedPersonaTargetKey(`${normalizedSourcePlugin}::${normalizedSpeakerID}`);
+    }, []);
+
+    const handleRunPersonaPhase = useCallback(async (): Promise<void> => {
+        if (taskId === '' || isPersonaRunning) {
+            return;
+        }
+        if (personaTargetStatus === 'empty') {
+            setPersonaErrorMessage(NO_PERSONA_TARGETS_MESSAGE);
+            return;
+        }
+        if (personaTargetStatus === 'cachedOnly' || personaTargetStatus === 'completed') {
+            return;
+        }
+
+        setIsPersonaRunning(true);
+        setPersonaErrorMessage('');
+        setPersonaTargetErrorMessage('');
+        const initialTotal = Math.max(0, personaTargetPage.totalRows);
+        setPersonaSummary((previous) => ({
+            ...previous,
+            taskId,
+            status: 'running',
+            progressMode: initialTotal > 0 ? 'determinate' : 'indeterminate',
+            progressCurrent: 0,
+            progressTotal: initialTotal > 0 ? initialTotal : Math.max(previous.progressTotal, 0),
+            progressMessage: initialTotal > 0
+                ? `0 / ${initialTotal} 件（残り ${initialTotal} 件）`
+                : 'ペルソナ生成を実行中',
+        }));
+        setPersonaTargetStatus('running');
+
+        try {
+            const payload = await runTranslationFlowPersonaBinding(
+                taskId,
+                {
+                    provider: terminologyConfig.provider,
+                    model: terminologyConfig.model,
+                    endpoint: terminologyConfig.endpoint,
+                    api_key: terminologyConfig.provider === 'lmstudio' ? '' : terminologyConfig.apiKey,
+                    temperature: terminologyConfig.temperature,
+                    context_length: terminologyConfig.contextLength,
+                    sync_concurrency: terminologyConfig.syncConcurrency,
+                    bulk_strategy: terminologyConfig.bulkStrategy,
+                },
+                {
+                    user_prompt: terminologyPromptConfig.userPrompt,
+                    system_prompt: terminologyPromptConfig.systemPrompt,
+                },
+            );
+            const summary = mapPersonaPhaseResult(payload);
+            const resolvedTaskID = summary.taskId || taskId;
+            const nextSummary = {
+                ...summary,
+                taskId: resolvedTaskID,
+            };
+            setPersonaSummary(nextSummary);
+            await handleRefreshPersonaTargets(
+                resolvedTaskID,
+                personaTargetPage.page,
+                personaTargetPage.pageSize,
+                nextSummary.status,
+            );
+        } catch (error) {
+            setPersonaErrorMessage(toErrorMessage(error, 'ペルソナ生成の実行に失敗しました'));
+            await handleRefreshPersonaPhase(taskId);
+        } finally {
+            setIsPersonaRunning(false);
+        }
+    }, [
+        handleRefreshPersonaPhase,
+        handleRefreshPersonaTargets,
+        isPersonaRunning,
+        personaTargetPage.page,
+        personaTargetPage.pageSize,
+        personaTargetPage.totalRows,
+        personaTargetStatus,
+        taskId,
+        terminologyConfig.apiKey,
+        terminologyConfig.bulkStrategy,
+        terminologyConfig.contextLength,
+        terminologyConfig.endpoint,
+        terminologyConfig.model,
+        terminologyConfig.provider,
+        terminologyConfig.syncConcurrency,
+        terminologyConfig.temperature,
+        terminologyPromptConfig.systemPrompt,
+        terminologyPromptConfig.userPrompt,
+    ]);
+
+    const handleRetryPersonaPhase = useCallback(async (): Promise<void> => {
+        if (personaSummary.status !== 'partialFailed' && personaSummary.status !== 'failed') {
+            return;
+        }
+        await handleRunPersonaPhase();
+    }, [handleRunPersonaPhase, personaSummary.status]);
 
     useEffect(() => {
         let active = true;
@@ -617,7 +1009,7 @@ export function useTranslationFlow(): UseTranslationFlowResult {
         return () => {
             alive = false;
         };
-    }, [isTerminologyConfigHydrated, terminologyConfig.provider]);
+    }, [isTerminologyConfigHydrated, persistTerminologyLLMConfig, terminologyConfig.provider]);
 
     useEffect(() => {
         if (!isTerminologyConfigHydrated) {
@@ -672,14 +1064,22 @@ export function useTranslationFlow(): UseTranslationFlowResult {
             setTerminologyTargetPage(EMPTY_TERMINOLOGY_TARGET_PAGE('', 1, PREVIEW_PAGE_SIZE));
             setTerminologyTargetStatus('empty');
             setTerminologyTargetErrorMessage('');
+            setPersonaSummary(EMPTY_PERSONA_SUMMARY);
+            setPersonaErrorMessage('');
+            setPersonaTargetPage(EMPTY_PERSONA_TARGET_PAGE('', 1, PREVIEW_PAGE_SIZE));
+            setPersonaTargetStatus('empty');
+            setPersonaTargetErrorMessage('');
+            setSelectedPersonaTargetKey('');
             setErrorMessage('');
             setActiveTab(0);
             setIsTerminologyRunning(false);
+            setIsPersonaRunning(false);
             return;
         }
         void handleReloadFiles();
         void handleRefreshTerminologyPhase(taskId);
-    }, [handleRefreshTerminologyPhase, handleReloadFiles, isTaskIDResolved, taskId]);
+        void handleRefreshPersonaPhase(taskId);
+    }, [handleRefreshPersonaPhase, handleRefreshTerminologyPhase, handleReloadFiles, isTaskIDResolved, taskId]);
 
     const handleSelectFiles = useCallback(async () => {
         setErrorMessage('');
@@ -780,10 +1180,11 @@ export function useTranslationFlow(): UseTranslationFlowResult {
         if (taskId === '' || isTerminologyRunning) {
             return;
         }
-        if (terminologyTargetStatus === 'empty') {
+        if (terminologyTargetPage.totalRows === 0) {
             setTerminologyErrorMessage(NO_TERMINOLOGY_TARGETS_MESSAGE);
             return;
         }
+        const runStartedAt = Date.now();
         setIsTerminologyRunning(true);
         setTerminologyErrorMessage('');
         const initialTotal = Math.max(0, terminologyTargetPage.totalRows);
@@ -827,9 +1228,8 @@ export function useTranslationFlow(): UseTranslationFlowResult {
             });
             if (summary.status === 'pending' && summary.savedCount === 0 && summary.failedCount === 0) {
                 setTerminologyErrorMessage(NO_TERMINOLOGY_TARGETS_MESSAGE);
-                setTerminologyTargetStatus('empty');
+                setTerminologyTargetStatus('ready');
                 setTerminologyTargetPage(EMPTY_TERMINOLOGY_TARGET_PAGE(resolvedTaskId, terminologyTargetPage.page, terminologyTargetPage.pageSize));
-                setIsTerminologyRunning(false);
                 return;
             }
             await handleRefreshTerminologyTargets(resolvedTaskId, terminologyTargetPage.page, terminologyTargetPage.pageSize);
@@ -837,6 +1237,13 @@ export function useTranslationFlow(): UseTranslationFlowResult {
             setTerminologyErrorMessage(toErrorMessage(error, '単語翻訳の実行に失敗しました'));
             await handleRefreshTerminologyPhase(taskId);
         } finally {
+            const minimumRunningMs = 300;
+            const elapsedMs = Date.now() - runStartedAt;
+            if (elapsedMs < minimumRunningMs) {
+                await new Promise<void>((resolve) => {
+                    window.setTimeout(resolve, minimumRunningMs - elapsedMs);
+                });
+            }
             setIsTerminologyRunning(false);
         }
     }, [
@@ -846,17 +1253,27 @@ export function useTranslationFlow(): UseTranslationFlowResult {
         taskId,
         terminologyConfig,
         terminologyPromptConfig,
-        terminologyTargetStatus,
         terminologyTargetPage.page,
         terminologyTargetPage.pageSize,
+        terminologyTargetPage.totalRows,
     ]);
 
     const handleAdvanceFromTerminology = useCallback(() => {
-        if (terminologySummary.status !== 'completed' && terminologySummary.status !== 'completed_partial') {
+        if (!isTerminologyCompleted(terminologySummary.status)) {
             return;
         }
-        setActiveTab(2);
-    }, [terminologySummary.status]);
+        void (async () => {
+            await handleRefreshPersonaPhase(taskId);
+            setActiveTab(2);
+        })();
+    }, [handleRefreshPersonaPhase, taskId, terminologySummary.status]);
+
+    const handleAdvanceFromPersona = useCallback(() => {
+        if (!isPersonaAdvanceAllowed(personaSummary.status)) {
+            return;
+        }
+        setActiveTab(3);
+    }, [personaSummary.status]);
 
     const handleTerminologyConfigChange = useCallback((next: MasterPersonaLLMConfig) => {
         setTerminologyConfig(next);
@@ -873,11 +1290,31 @@ export function useTranslationFlow(): UseTranslationFlowResult {
         if (index > 0 && loadedFiles.length === 0) {
             return;
         }
-        if (index > 1 && terminologySummary.status !== 'completed' && terminologySummary.status !== 'completed_partial') {
+        if (index > 1 && !isTerminologyCompleted(terminologySummary.status)) {
             return;
         }
+        if (index > 2 && !isPersonaAdvanceAllowed(personaSummary.status)) {
+            return;
+        }
+        if (index === 2 && taskId !== '') {
+            void handleRefreshPersonaPhase(taskId);
+        }
         setActiveTab(index);
-    }, [loadedFiles.length, terminologySummary.status]);
+    }, [
+        handleRefreshPersonaPhase,
+        loadedFiles.length,
+        personaSummary.status,
+        taskId,
+        terminologySummary.status,
+    ]);
+
+    const selectedPersonaTarget = useMemo<PersonaTargetPreviewRow | null>(() => {
+        if (selectedPersonaTargetKey === '') {
+            return personaTargetPage.rows[0] ?? null;
+        }
+        const matched = personaTargetPage.rows.find((row) => normalizePersonaRowKey(row) === selectedPersonaTargetKey);
+        return matched ?? personaTargetPage.rows[0] ?? null;
+    }, [personaTargetPage.rows, selectedPersonaTargetKey]);
 
     return {
         state: {
@@ -903,6 +1340,16 @@ export function useTranslationFlow(): UseTranslationFlowResult {
             terminologyPromptConfig,
             isTerminologyConfigHydrated,
             isTerminologyPromptHydrated,
+            personaSummary,
+            personaStatusLabel: personaStatusLabel(personaSummary, personaTargetStatus),
+            personaErrorMessage,
+            personaTargetPage,
+            personaTargetStatus,
+            personaTargetErrorMessage,
+            isPersonaTargetLoading,
+            isPersonaRunning,
+            selectedPersonaTargetKey,
+            selectedPersonaTarget,
         },
         actions: {
             handleTabChange,
@@ -918,6 +1365,12 @@ export function useTranslationFlow(): UseTranslationFlowResult {
             handleTerminologyConfigChange,
             handleTerminologyPromptChange,
             handleAdvanceFromTerminology,
+            handleRunPersonaPhase,
+            handleRetryPersonaPhase,
+            handleRefreshPersonaPhase,
+            handlePersonaTargetPageChange,
+            handleSelectPersonaTarget,
+            handleAdvanceFromPersona,
         },
         ui: {
             previewPageSize: PREVIEW_PAGE_SIZE,

@@ -2,46 +2,24 @@ package workflow
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"testing"
 
-	"github.com/ishibata91/ai-translation-engine-2/pkg/artifact/translationinput"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/format/parser/skyrim"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/foundation/llmio"
 	runtimeprogress "github.com/ishibata91/ai-translation-engine-2/pkg/foundation/progress"
-	gatewayllm "github.com/ishibata91/ai-translation-engine-2/pkg/gateway/llm"
-	"github.com/ishibata91/ai-translation-engine-2/pkg/runtime/llmexec"
+	runtimequeue "github.com/ishibata91/ai-translation-engine-2/pkg/runtime/queue"
 	terminologyslice "github.com/ishibata91/ai-translation-engine-2/pkg/slice/terminology"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/slice/translationflow"
 )
 
 func TestTranslationFlowServiceListTerminologyTargetsIncludesTranslations(t *testing.T) {
 	service := &TranslationFlowService{
-		store: &stubTranslationFlowStore{
-			input: translationinput.TerminologyInput{
-				TaskID: "task-1",
-				Entries: []translationinput.TerminologyEntry{
-					{
-						ID:         "row-1",
-						EditorID:   "EDID_001",
-						RecordType: "NPC_:FULL",
-						SourceText: "NPC Name",
-						SourceFile: "Update.esm.extract.json",
-						Variant:    "full",
-					},
-					{
-						ID:         "row-2",
-						EditorID:   "EDID_002",
-						RecordType: "BOOK:FULL",
-						SourceText: "Unreadable Book",
-						SourceFile: "Skyrim.esm.extract.json",
-						Variant:    "single",
-					},
-				},
-			},
-		},
+		store: &stubTranslationFlowStore{},
 		terminology: &stubTerminology{
 			listTargetsResult: []terminologyslice.TerminologyEntry{
 				{
@@ -95,21 +73,7 @@ func TestTranslationFlowServiceListTerminologyTargetsIncludesTranslations(t *tes
 
 func TestTranslationFlowServiceListTerminologyTargetsUsesNormalizedTargets(t *testing.T) {
 	service := &TranslationFlowService{
-		store: &stubTranslationFlowStore{
-			input: translationinput.TerminologyInput{
-				TaskID: "task-norm",
-				Entries: []translationinput.TerminologyEntry{
-					{
-						ID:         "row-ja",
-						EditorID:   "EDID_JA",
-						RecordType: "BOOK:FULL",
-						SourceText: "日本語の項目",
-						SourceFile: "Skyrim.esm.extract.json",
-						Variant:    "single",
-					},
-				},
-			},
-		},
+		store: &stubTranslationFlowStore{},
 		terminology: &stubTerminology{
 			listTargetsResult: []terminologyslice.TerminologyEntry{
 				{
@@ -416,83 +380,536 @@ func TestTranslationFlowServiceRunTerminologyPhaseThrottlesSummaryPersistenceFor
 	}
 }
 
-func TestTranslationFlowServiceRunTerminologyPhase_UsesBatchClientForXAIBatchStrategy(t *testing.T) {
-	terminology := &stubTerminology{
-		preparePromptsResult: []llmio.Request{
-			{
-				Metadata: map[string]interface{}{
-					"source_text": "NPC Name",
+func TestTranslationFlowServiceListTranslationFlowPersonaTargetsExcludesExistingMasterPersona(t *testing.T) {
+	store := &stubTranslationFlowStore{
+		personaInput: translationflow.PersonaCandidateInput{
+			TaskID: "task-persona-preview",
+			Candidates: map[string]translationflow.PersonaCandidate{
+				"npc-a": {
+					SpeakerID:    "00012345",
+					EditorID:     "NPC_A",
+					NPCName:      "Aela",
+					Race:         "Nord",
+					Sex:          "Female",
+					VoiceType:    "FemaleNord",
+					SourcePlugin: "",
+					SourceHint:   "Skyrim.esm.extract.json",
+				},
+				"npc-b": {
+					SpeakerID:    "00054321",
+					EditorID:     "NPC_B",
+					NPCName:      "Vilkas",
+					Race:         "Nord",
+					Sex:          "Male",
+					VoiceType:    "MaleNord",
+					SourcePlugin: "Update.esm",
+				},
+			},
+			Dialogues: []translationflow.PersonaDialogueExcerpt{
+				{
+					ID:           "dlg-a-1",
+					SpeakerID:    "00012345",
+					EditorID:     "DIALOGUE_A",
+					RecordType:   "DIAL:INFO",
+					Text:         "The Companions stand ready.",
+					SourcePlugin: "Skyrim.esm",
+					Order:        1,
+				},
+				{
+					ID:           "dlg-b-1",
+					SpeakerID:    "00054321",
+					EditorID:     "DIALOGUE_B",
+					RecordType:   "DIAL:INFO",
+					Text:         "The silver hand will fall.",
+					SourcePlugin: "Update.esm",
+					Order:        1,
 				},
 			},
 		},
-		summary: terminologyslice.PhaseSummary{
-			TaskID:          "task-batch",
-			Status:          "completed",
-			SavedCount:      1,
-			FailedCount:     0,
-			ProgressMode:    "hidden",
-			ProgressCurrent: 1,
-			ProgressTotal:   1,
-			ProgressMessage: "単語翻訳完了",
-		},
-	}
-	batchClient := &stubWorkflowBatchClient{
-		statuses: []gatewayllm.BatchStatus{
-			{State: gatewayllm.BatchStateCompleted, Progress: 1},
-		},
-		results: []gatewayllm.Response{
-			{
-				Success: true,
-				Content: "TL: |NPC 名|",
-				Metadata: map[string]interface{}{
-					gatewayllm.BatchMetadataQueueJobIDKey: "terminology-0",
-				},
+		finalPersonasByLookup: map[string]translationflow.PersonaFinalSummary{
+			personaLookupCompositeKey("Skyrim.esm", "00012345"): {
+				SourcePlugin: "Skyrim.esm",
+				SpeakerID:    "00012345",
+				PersonaText:  "勇敢で実直な同胞団の戦士。",
 			},
 		},
 	}
-	llmManager := &stubWorkflowLLMManager{
-		batchClient:  batchClient,
-		resolvedBulk: gatewayllm.BulkStrategyBatch,
+	service := &TranslationFlowService{store: store}
+
+	page, err := service.ListTranslationFlowPersonaTargets(context.Background(), "task-persona-preview", 1, 50)
+	if err != nil {
+		t.Fatalf("ListTranslationFlowPersonaTargets failed: %v", err)
 	}
-	service := &TranslationFlowService{
-		terminology: terminology,
-		executor:    llmexec.NewSyncExecutor(llmManager),
-		notifier:    &stubWorkflowProgressNotifier{},
+	if len(page.Rows) != 2 {
+		t.Fatalf("unexpected persona row count: got=%d want=%d", len(page.Rows), 2)
 	}
 
-	result, err := service.RunTerminologyPhase(context.Background(), RunTerminologyPhaseInput{
-		TaskID: "task-batch",
+	var reusedRow PersonaTargetPreviewRow
+	var pendingRow PersonaTargetPreviewRow
+	for _, row := range page.Rows {
+		switch row.SpeakerID {
+		case "00012345":
+			reusedRow = row
+		case "00054321":
+			pendingRow = row
+		}
+	}
+	if reusedRow.ViewState != personaViewStateReused {
+		t.Fatalf("unexpected reused row view state: got=%q want=%q", reusedRow.ViewState, personaViewStateReused)
+	}
+	if reusedRow.PersonaText == "" {
+		t.Fatalf("reused row must include persona text")
+	}
+	if pendingRow.ViewState != personaViewStatePending {
+		t.Fatalf("unexpected pending row view state: got=%q want=%q", pendingRow.ViewState, personaViewStatePending)
+	}
+
+	summary, err := service.GetTranslationFlowPersonaPhase(context.Background(), "task-persona-preview")
+	if err != nil {
+		t.Fatalf("GetTranslationFlowPersonaPhase failed: %v", err)
+	}
+	if summary.DetectedCount != 2 || summary.ReusedCount != 1 || summary.PendingCount != 1 {
+		t.Fatalf("unexpected persona summary counts: %+v", summary)
+	}
+}
+
+func TestTranslationFlowServiceRunTranslationFlowPersonaPhaseNoOpWhenAllReused(t *testing.T) {
+	store := &stubTranslationFlowStore{
+		personaInput: translationflow.PersonaCandidateInput{
+			TaskID: "task-persona-noop",
+			Candidates: map[string]translationflow.PersonaCandidate{
+				"npc-a": {
+					SpeakerID:    "00012345",
+					SourcePlugin: "Skyrim.esm",
+				},
+			},
+		},
+		finalPersonasByLookup: map[string]translationflow.PersonaFinalSummary{
+			personaLookupCompositeKey("Skyrim.esm", "00012345"): {
+				SourcePlugin: "Skyrim.esm",
+				SpeakerID:    "00012345",
+				PersonaText:  "既存ペルソナ",
+			},
+		},
+	}
+	personaWorkflow := &stubMasterPersona{}
+	service := &TranslationFlowService{
+		store:           store,
+		personaWorkflow: personaWorkflow,
+	}
+
+	result, err := service.RunTranslationFlowPersonaPhase(context.Background(), RunTranslationFlowPersonaPhaseInput{
+		TaskID: "task-persona-noop",
+	})
+	if err != nil {
+		t.Fatalf("RunTranslationFlowPersonaPhase failed: %v", err)
+	}
+	if personaWorkflow.resumeCalls != 0 {
+		t.Fatalf("persona workflow must not resume on no-op completion: resume_calls=%d", personaWorkflow.resumeCalls)
+	}
+	if result.PendingCount != 0 {
+		t.Fatalf("pending count must be zero for no-op completion: got=%d", result.PendingCount)
+	}
+	if result.Status != "cached_only" {
+		t.Fatalf("unexpected no-op status: got=%q want=%q", result.Status, "cached_only")
+	}
+}
+
+func TestTranslationFlowServiceRunTranslationFlowPersonaPhaseBootstrapsWhenRuntimeRequestsDoNotExist(t *testing.T) {
+	store := &stubTranslationFlowStore{
+		personaInput: translationflow.PersonaCandidateInput{
+			TaskID: "task-persona-bootstrap",
+			Candidates: map[string]translationflow.PersonaCandidate{
+				"npc-b": {
+					SpeakerID:    "00054321",
+					SourcePlugin: "Update.esm",
+				},
+			},
+			Dialogues: []translationflow.PersonaDialogueExcerpt{
+				{
+					ID:           "dlg-b-1",
+					SpeakerID:    "00054321",
+					RecordType:   "DIAL:INFO",
+					Text:         "We stand ready.",
+					SourcePlugin: "Update.esm",
+					Order:        1,
+				},
+			},
+		},
+		loadedFiles: []translationflow.LoadedFile{
+			{
+				ID:             1,
+				TaskID:         "task-persona-bootstrap",
+				SourceFilePath: "bootstrap-source.json",
+			},
+		},
+		finalPersonasByLookup: map[string]translationflow.PersonaFinalSummary{},
+	}
+	personaWorkflow := &stubMasterPersona{}
+	service := &TranslationFlowService{
+		store:           store,
+		personaWorkflow: personaWorkflow,
+	}
+
+	result, err := service.RunTranslationFlowPersonaPhase(context.Background(), RunTranslationFlowPersonaPhaseInput{
+		TaskID: "task-persona-bootstrap",
 		Request: TranslationRequestConfig{
-			Provider:     "xai",
-			Model:        "grok-3",
-			BulkStrategy: "batch",
+			Provider: "openai",
+			Model:    "gpt-4.1-mini",
+		},
+		Prompt: TranslationPromptConfig{
+			UserPrompt:   "persona user prompt",
+			SystemPrompt: "persona system prompt",
 		},
 	})
 	if err != nil {
-		t.Fatalf("RunTerminologyPhase failed: %v", err)
+		t.Fatalf("RunTranslationFlowPersonaPhase failed: %v", err)
 	}
-	if llmManager.getBatchClientCalls != 1 {
-		t.Fatalf("expected GetBatchClient to be called once, got=%d", llmManager.getBatchClientCalls)
+	if personaWorkflow.startCalls != 0 {
+		t.Fatalf("persona workflow must not start a new persona task: got=%d", personaWorkflow.startCalls)
 	}
-	if llmManager.getClientCalls != 0 {
-		t.Fatalf("expected GetClient not to be called, got=%d", llmManager.getClientCalls)
+	if personaWorkflow.resumeCalls != 1 {
+		t.Fatalf("translation-flow bootstrap run must execute through persona workflow contract: got=%d", personaWorkflow.resumeCalls)
 	}
-	if batchClient.submitCalls != 1 {
-		t.Fatalf("expected SubmitBatch to be called once, got=%d", batchClient.submitCalls)
+	if len(personaWorkflow.resumeTaskIDs) != 1 || personaWorkflow.resumeTaskIDs[0] != "task-persona-bootstrap" {
+		t.Fatalf("persona workflow must run with translation task id: task_ids=%v", personaWorkflow.resumeTaskIDs)
 	}
-	if len(terminology.savedResponses) != 1 {
-		t.Fatalf("expected saved response count=1, got=%d", len(terminology.savedResponses))
+	if !personaWorkflow.resumeConfigProvided {
+		t.Fatalf("run config must be passed to persona workflow contract")
 	}
-	if !terminology.savedResponses[0].Success {
-		t.Fatalf("expected saved response success, got=%+v", terminology.savedResponses[0])
+	if personaWorkflow.lastResumeRequest.Provider != "openai" || personaWorkflow.lastResumeRequest.Model != "gpt-4.1-mini" {
+		t.Fatalf("unexpected run request config: %+v", personaWorkflow.lastResumeRequest)
 	}
-	if result.Status != "completed" {
-		t.Fatalf("unexpected terminology phase status: got=%q want=%q", result.Status, "completed")
+	if personaWorkflow.lastResumePrompt.UserPrompt != "persona user prompt" || personaWorkflow.lastResumePrompt.SystemPrompt != "persona system prompt" {
+		t.Fatalf("unexpected run prompt config: %+v", personaWorkflow.lastResumePrompt)
+	}
+	if result.PendingCount != 1 || result.Status != "ready" {
+		t.Fatalf("unexpected persona summary after bootstrap run: %+v", result)
+	}
+}
+
+func TestTranslationFlowServiceRunTranslationFlowPersonaPhaseFailsWhenBootstrapSourcePathIsUnavailable(t *testing.T) {
+	store := &stubTranslationFlowStore{
+		personaInput: translationflow.PersonaCandidateInput{
+			TaskID: "task-persona-bootstrap-missing-source",
+			Candidates: map[string]translationflow.PersonaCandidate{
+				"npc-c": {
+					SpeakerID:    "00077777",
+					SourcePlugin: "Skyrim.esm",
+				},
+			},
+		},
+		finalPersonasByLookup: map[string]translationflow.PersonaFinalSummary{},
+	}
+	personaWorkflow := &stubMasterPersona{}
+	service := &TranslationFlowService{
+		store:           store,
+		personaWorkflow: personaWorkflow,
+	}
+
+	_, err := service.RunTranslationFlowPersonaPhase(context.Background(), RunTranslationFlowPersonaPhaseInput{
+		TaskID: "task-persona-bootstrap-missing-source",
+		Request: TranslationRequestConfig{
+			Model: "gpt-4.1-mini",
+		},
+	})
+	if err == nil {
+		t.Fatalf("RunTranslationFlowPersonaPhase unexpectedly succeeded without bootstrap source path")
+	}
+	if !strings.Contains(err.Error(), "source_json_path") {
+		t.Fatalf("unexpected bootstrap error: %v", err)
+	}
+	if personaWorkflow.resumeCalls != 0 {
+		t.Fatalf("persona workflow must not run when bootstrap source path is unavailable: resume_calls=%d", personaWorkflow.resumeCalls)
+	}
+}
+
+func TestTranslationFlowServiceRunTranslationFlowPersonaPhaseResumesWhenRuntimeRequestsAlreadyExist(t *testing.T) {
+	store := &stubTranslationFlowStore{
+		personaInput: translationflow.PersonaCandidateInput{
+			TaskID: "task-persona-run",
+			Candidates: map[string]translationflow.PersonaCandidate{
+				"npc-b": {
+					SpeakerID:    "00054321",
+					SourcePlugin: "Update.esm",
+				},
+			},
+			Dialogues: []translationflow.PersonaDialogueExcerpt{
+				{
+					ID:           "dlg-b-1",
+					SpeakerID:    "00054321",
+					RecordType:   "DIAL:INFO",
+					Text:         "We stand ready.",
+					SourcePlugin: "Update.esm",
+					Order:        1,
+				},
+			},
+		},
+		finalPersonasByLookup: map[string]translationflow.PersonaFinalSummary{},
+	}
+	personaWorkflow := &stubMasterPersona{
+		requestsMap: map[string][]runtimequeue.JobRequest{
+			"task-persona-run": {
+				buildPersonaJobRequest("task-persona-run", runtimequeue.RequestStatePending, "Update.esm", "00054321", nil),
+			},
+		},
+	}
+
+	service := &TranslationFlowService{
+		store:           store,
+		personaWorkflow: personaWorkflow,
+	}
+	result, err := service.RunTranslationFlowPersonaPhase(context.Background(), RunTranslationFlowPersonaPhaseInput{
+		TaskID: "task-persona-run",
+		Request: TranslationRequestConfig{
+			Provider: "openai",
+			Model:    "gpt-4.1-mini",
+		},
+		Prompt: TranslationPromptConfig{
+			UserPrompt:   "persona user prompt",
+			SystemPrompt: "persona system prompt",
+		},
+	})
+	if err != nil {
+		t.Fatalf("RunTranslationFlowPersonaPhase failed: %v", err)
+	}
+	if personaWorkflow.startCalls != 0 {
+		t.Fatalf("persona workflow must not start a new persona task: got=%d", personaWorkflow.startCalls)
+	}
+	if personaWorkflow.resumeCalls != 1 {
+		t.Fatalf("translation-flow run must resume same translation task when runtime exists: got=%d", personaWorkflow.resumeCalls)
+	}
+	if len(personaWorkflow.resumeTaskIDs) != 1 || personaWorkflow.resumeTaskIDs[0] != "task-persona-run" {
+		t.Fatalf("persona workflow must resume translation task id: task_ids=%v", personaWorkflow.resumeTaskIDs)
+	}
+	if !personaWorkflow.resumeConfigProvided {
+		t.Fatalf("run config must be passed to persona workflow resume contract")
+	}
+	if personaWorkflow.lastResumeRequest.Provider != "openai" || personaWorkflow.lastResumeRequest.Model != "gpt-4.1-mini" {
+		t.Fatalf("unexpected resume request config: %+v", personaWorkflow.lastResumeRequest)
+	}
+	if personaWorkflow.lastResumePrompt.UserPrompt != "persona user prompt" || personaWorkflow.lastResumePrompt.SystemPrompt != "persona system prompt" {
+		t.Fatalf("unexpected resume prompt config: %+v", personaWorkflow.lastResumePrompt)
+	}
+	if result.PendingCount != 1 || result.Status != "ready" {
+		t.Fatalf("unexpected persona summary after fresh run: %+v", result)
+	}
+}
+
+func TestTranslationFlowServiceGetTranslationFlowPersonaPhaseRestoresPartialFailure(t *testing.T) {
+	store := &stubTranslationFlowStore{
+		personaInput: translationflow.PersonaCandidateInput{
+			TaskID: "task-persona-partial",
+			Candidates: map[string]translationflow.PersonaCandidate{
+				"npc-a": {
+					SpeakerID:    "00012345",
+					SourcePlugin: "Skyrim.esm",
+				},
+				"npc-b": {
+					SpeakerID:    "00054321",
+					SourcePlugin: "Update.esm",
+				},
+			},
+		},
+		finalPersonasByLookup: map[string]translationflow.PersonaFinalSummary{
+			personaLookupCompositeKey("Skyrim.esm", "00012345"): {
+				SourcePlugin: "Skyrim.esm",
+				SpeakerID:    "00012345",
+				PersonaText:  "保存済みペルソナ",
+			},
+		},
+	}
+	failureMessage := "provider timeout"
+	personaWorkflow := &stubMasterPersona{
+		requestsMap: map[string][]runtimequeue.JobRequest{
+			"task-persona-partial": {
+				buildPersonaJobRequest("task-persona-partial", runtimequeue.RequestStateCompleted, "Skyrim.esm", "00012345", nil),
+				buildPersonaJobRequest("task-persona-partial", runtimequeue.RequestStateFailed, "Update.esm", "00054321", &failureMessage),
+			},
+		},
+	}
+	service := &TranslationFlowService{
+		store:           store,
+		personaWorkflow: personaWorkflow,
+	}
+
+	summary, err := service.GetTranslationFlowPersonaPhase(context.Background(), "task-persona-partial")
+	if err != nil {
+		t.Fatalf("GetTranslationFlowPersonaPhase failed: %v", err)
+	}
+	if summary.Status != "partial_failed" {
+		t.Fatalf("unexpected persona summary status: got=%q want=%q", summary.Status, "partial_failed")
+	}
+	if summary.GeneratedCount != 1 || summary.FailedCount != 1 || summary.PendingCount != 0 {
+		t.Fatalf("unexpected persona summary counts: %+v", summary)
+	}
+
+	page, err := service.ListTranslationFlowPersonaTargets(context.Background(), "task-persona-partial", 1, 50)
+	if err != nil {
+		t.Fatalf("ListTranslationFlowPersonaTargets failed: %v", err)
+	}
+	if len(page.Rows) != 2 {
+		t.Fatalf("unexpected persona row count: got=%d want=%d", len(page.Rows), 2)
+	}
+	var failedRow PersonaTargetPreviewRow
+	for _, row := range page.Rows {
+		if row.SpeakerID == "00054321" {
+			failedRow = row
+		}
+	}
+	if failedRow.ViewState != personaViewStateFailed {
+		t.Fatalf("unexpected failed row view state: got=%q want=%q", failedRow.ViewState, personaViewStateFailed)
+	}
+	if failedRow.ErrorMessage != failureMessage {
+		t.Fatalf("unexpected failed row error message: got=%q want=%q", failedRow.ErrorMessage, failureMessage)
+	}
+
+	if _, err := service.RunTranslationFlowPersonaPhase(context.Background(), RunTranslationFlowPersonaPhaseInput{
+		TaskID: "task-persona-partial",
+		Request: TranslationRequestConfig{
+			Model: "gemini-2.5-flash",
+		},
+	}); err != nil {
+		t.Fatalf("RunTranslationFlowPersonaPhase retry failed: %v", err)
+	}
+	if personaWorkflow.resumeCalls != 1 {
+		t.Fatalf("persona workflow must resume failed/unresolved targets: resume_calls=%d", personaWorkflow.resumeCalls)
+	}
+	if len(personaWorkflow.resumeTaskIDs) != 1 || personaWorkflow.resumeTaskIDs[0] != "task-persona-partial" {
+		t.Fatalf("persona workflow must resume translation task: task_ids=%v", personaWorkflow.resumeTaskIDs)
+	}
+}
+
+func TestTranslationFlowServiceGetTranslationFlowPersonaPhaseRestoresStateAfterServiceRecreation(t *testing.T) {
+	store := &stubTranslationFlowStore{
+		personaInput: translationflow.PersonaCandidateInput{
+			TaskID: "task-persona-recreate",
+			Candidates: map[string]translationflow.PersonaCandidate{
+				"npc-a": {
+					SpeakerID:    "00011111",
+					SourcePlugin: "Skyrim.esm",
+				},
+				"npc-b": {
+					SpeakerID:    "00022222",
+					SourcePlugin: "Update.esm",
+				},
+			},
+		},
+		finalPersonasByLookup: map[string]translationflow.PersonaFinalSummary{
+			personaLookupCompositeKey("Skyrim.esm", "00011111"): {
+				SourcePlugin: "Skyrim.esm",
+				SpeakerID:    "00011111",
+				PersonaText:  "保存済みペルソナ",
+			},
+		},
+	}
+	personaWorkflow := &stubMasterPersona{
+		requestsMap: map[string][]runtimequeue.JobRequest{
+			"task-persona-recreate": {
+				buildPersonaJobRequest("task-persona-recreate", runtimequeue.RequestStateCompleted, "Skyrim.esm", "00011111", nil),
+				buildPersonaJobRequest("task-persona-recreate", runtimequeue.RequestStateRunning, "Update.esm", "00022222", nil),
+			},
+		},
+	}
+
+	first := &TranslationFlowService{
+		store:           store,
+		personaWorkflow: personaWorkflow,
+	}
+	firstSummary, err := first.GetTranslationFlowPersonaPhase(context.Background(), "task-persona-recreate")
+	if err != nil {
+		t.Fatalf("GetTranslationFlowPersonaPhase first instance failed: %v", err)
+	}
+	if firstSummary.Status != "running" || firstSummary.GeneratedCount != 1 || firstSummary.FailedCount != 0 {
+		t.Fatalf("unexpected first summary: %+v", firstSummary)
+	}
+
+	recreated := &TranslationFlowService{
+		store:           store,
+		personaWorkflow: personaWorkflow,
+	}
+	summary, err := recreated.GetTranslationFlowPersonaPhase(context.Background(), "task-persona-recreate")
+	if err != nil {
+		t.Fatalf("GetTranslationFlowPersonaPhase recreated instance failed: %v", err)
+	}
+	if summary.Status != "running" || summary.GeneratedCount != 1 || summary.FailedCount != 0 {
+		t.Fatalf("unexpected recreated summary: %+v", summary)
+	}
+
+	page, err := recreated.ListTranslationFlowPersonaTargets(context.Background(), "task-persona-recreate", 1, 50)
+	if err != nil {
+		t.Fatalf("ListTranslationFlowPersonaTargets recreated instance failed: %v", err)
+	}
+	if len(page.Rows) != 2 {
+		t.Fatalf("unexpected row count after recreation: got=%d want=%d", len(page.Rows), 2)
+	}
+	var generatedRow PersonaTargetPreviewRow
+	var runningRow PersonaTargetPreviewRow
+	for _, row := range page.Rows {
+		switch row.SpeakerID {
+		case "00011111":
+			generatedRow = row
+		case "00022222":
+			runningRow = row
+		}
+	}
+	if generatedRow.ViewState != personaViewStateGenerated {
+		t.Fatalf("unexpected generated row state after recreation: got=%q want=%q", generatedRow.ViewState, personaViewStateGenerated)
+	}
+	if runningRow.ViewState != personaViewStateRunning {
+		t.Fatalf("unexpected running row state after recreation: got=%q want=%q", runningRow.ViewState, personaViewStateRunning)
+	}
+}
+
+func TestTranslationFlowServiceListTranslationFlowPersonaTargetsHandlesInitialPreviewWithoutRuntimeQueue(t *testing.T) {
+	store := &stubTranslationFlowStore{
+		personaInput: translationflow.PersonaCandidateInput{
+			TaskID: "task-persona-preview-initial",
+			Candidates: map[string]translationflow.PersonaCandidate{
+				"npc-c": {
+					SpeakerID:    "00022222",
+					EditorID:     "NPC_C",
+					SourcePlugin: "Skyrim.esm",
+				},
+			},
+		},
+	}
+	personaWorkflow := &stubMasterPersona{
+		requestStateErr: errors.New("GetTaskRequestState must not be called"),
+	}
+	service := &TranslationFlowService{
+		store:           store,
+		personaWorkflow: personaWorkflow,
+	}
+
+	page, err := service.ListTranslationFlowPersonaTargets(context.Background(), "task-persona-preview-initial", 1, 50)
+	if err != nil {
+		t.Fatalf("ListTranslationFlowPersonaTargets failed: %v", err)
+	}
+	if len(page.Rows) != 1 {
+		t.Fatalf("unexpected persona row count: got=%d want=%d", len(page.Rows), 1)
+	}
+	if page.Rows[0].ViewState != personaViewStatePending {
+		t.Fatalf("initial preview must stay pending without runtime queue: got=%q want=%q", page.Rows[0].ViewState, personaViewStatePending)
+	}
+	if personaWorkflow.requestStateCalls != 0 {
+		t.Fatalf("initial preview must not read task request state: calls=%d", personaWorkflow.requestStateCalls)
+	}
+
+	summary, err := service.GetTranslationFlowPersonaPhase(context.Background(), "task-persona-preview-initial")
+	if err != nil {
+		t.Fatalf("GetTranslationFlowPersonaPhase failed: %v", err)
+	}
+	if summary.Status != "ready" || summary.PendingCount != 1 {
+		t.Fatalf("unexpected persona summary for initial preview: %+v", summary)
 	}
 }
 
 type stubTranslationFlowStore struct {
-	input translationinput.TerminologyInput
+	translationflow.Service
+	personaInput          translationflow.PersonaCandidateInput
+	finalPersonasByLookup map[string]translationflow.PersonaFinalSummary
+	loadedFiles           []translationflow.LoadedFile
 }
 
 type stubSkyrimParser struct {
@@ -526,7 +943,7 @@ func (s *stubTranslationFlowStore) SaveParsedOutput(ctx context.Context, taskID 
 func (s *stubTranslationFlowStore) ListFiles(ctx context.Context, taskID string) ([]translationflow.LoadedFile, error) {
 	_ = ctx
 	_ = taskID
-	return nil, nil
+	return append([]translationflow.LoadedFile(nil), s.loadedFiles...), nil
 }
 
 func (s *stubTranslationFlowStore) ListPreviewRows(ctx context.Context, fileID int64, page int, pageSize int) (translationflow.PreviewPage, error) {
@@ -537,10 +954,66 @@ func (s *stubTranslationFlowStore) ListPreviewRows(ctx context.Context, fileID i
 	return translationflow.PreviewPage{}, nil
 }
 
-func (s *stubTranslationFlowStore) LoadTerminologyInput(ctx context.Context, taskID string) (translationinput.TerminologyInput, error) {
+func (s *stubTranslationFlowStore) LoadPersonaCandidates(ctx context.Context, taskID string) (translationflow.PersonaCandidateInput, error) {
 	_ = ctx
 	_ = taskID
-	return s.input, nil
+
+	candidates := make(map[string]translationflow.PersonaCandidate, len(s.personaInput.Candidates))
+	for key, npc := range s.personaInput.Candidates {
+		candidates[key] = translationflow.PersonaCandidate{
+			SpeakerID:      npc.SpeakerID,
+			SourceRecordID: npc.SourceRecordID,
+			NPCKey:         npc.NPCKey,
+			EditorID:       npc.EditorID,
+			RecordType:     npc.RecordType,
+			NPCName:        npc.NPCName,
+			Race:           npc.Race,
+			Sex:            npc.Sex,
+			VoiceType:      npc.VoiceType,
+			SourcePlugin:   npc.SourcePlugin,
+			SourceHint:     npc.SourceHint,
+		}
+	}
+	dialogues := make([]translationflow.PersonaDialogueExcerpt, 0, len(s.personaInput.Dialogues))
+	for _, dialogue := range s.personaInput.Dialogues {
+		dialogues = append(dialogues, translationflow.PersonaDialogueExcerpt{
+			ID:               dialogue.ID,
+			SpeakerID:        dialogue.SpeakerID,
+			EditorID:         dialogue.EditorID,
+			GroupEditorID:    dialogue.GroupEditorID,
+			RecordType:       dialogue.RecordType,
+			Text:             dialogue.Text,
+			QuestID:          dialogue.QuestID,
+			SourcePlugin:     dialogue.SourcePlugin,
+			SourceHint:       dialogue.SourceHint,
+			IsServicesBranch: dialogue.IsServicesBranch,
+			Order:            dialogue.Order,
+		})
+	}
+
+	return translationflow.PersonaCandidateInput{
+		TaskID:     s.personaInput.TaskID,
+		Candidates: candidates,
+		Dialogues:  dialogues,
+	}, nil
+}
+
+func (s *stubTranslationFlowStore) FindPersonaFinal(ctx context.Context, key translationflow.PersonaLookupKey) (translationflow.PersonaFinalSummary, bool, error) {
+	_ = ctx
+	if s.finalPersonasByLookup == nil {
+		return translationflow.PersonaFinalSummary{}, false, nil
+	}
+	lookupKey := personaLookupCompositeKey(key.SourcePlugin, key.SpeakerID)
+	persona, ok := s.finalPersonasByLookup[lookupKey]
+	if !ok {
+		return translationflow.PersonaFinalSummary{}, false, nil
+	}
+	return translationflow.PersonaFinalSummary{
+		PersonaID:    persona.PersonaID,
+		SourcePlugin: persona.SourcePlugin,
+		SpeakerID:    persona.SpeakerID,
+		PersonaText:  persona.PersonaText,
+	}, true, nil
 }
 
 type stubTerminology struct {
@@ -633,64 +1106,113 @@ func (s *stubWorkflowProgressNotifier) OnProgress(ctx context.Context, event run
 	s.events = append(s.events, event)
 }
 
-type stubWorkflowLLMManager struct {
-	batchClient         gatewayllm.BatchClient
-	resolvedBulk        gatewayllm.BulkStrategy
-	getClientCalls      int
-	getBatchClientCalls int
+type stubMasterPersona struct {
+	startTaskID          string
+	startErr             error
+	resumeErr            error
+	cancelErr            error
+	startCalls           int
+	startInputs          []StartMasterPersonaInput
+	resumeTaskIDs        []string
+	requestState         runtimequeue.TaskRequestState
+	requestStateErr      error
+	requestStateMap      map[string]runtimequeue.TaskRequestState
+	requestStateCalls    int
+	requests             []runtimequeue.JobRequest
+	requestsErr          error
+	requestsMap          map[string][]runtimequeue.JobRequest
+	resumeCalls          int
+	onResume             func(taskID string)
+	lastResumeRequest    TranslationRequestConfig
+	lastResumePrompt     TranslationPromptConfig
+	resumeConfigProvided bool
 }
 
-func (s *stubWorkflowLLMManager) GetClient(ctx context.Context, config gatewayllm.LLMConfig) (gatewayllm.LLMClient, error) {
+func (s *stubMasterPersona) StartMasterPersona(ctx context.Context, input StartMasterPersonaInput) (string, error) {
 	_ = ctx
-	_ = config
-	s.getClientCalls++
-	return nil, nil
-}
-
-func (s *stubWorkflowLLMManager) GetBatchClient(ctx context.Context, config gatewayllm.LLMConfig) (gatewayllm.BatchClient, error) {
-	_ = ctx
-	_ = config
-	s.getBatchClientCalls++
-	return s.batchClient, nil
-}
-
-func (s *stubWorkflowLLMManager) ResolveBulkStrategy(ctx context.Context, strategy gatewayllm.BulkStrategy, provider string) gatewayllm.BulkStrategy {
-	_ = ctx
-	_ = strategy
-	_ = provider
-	return s.resolvedBulk
-}
-
-type stubWorkflowBatchClient struct {
-	submitCalls int
-	statusCalls int
-	statuses    []gatewayllm.BatchStatus
-	results     []gatewayllm.Response
-}
-
-func (s *stubWorkflowBatchClient) SubmitBatch(ctx context.Context, reqs []gatewayllm.Request) (gatewayllm.BatchJobID, error) {
-	_ = ctx
-	_ = reqs
-	s.submitCalls++
-	return gatewayllm.BatchJobID{ID: "batch-1", Provider: "xai"}, nil
-}
-
-func (s *stubWorkflowBatchClient) GetBatchStatus(ctx context.Context, id gatewayllm.BatchJobID) (gatewayllm.BatchStatus, error) {
-	_ = ctx
-	_ = id
-	if len(s.statuses) == 0 {
-		return gatewayllm.BatchStatus{State: gatewayllm.BatchStateCompleted, Progress: 1}, nil
+	s.startCalls++
+	s.startInputs = append(s.startInputs, input)
+	if s.startErr != nil {
+		return "", s.startErr
 	}
-	idx := s.statusCalls
-	if idx >= len(s.statuses) {
-		idx = len(s.statuses) - 1
+	if s.startTaskID == "" {
+		return "persona-task", nil
 	}
-	s.statusCalls++
-	return s.statuses[idx], nil
+	return s.startTaskID, nil
 }
 
-func (s *stubWorkflowBatchClient) GetBatchResults(ctx context.Context, id gatewayllm.BatchJobID) ([]gatewayllm.Response, error) {
+func (s *stubMasterPersona) ResumeMasterPersona(ctx context.Context, taskID string) error {
+	request, prompt, ok := personaPhaseRunConfigFromContext(ctx)
+	if ok {
+		s.resumeConfigProvided = true
+		s.lastResumeRequest = request
+		s.lastResumePrompt = prompt
+	}
+	s.resumeCalls++
+	s.resumeTaskIDs = append(s.resumeTaskIDs, taskID)
+	if s.onResume != nil {
+		s.onResume(taskID)
+	}
+	if s.resumeErr != nil {
+		return s.resumeErr
+	}
+	return nil
+}
+
+func (s *stubMasterPersona) CancelMasterPersona(ctx context.Context, taskID string) error {
 	_ = ctx
-	_ = id
-	return append([]gatewayllm.Response(nil), s.results...), nil
+	_ = taskID
+	return s.cancelErr
+}
+
+func (s *stubMasterPersona) GetTaskRequestState(ctx context.Context, taskID string) (runtimequeue.TaskRequestState, error) {
+	_ = ctx
+	s.requestStateCalls++
+	if s.requestStateMap != nil {
+		state, ok := s.requestStateMap[taskID]
+		if !ok {
+			return runtimequeue.TaskRequestState{}, nil
+		}
+		return state, nil
+	}
+	if s.requestStateErr != nil {
+		return runtimequeue.TaskRequestState{}, s.requestStateErr
+	}
+	return s.requestState, nil
+}
+
+func (s *stubMasterPersona) GetTaskRequests(ctx context.Context, taskID string) ([]runtimequeue.JobRequest, error) {
+	_ = ctx
+	if s.requestsMap != nil {
+		requests, ok := s.requestsMap[taskID]
+		if !ok {
+			return nil, nil
+		}
+		return append([]runtimequeue.JobRequest(nil), requests...), nil
+	}
+	if s.requestsErr != nil {
+		return nil, s.requestsErr
+	}
+	return append([]runtimequeue.JobRequest(nil), s.requests...), nil
+}
+
+func buildPersonaJobRequest(taskID string, requestState string, sourcePlugin string, speakerID string, errorMessage *string) runtimequeue.JobRequest {
+	requestPayload := struct {
+		Metadata map[string]any `json:"metadata"`
+	}{
+		Metadata: map[string]any{
+			"source_plugin": sourcePlugin,
+			"speaker_id":    speakerID,
+		},
+	}
+	rawRequest, err := json.Marshal(requestPayload)
+	if err != nil {
+		panic(fmt.Sprintf("failed to marshal persona request payload: %v", err))
+	}
+	return runtimequeue.JobRequest{
+		TaskID:       taskID,
+		RequestState: requestState,
+		RequestJSON:  string(rawRequest),
+		ErrorMessage: errorMessage,
+	}
 }

@@ -123,7 +123,8 @@ func main() {
 	// 6. Setup Persona + Parser dependencies for task bridge.
 	parserLoader := skyrim.ProvideParser()
 	translationInputRepo := translationinput.NewRepository(artifactDB)
-	translationFlowSlice := translationflow.NewService(translationInputRepo)
+	personaArtifactRepo := master_persona_artifact.NewRepository(artifactDB)
+	translationFlowSlice := translationflow.NewService(translationInputRepo, personaArtifactRepo)
 	llmQueue, err := queue.NewQueue(context.Background(), "llm_queue.db", logger)
 	if err != nil {
 		log.Fatalf("failed to initialize llm queue: %v", err)
@@ -151,15 +152,7 @@ func main() {
 		log.Fatalf("failed to initialize terminology store schema: %v", err)
 	}
 	termTranslator := terminology.NewTermTranslator(translationInputRepo, termBuilder, termSearcher, termStore, termPromptBuilder, logger)
-	translationFlowWorkflow := workflow.NewTranslationFlowService(
-		parserLoader,
-		translationFlowSlice,
-		termTranslator,
-		llmexec.NewSyncExecutor(llmManager),
-		translationFlowProgressNotifier,
-	)
 
-	personaArtifactRepo := master_persona_artifact.NewRepository(artifactDB)
 	personaStore := persona.NewPersonaStore(personaArtifactRepo)
 	if err := personaStore.InitSchema(context.Background()); err != nil {
 		log.Fatalf("failed to initialize persona artifact store: %v", err)
@@ -176,6 +169,14 @@ func main() {
 
 	// 7. Setup Bridge
 	masterPersonaWorkflow := workflow.NewMasterPersonaService(taskManager, logger, parserLoader, personaGenerator, personaProgressNotifier, llmQueue, queueWorker)
+	translationFlowWorkflow := workflow.NewTranslationFlowService(
+		parserLoader,
+		translationFlowSlice,
+		termTranslator,
+		masterPersonaWorkflow,
+		llmexec.NewSyncExecutor(llmManager),
+		translationFlowProgressNotifier,
+	)
 	taskManager.RegisterRunner(task2.TypePersonaExtraction, masterPersonaWorkflow)
 	taskManager.RegisterCompletionHook(task2.TypePersonaExtraction, masterPersonaWorkflow.CleanupCompletedTask)
 	taskController := controller.NewTaskController(taskManager)

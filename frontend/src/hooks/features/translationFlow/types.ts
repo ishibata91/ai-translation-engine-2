@@ -44,6 +44,81 @@ export interface TerminologyTargetPreviewPage {
 }
 
 /**
+ * ペルソナ詳細ペインに表示する会話抜粋 1 行。
+ */
+export interface PersonaDialogueView {
+    recordType: string;
+    editorId: string;
+    sourceText: string;
+    questId: string;
+    isServicesBranch: boolean;
+    order: number;
+}
+
+/**
+ * ペルソナ対象一覧 1 行の実行状態。
+ */
+export type PersonaTargetRowState = 'reused' | 'pending' | 'running' | 'generated' | 'failed';
+
+/**
+ * ペルソナ生成 phase の UI state machine。
+ */
+export type PersonaTargetViewState =
+    | 'loadingTargets'
+    | 'empty'
+    | 'ready'
+    | 'cachedOnly'
+    | 'running'
+    | 'completed'
+    | 'partialFailed'
+    | 'failed';
+
+/**
+ * ペルソナ生成 phase の対象一覧 1 行。
+ */
+export interface PersonaTargetPreviewRow {
+    sourcePlugin: string;
+    speakerId: string;
+    editorId: string;
+    npcName: string;
+    race: string;
+    sex: string;
+    voiceType: string;
+    viewState: PersonaTargetRowState;
+    personaText: string;
+    errorMessage: string;
+    dialogues: PersonaDialogueView[];
+}
+
+/**
+ * ペルソナ生成 phase の対象一覧ページ。
+ */
+export interface PersonaTargetPreviewPage {
+    taskId: string;
+    page: number;
+    pageSize: number;
+    totalRows: number;
+    rows: PersonaTargetPreviewRow[];
+}
+
+/**
+ * ペルソナ生成 phase の実行サマリ。
+ */
+export interface PersonaPhaseSummary {
+    taskId: string;
+    status: PersonaTargetViewState;
+    detectedCount: number;
+    reusedCount: number;
+    pendingCount: number;
+    generatedCount: number;
+    failedCount: number;
+    progressMode: string;
+    progressCurrent: number;
+    progressTotal: number;
+    progressMessage: string;
+}
+
+/**
  * ロード済みファイルと preview ページング状態。
  */
 export interface LoadedTranslationFile {
@@ -239,6 +314,89 @@ export interface WailsTerminologyTargetPreviewRow {
     variant?: string;
     source_file?: string;
     sourceFile?: string;
+}
+
+/**
+ * Wails の persona dialogue payload。
+ */
+export interface WailsPersonaDialogueView {
+    record_type?: string;
+    recordType?: string;
+    editor_id?: string;
+    editorId?: string;
+    source_text?: string;
+    sourceText?: string;
+    quest_id?: string;
+    questId?: string;
+    is_services_branch?: boolean;
+    isServicesBranch?: boolean;
+    order?: number;
+}
+
+/**
+ * Wails の persona target preview row payload。
+ */
+export interface WailsPersonaTargetPreviewRow {
+    source_plugin?: string;
+    sourcePlugin?: string;
+    speaker_id?: string;
+    speakerId?: string;
+    editor_id?: string;
+    editorId?: string;
+    npc_name?: string;
+    npcName?: string;
+    race?: string;
+    sex?: string;
+    voice_type?: string;
+    voiceType?: string;
+    view_state?: string;
+    viewState?: string;
+    persona_text?: string;
+    personaText?: string;
+    error_message?: string;
+    errorMessage?: string;
+    dialogues?: WailsPersonaDialogueView[];
+}
+
+/**
+ * Wails の persona target preview page payload。
+ */
+export interface WailsPersonaTargetPreviewPage {
+    task_id?: string;
+    taskId?: string;
+    page?: number;
+    pageSize?: number;
+    page_size?: number;
+    totalRows?: number;
+    total_rows?: number;
+    rows?: WailsPersonaTargetPreviewRow[];
+}
+
+/**
+ * Wails の persona phase payload。
+ */
+export interface WailsPersonaPhaseResult {
+    task_id?: string;
+    taskId?: string;
+    status?: string;
+    detected_count?: number;
+    detectedCount?: number;
+    reused_count?: number;
+    reusedCount?: number;
+    pending_count?: number;
+    pendingCount?: number;
+    generated_count?: number;
+    generatedCount?: number;
+    failed_count?: number;
+    failedCount?: number;
+    progress_mode?: string;
+    progressMode?: string;
+    progress_current?: number;
+    progressCurrent?: number;
+    progress_total?: number;
+    progressTotal?: number;
+    progress_message?: string;
+    progressMessage?: string;
 }
 
 /**

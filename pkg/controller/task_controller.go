@@ -24,6 +24,9 @@ type translationFlowWorkflow interface {
 	ListTerminologyTargets(ctx context.Context, taskID string, page int, pageSize int) (workflow.TerminologyTargetPreviewPage, error)
 	RunTerminologyPhase(ctx context.Context, input workflow.RunTerminologyPhaseInput) (workflow.TerminologyPhaseResult, error)
 	GetTerminologyPhase(ctx context.Context, taskID string) (workflow.TerminologyPhaseResult, error)
+	ListTranslationFlowPersonaTargets(ctx context.Context, taskID string, page int, pageSize int) (workflow.PersonaTargetPreviewPage, error)
+	RunTranslationFlowPersonaPhase(ctx context.Context, input workflow.RunTranslationFlowPersonaPhaseInput) (workflow.PersonaPhaseResult, error)
+	GetTranslationFlowPersonaPhase(ctx context.Context, taskID string) (workflow.PersonaPhaseResult, error)
 }
 
 // TaskController exposes generic Wails-facing task operations.
@@ -175,6 +178,58 @@ func (c *TaskController) GetTranslationFlowTerminology(taskID string) (workflow.
 	result, err := c.translationFlow.GetTerminologyPhase(c.ctx, resolvedTaskID)
 	if err != nil {
 		return workflow.TerminologyPhaseResult{}, fmt.Errorf("get translation flow terminology task_id=%s: %w", resolvedTaskID, err)
+	}
+	return result, nil
+}
+
+// ListTranslationFlowPersonaTargets returns a paged preview of persona targets for one task.
+func (c *TaskController) ListTranslationFlowPersonaTargets(taskID string, page int, pageSize int) (workflow.PersonaTargetPreviewPage, error) {
+	if c.translationFlow == nil {
+		return workflow.PersonaTargetPreviewPage{}, fmt.Errorf("translation flow workflow is not configured")
+	}
+	resolvedTaskID, err := c.manager.EnsureTranslationProjectTask(c.ctx, taskID)
+	if err != nil {
+		return workflow.PersonaTargetPreviewPage{}, fmt.Errorf("ensure translation project task task_id=%s: %w", taskID, err)
+	}
+	result, err := c.translationFlow.ListTranslationFlowPersonaTargets(c.ctx, resolvedTaskID, page, pageSize)
+	if err != nil {
+		return workflow.PersonaTargetPreviewPage{}, fmt.Errorf("list translation flow persona targets task_id=%s: %w", resolvedTaskID, err)
+	}
+	return result, nil
+}
+
+// RunTranslationFlowPersona executes the persona phase for one translation project task.
+func (c *TaskController) RunTranslationFlowPersona(taskID string, request workflow.TranslationRequestConfig, prompt workflow.TranslationPromptConfig) (workflow.PersonaPhaseResult, error) {
+	if c.translationFlow == nil {
+		return workflow.PersonaPhaseResult{}, fmt.Errorf("translation flow workflow is not configured")
+	}
+	resolvedTaskID, err := c.manager.EnsureTranslationProjectTask(c.ctx, taskID)
+	if err != nil {
+		return workflow.PersonaPhaseResult{}, fmt.Errorf("ensure translation project task task_id=%s: %w", taskID, err)
+	}
+	result, err := c.translationFlow.RunTranslationFlowPersonaPhase(c.ctx, workflow.RunTranslationFlowPersonaPhaseInput{
+		TaskID:  resolvedTaskID,
+		Request: request,
+		Prompt:  prompt,
+	})
+	if err != nil {
+		return workflow.PersonaPhaseResult{}, fmt.Errorf("run translation flow persona task_id=%s: %w", resolvedTaskID, err)
+	}
+	return result, nil
+}
+
+// GetTranslationFlowPersona returns the current persona phase summary for one task.
+func (c *TaskController) GetTranslationFlowPersona(taskID string) (workflow.PersonaPhaseResult, error) {
+	if c.translationFlow == nil {
+		return workflow.PersonaPhaseResult{}, fmt.Errorf("translation flow workflow is not configured")
+	}
+	resolvedTaskID, err := c.manager.EnsureTranslationProjectTask(c.ctx, taskID)
+	if err != nil {
+		return workflow.PersonaPhaseResult{}, fmt.Errorf("ensure translation project task task_id=%s: %w", taskID, err)
+	}
+	result, err := c.translationFlow.GetTranslationFlowPersonaPhase(c.ctx, resolvedTaskID)
+	if err != nil {
+		return workflow.PersonaPhaseResult{}, fmt.Errorf("get translation flow persona task_id=%s: %w", resolvedTaskID, err)
 	}
 	return result, nil
 }

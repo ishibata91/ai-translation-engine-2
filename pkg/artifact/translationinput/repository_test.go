@@ -287,6 +287,98 @@ func TestRepository_LoadTerminologyInput_ExcludesNonDictionaryREC(t *testing.T) 
 	}
 }
 
+func TestRepository_LoadPersonaInput_ProjectsNPCsAndDialogues(t *testing.T) {
+	db, cleanup := setupRepositoryTestDB(t)
+	defer cleanup()
+
+	repo := NewRepository(db)
+	if _, err := repo.SaveParsedOutput(context.Background(), "task-persona", `C:\mods\Skyrim.esm`, buildAllSectionOutput()); err != nil {
+		t.Fatalf("SaveParsedOutput failed: %v", err)
+	}
+
+	input, err := repo.LoadPersonaInput(context.Background(), "task-persona")
+	if err != nil {
+		t.Fatalf("LoadPersonaInput failed: %v", err)
+	}
+
+	if input.TaskID != "task-persona" {
+		t.Fatalf("unexpected task id: got=%q want=%q", input.TaskID, "task-persona")
+	}
+	if len(input.NPCs) != 1 {
+		t.Fatalf("unexpected npc count: got=%d want=1", len(input.NPCs))
+	}
+	npc, ok := input.NPCs["npc-1"]
+	if !ok {
+		t.Fatalf("expected npc keyed by source_record_id")
+	}
+	if npc.SourcePlugin != "Skyrim.esm" {
+		t.Fatalf("unexpected npc source plugin: got=%q want=%q", npc.SourcePlugin, "Skyrim.esm")
+	}
+	if npc.SourceHint != "Skyrim.esm" {
+		t.Fatalf("unexpected npc source hint: got=%q want=%q", npc.SourceHint, "Skyrim.esm")
+	}
+	if npc.NPCName != "NPC Name" {
+		t.Fatalf("unexpected npc name: got=%q want=%q", npc.NPCName, "NPC Name")
+	}
+
+	if len(input.Dialogues) != 1 {
+		t.Fatalf("unexpected dialogue count: got=%d want=1", len(input.Dialogues))
+	}
+	dialogue := input.Dialogues[0]
+	if dialogue.SpeakerID != "npc_1" {
+		t.Fatalf("unexpected dialogue speaker id: got=%q want=%q", dialogue.SpeakerID, "npc_1")
+	}
+	if dialogue.SourcePlugin != "Skyrim.esm" {
+		t.Fatalf("unexpected dialogue source plugin: got=%q want=%q", dialogue.SourcePlugin, "Skyrim.esm")
+	}
+	if dialogue.SourceHint != "Skyrim.esm" {
+		t.Fatalf("unexpected dialogue source hint: got=%q want=%q", dialogue.SourceHint, "Skyrim.esm")
+	}
+	if dialogue.QuestID != "QuestID01" {
+		t.Fatalf("unexpected dialogue quest id: got=%q want=%q", dialogue.QuestID, "QuestID01")
+	}
+	if !dialogue.IsServicesBranch {
+		t.Fatalf("expected services branch dialogue to be preserved")
+	}
+}
+
+func TestRepository_LoadPersonaInput_PreservesHintWhenPluginCannotBeResolved(t *testing.T) {
+	db, cleanup := setupRepositoryTestDB(t)
+	defer cleanup()
+
+	repo := NewRepository(db)
+	if _, err := repo.SaveParsedOutput(context.Background(), "task-persona-hint", `C:\mods\persona-input.json`, buildAllSectionOutput()); err != nil {
+		t.Fatalf("SaveParsedOutput failed: %v", err)
+	}
+
+	input, err := repo.LoadPersonaInput(context.Background(), "task-persona-hint")
+	if err != nil {
+		t.Fatalf("LoadPersonaInput failed: %v", err)
+	}
+
+	npc, ok := input.NPCs["npc-1"]
+	if !ok {
+		t.Fatalf("expected npc keyed by source_record_id")
+	}
+	if npc.SourcePlugin != "" {
+		t.Fatalf("unexpected npc source plugin: got=%q want empty", npc.SourcePlugin)
+	}
+	if npc.SourceHint != "persona-input.json" {
+		t.Fatalf("unexpected npc source hint: got=%q want=%q", npc.SourceHint, "persona-input.json")
+	}
+
+	if len(input.Dialogues) != 1 {
+		t.Fatalf("unexpected dialogue count: got=%d want=1", len(input.Dialogues))
+	}
+	dialogue := input.Dialogues[0]
+	if dialogue.SourcePlugin != "" {
+		t.Fatalf("unexpected dialogue source plugin: got=%q want empty", dialogue.SourcePlugin)
+	}
+	if dialogue.SourceHint != "persona-input.json" {
+		t.Fatalf("unexpected dialogue source hint: got=%q want=%q", dialogue.SourceHint, "persona-input.json")
+	}
+}
+
 func setupRepositoryTestDB(t *testing.T) (*sql.DB, func()) {
 	t.Helper()
 

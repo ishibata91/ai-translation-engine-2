@@ -1,3 +1,4 @@
+import {useEffect} from 'react';
 import {LoadPanel} from '../components/translation-flow/LoadPanel';
 import {ExportPanel} from '../components/translation-flow/ExportPanel';
 import {PersonaPanel} from '../components/translation-flow/PersonaPanel';
@@ -11,6 +12,29 @@ import {useTranslationFlow} from '../hooks/features/translationFlow/useTranslati
  */
 export default function TranslationFlow() {
     const {state, actions} = useTranslationFlow();
+    const isTerminologyOperationRunning = state.isTerminologyRunning
+        || state.terminologySummary.status === 'running'
+        || state.terminologyTargetStatus === 'loading';
+
+    useEffect(() => {
+        const currentHash = window.location.hash;
+        const queryIndex = currentHash.indexOf('?');
+        if (queryIndex < 0) {
+            return;
+        }
+
+        const baseHash = currentHash.slice(0, queryIndex);
+        const params = new URLSearchParams(currentHash.slice(queryIndex + 1));
+        if (!params.has('tfScenario')) {
+            return;
+        }
+
+        params.delete('tfScenario');
+        const nextQuery = params.toString();
+        const nextHash = nextQuery === '' ? baseHash : `${baseHash}?${nextQuery}`;
+        const nextURL = `${window.location.pathname}${window.location.search}${nextHash}`;
+        window.history.replaceState(window.history.state, '', nextURL);
+    }, []);
 
     return (
         <div className="flex flex-col w-full p-4 gap-4 h-full">
@@ -61,29 +85,56 @@ export default function TranslationFlow() {
                         onPreviewPageChange={actions.handlePreviewPageChange}
                         onNext={actions.handleAdvanceFromLoad}
                     />
-                    <TerminologyPanel
-                        isActive={state.activeTab === 1}
+                    <div className={isTerminologyOperationRunning ? 'translation-flow-terminology-running' : undefined}>
+                        <TerminologyPanel
+                            isActive={state.activeTab === 1}
+                            taskId={state.taskId}
+                            summary={state.terminologySummary}
+                            statusLabel={state.terminologyStatusLabel}
+                            errorMessage={state.terminologyErrorMessage}
+                            targetPage={state.terminologyTargetPage}
+                            targetStatus={state.terminologyTargetStatus}
+                            targetErrorMessage={state.terminologyTargetErrorMessage}
+                            isTargetLoading={state.isTerminologyTargetLoading}
+                            isRunning={isTerminologyOperationRunning}
+                            llmConfig={state.terminologyConfig}
+                            promptConfig={state.terminologyPromptConfig}
+                            isConfigHydrated={state.isTerminologyConfigHydrated}
+                            isPromptHydrated={state.isTerminologyPromptHydrated}
+                            onConfigChange={actions.handleTerminologyConfigChange}
+                            onPromptChange={actions.handleTerminologyPromptChange}
+                            onRun={actions.handleRunTerminologyPhase}
+                            onRefresh={actions.handleRefreshTerminologyPhase}
+                            onTargetPageChange={actions.handleTerminologyTargetPageChange}
+                            onNext={actions.handleAdvanceFromTerminology}
+                        />
+                    </div>
+                    {isTerminologyOperationRunning && (
+                        <style>{`
+                            .translation-flow-terminology-running .tab-content-panel .btn.btn-outline.btn-xs {
+                                display: none;
+                            }
+                        `}</style>
+                    )}
+                    <PersonaPanel
+                        isActive={state.activeTab === 2}
                         taskId={state.taskId}
-                        summary={state.terminologySummary}
-                        statusLabel={state.terminologyStatusLabel}
-                        errorMessage={state.terminologyErrorMessage}
-                        targetPage={state.terminologyTargetPage}
-                        targetStatus={state.terminologyTargetStatus}
-                        targetErrorMessage={state.terminologyTargetErrorMessage}
-                        isTargetLoading={state.isTerminologyTargetLoading}
-                        isRunning={state.isTerminologyRunning}
-                        llmConfig={state.terminologyConfig}
-                        promptConfig={state.terminologyPromptConfig}
-                        isConfigHydrated={state.isTerminologyConfigHydrated}
-                        isPromptHydrated={state.isTerminologyPromptHydrated}
-                        onConfigChange={actions.handleTerminologyConfigChange}
-                        onPromptChange={actions.handleTerminologyPromptChange}
-                        onRun={actions.handleRunTerminologyPhase}
-                        onRefresh={actions.handleRefreshTerminologyPhase}
-                        onTargetPageChange={actions.handleTerminologyTargetPageChange}
-                        onNext={actions.handleAdvanceFromTerminology}
+                        summary={state.personaSummary}
+                        statusLabel={state.personaStatusLabel}
+                        errorMessage={state.personaErrorMessage}
+                        targetPage={state.personaTargetPage}
+                        targetStatus={state.personaTargetStatus}
+                        targetErrorMessage={state.personaTargetErrorMessage}
+                        isTargetLoading={state.isPersonaTargetLoading}
+                        isRunning={state.isPersonaRunning}
+                        selectedTarget={state.selectedPersonaTarget}
+                        onSelectTarget={actions.handleSelectPersonaTarget}
+                        onRun={actions.handleRunPersonaPhase}
+                        onRetry={actions.handleRetryPersonaPhase}
+                        onRefresh={actions.handleRefreshPersonaPhase}
+                        onTargetPageChange={actions.handlePersonaTargetPageChange}
+                        onNext={actions.handleAdvanceFromPersona}
                     />
-                    <PersonaPanel isActive={state.activeTab === 2} onNext={() => actions.handleTabChange(3)} />
                     <SummaryPanel isActive={state.activeTab === 3} onNext={() => actions.handleTabChange(4)} />
                     <TranslationPanel isActive={state.activeTab === 4} onNext={() => actions.handleTabChange(5)} />
                     <ExportPanel isActive={state.activeTab === 5} />

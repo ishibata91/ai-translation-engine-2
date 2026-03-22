@@ -1,0 +1,37 @@
+### Section Dispatch
+- change: persona-generation-excludes-master-persona
+- section_id: backend-translationinput-persona-projection
+- title: Translation Input Persona Projection
+- owner: backend
+- goal: translationinput artifact から persona phase 用の候補投影を提供し、source_plugin + speaker_id 正規化に必要な NPC / dialogue 情報を workflow へ渡せるようにする
+- depends_on: []
+- invoked_skill: impl-backend-work
+- agent: implementer
+- shared_contract: translationinput.PersonaInput / translationinput.PersonaNPC / translationinput.PersonaDialogue / Repository.LoadPersonaInput(ctx, taskID string) (PersonaInput, error)
+- required_reading:
+  - F:/ai translation engine 2/changes/persona-generation-excludes-master-persona/ui.md
+  - F:/ai translation engine 2/changes/persona-generation-excludes-master-persona/scenarios.md
+  - F:/ai translation engine 2/changes/persona-generation-excludes-master-persona/logic.md
+  - F:/ai translation engine 2/docs/workflow/translation-flow-persona-phase/spec.md
+  - F:/ai translation engine 2/pkg/artifact/translationinput/contract.go
+  - F:/ai translation engine 2/pkg/artifact/translationinput/repository.go
+  - F:/ai translation engine 2/pkg/artifact/master_persona_artifact/contract.go
+  - F:/ai translation engine 2/pkg/artifact/master_persona_artifact/repository.go
+- owned_paths:
+  - F:/ai translation engine 2/pkg/artifact/translationinput/contract.go
+  - F:/ai translation engine 2/pkg/artifact/translationinput/repository.go
+  - F:/ai translation engine 2/pkg/artifact/translationinput/repository_test.go
+- forbidden_paths:
+  - F:/ai translation engine 2/pkg/slice/translationflow/*
+  - F:/ai translation engine 2/pkg/workflow/*
+  - F:/ai translation engine 2/pkg/controller/*
+  - F:/ai translation engine 2/frontend/src/*
+  - F:/ai translation engine 2/pkg/artifact/master_persona_artifact/*
+  - F:/ai translation engine 2/docs/*
+  - F:/ai translation engine 2/changes/*
+- validation_commands:
+  - go test ./pkg/artifact/translationinput
+- acceptance:
+  - persona 候補投影が NPC / dialogue / source hint / source plugin を返せる
+  - 既存 terminology 投影を流用せず persona 専用 API を追加する
+  - lookup key 補完に必要な UNKNOWN / file hint フォールバックの材料を DTO 側で失わない
