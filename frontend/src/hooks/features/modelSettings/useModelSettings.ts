@@ -54,6 +54,27 @@ const DEFAULT_MODEL_CAPABILITY: MasterPersonaModelCapability = { supportsBatch: 
 const DEFAULT_CLOUD_MODEL_CAPABILITY: MasterPersonaModelCapability = { supportsBatch: true };
 const MODEL_UNAVAILABLE_ID = '(model-unavailable)';
 
+const normalizeModelIdentity = (provider: MasterPersonaProvider, model: string): string => {
+    const trimmed = model.trim();
+    if (provider === 'gemini' && trimmed.startsWith('models/')) {
+        return trimmed.slice('models/'.length);
+    }
+    return trimmed;
+};
+
+const matchesModelOption = (
+    provider: MasterPersonaProvider,
+    option: Pick<MasterPersonaModelOption, 'id' | 'label'>,
+    currentModel: string,
+): boolean => {
+    const normalizedCurrentModel = normalizeModelIdentity(provider, currentModel);
+    if (normalizedCurrentModel === '') {
+        return false;
+    }
+    return normalizeModelIdentity(provider, option.id) === normalizedCurrentModel
+        || normalizeModelIdentity(provider, option.label) === normalizedCurrentModel;
+};
+
 interface UseModelSettingsArgs {
     value: MasterPersonaLLMConfig;
     onChange: (next: MasterPersonaLLMConfig) => void;
@@ -81,8 +102,9 @@ const resolveNextModel = (
     dynamicOptionsByProvider: Partial<Record<MasterPersonaProvider, MasterPersonaModelOption[]>>,
 ): string => {
     const candidates = dynamicOptionsByProvider[provider] ?? FALLBACK_MODEL_OPTIONS[provider];
-    if (candidates.some((option) => option.id === currentModel)) {
-        return currentModel;
+    const matched = candidates.find((option) => matchesModelOption(provider, option, currentModel));
+    if (matched) {
+        return matched.id;
     }
     return candidates[0]?.id ?? '';
 };
@@ -93,7 +115,7 @@ const resolveModelCapability = (
     dynamicOptionsByProvider: Partial<Record<MasterPersonaProvider, MasterPersonaModelOption[]>>,
 ): MasterPersonaModelCapability => {
     const options = dynamicOptionsByProvider[provider] ?? FALLBACK_MODEL_OPTIONS[provider];
-    const byID = options.find((option) => option.id === modelID);
+    const byID = options.find((option) => matchesModelOption(provider, option, modelID));
     if (byID) {
         return byID.capability;
     }
@@ -129,15 +151,21 @@ export function useModelSettings({ value, onChange, enabled, namespace }: UseMod
     }, [dynamicOptionsByProvider, provider]);
 
     const selectableModelOptions = useMemo(() => {
-        if (modelOptions.length > 0) {
-            return modelOptions;
-        }
         if (currentModel.trim() !== '') {
-            return [{
-                id: currentModel,
+            const syntheticOption = {
+                id: normalizeModelIdentity(provider, currentModel),
                 label: currentModel,
                 capability: resolveModelCapability(provider, currentModel, dynamicOptionsByProvider),
-            }];
+            };
+            if (modelOptions.length === 0) {
+                return [syntheticOption];
+            }
+            if (!modelOptions.some((option) => matchesModelOption(provider, option, currentModel))) {
+                return [syntheticOption, ...modelOptions];
+            }
+        }
+        if (modelOptions.length > 0) {
+            return modelOptions;
         }
         return [{
             id: '(model-unavailable)',
@@ -147,15 +175,12 @@ export function useModelSettings({ value, onChange, enabled, namespace }: UseMod
     }, [currentModel, dynamicOptionsByProvider, modelOptions, provider]);
 
     const selectedModelValue = useMemo(() => {
-        if (selectableModelOptions.some((option) => option.id === currentModel)) {
-            return currentModel;
-        }
-        const byLabel = selectableModelOptions.find((option) => option.label === currentModel);
-        if (byLabel) {
-            return byLabel.id;
+        const matched = selectableModelOptions.find((option) => matchesModelOption(provider, option, currentModel));
+        if (matched) {
+            return matched.id;
         }
         return selectableModelOptions[0].id;
-    }, [currentModel, selectableModelOptions]);
+    }, [currentModel, provider, selectableModelOptions]);
 
     const selectedModelCapability = useMemo(() => {
         const selected = selectableModelOptions.find((option) => option.id === selectedModelValue);
@@ -178,9 +203,7 @@ export function useModelSettings({ value, onChange, enabled, namespace }: UseMod
             return;
         }
 
-        const hasMatchingCurrentModel = selectableModelOptions.some(
-            (option) => option.id === currentModel || option.label === currentModel,
-        );
+        const hasMatchingCurrentModel = selectableModelOptions.some((option) => matchesModelOption(provider, option, currentModel));
         if (hasMatchingCurrentModel) {
             return;
         }
@@ -266,14 +289,15 @@ export function useModelSettings({ value, onChange, enabled, namespace }: UseMod
                 const options: MasterPersonaModelOption[] = [];
                 for (const row of rows) {
                     const id = row.id.trim();
+                    const normalizedID = normalizeModelIdentity(provider, id);
                     const label = (row.display_name ?? row.id).trim();
-                    if (id.length === 0 || seen.has(id)) {
+                    if (normalizedID.length === 0 || seen.has(normalizedID)) {
                         continue;
                     }
-                    seen.add(id);
+                    seen.add(normalizedID);
                     options.push({
-                        id,
-                        label: label.length > 0 ? label : id,
+                        id: normalizedID,
+                        label: label.length > 0 ? label : normalizedID,
                         capability: {
                             supportsBatch: row.capability?.supports_batch ?? false,
                         },
@@ -284,7 +308,7 @@ export function useModelSettings({ value, onChange, enabled, namespace }: UseMod
                 setLastFetchedProvider(provider);
                 setLastFetchedApiKey(apiKey);
 
-                const hasCurrent = options.some((option) => option.id === currentModel || option.label === currentModel);
+                const hasCurrent = options.some((option) => matchesModelOption(provider, option, currentModel));
                 if (options.length > 0 && !hasCurrent) {
                     const nextModel = options[0].id;
                     const nextCapability = resolveModelCapability(provider, nextModel, { ...dynamicOptionsByProvider, [provider]: options });
