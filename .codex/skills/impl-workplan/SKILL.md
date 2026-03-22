@@ -31,6 +31,14 @@ worker に渡す前に `owner / depends_on / shared_contract / owned_paths / for
 - `changes/<id>/tasks.md` の生成または更新は `impl-workplan` だけが行い、worker へ委譲しない。
 - docs 同期判断は行わない。
 
+## 分割候補
+- section は owner だけでなく layer boundary でも分割する
+- backend では artifact / slice / workflow / controller を同一 section に混在させない
+- frontend では page / hook / adapter / component を同一 section に混在させない
+- shared contract の追加変更がある場合、それ自体を先行 section として独立させる
+- 2 つ以上の package または feature directory をまたぐ section は broad とみなし再分割する
+- backend と frontend の validation_commands を同一 section に含めてはならない
+
 ## やること
 1. 対象 change と implementation packet を確認する。
 2. `ui.md` `scenarios.md` `logic.md` と関連コードを必要最小限だけ読む。
