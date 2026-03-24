@@ -1,0 +1,81 @@
+{
+  "invoked_skill": "fix-trace",
+  "invoked_by": "fix-direction",
+  "change": "persona-phase-shared-npc-list",
+  "current_hypothesis": "Persona targets may be fetched successfully, but handleRefreshPersonaTargets can preserve statusFallback=loadingTargets, which makes PersonaPanel pass isLoading=true into SharedPersonaList even when rows exist.",
+  "unknowns": [
+    "At runtime, whether nextPage.totalRows > 0 while nextStatus is still loadingTargets.",
+    "Whether ListTranslationFlowPersonaTargets actually returns non-empty rows for the failing task.",
+    "Whether PersonaPanel is active and mounted when the user views the persona phase."
+  ],
+  "current_scope": [
+    "handleRefreshPersonaTargets status assignment",
+    "PersonaPanel loading prop derivation",
+    "SharedPersonaList state-table branch when rows already exist"
+  ],
+  "next_action": "fix-logging:add",
+  "cause_hypothesis": {
+    "symptom": "Persona phase left list area does not show the NPC list on screen.",
+    "likely_layers": [
+      "frontend hook state transition",
+      "frontend panel prop derivation",
+      "shared list display branching"
+    ],
+    "primary_hypothesis": "handleRefreshPersonaTargets computes nextStatus as statusFallback whenever nextPage.totalRows > 0. If handleRefreshPersonaSummary still reports loadingTargets, PersonaPanel receives effectiveStatus=loadingTargets and forces SharedPersonaList into the loading-state table although rows are present.",
+    "alternative_hypotheses": [
+      "ListTranslationFlowPersonaTargets or its adapter returns zero rows or zero totalRows, so the panel is correctly in empty state and the symptom is actually an unexpected data-empty condition.",
+      "PersonaPanel is rendered with isActive=false or another parent visibility condition, so the list exists in state but the entire tab content is hidden.",
+      "SharedPersonaList receives rows but a layout or container issue in the left pane prevents the table body from being visible."
+    ],
+    "current_scope": [
+      "Observe summary.status, personaTargetStatus, isPersonaTargetLoading, targetPage.totalRows, and targetPage.rows.length across refresh.",
+      "Confirm whether effectiveStatus stays loadingTargets after targets are mapped.",
+      "Confirm whether the tab is active when the symptom is seen."
+    ],
+    "unknowns": [
+      "No runtime capture yet for target count versus status after refresh.",
+      "No observed payload yet from ListTranslationFlowPersonaTargets for the failing task."
+    ],
+    "next_observation": "Trace the refresh path from handleRefreshPersonaSummary to handleRefreshPersonaTargets, then log the props that PersonaPanel and SharedPersonaList receive during reproduction."
+  },
+  "logger_plan": {
+    "needs_logging": true,
+    "target_files": [
+      "frontend/src/hooks/features/translationFlow/useTranslationFlow.tsx",
+      "frontend/src/components/translation-flow/PersonaPanel.tsx",
+      "frontend/src/components/persona/SharedPersonaList.tsx"
+    ],
+    "logger_path": "Use [fix-trace] prefixed frontend logs via fix-logging; do not add permanent instrumentation.",
+    "output_files": [
+      "browser devtools console / app console during persona phase reproduction"
+    ],
+    "observation_points": [
+      "In handleRefreshPersonaTargets, log requested task/page, mapped totalRows, rows.length, statusFallback, computed nextStatus, and whether selection key was reset.",
+      "In PersonaPanel, log isActive, effectiveStatus, isTargetLoading, targetPage.totalRows, and targetPage.rows.length right before rendering SharedPersonaList.",
+      "In SharedPersonaList, log isLoading, rows.length, selectedRowId, and shouldShowStateTable when rendering the left list area."
+    ],
+    "summary_update": [
+      "If rows are non-empty while effectiveStatus=loadingTargets, narrow cause to frontend status derivation.",
+      "If rows are empty from the adapter output, narrow cause to backend payload or adapter mapping.",
+      "If isActive=false, narrow cause to parent tab activation or navigation state."
+    ],
+    "optional_stack_trace": false
+  },
+  "debugger_findings": {
+    "confirmed_facts": [
+      "PersonaPanel derives effectiveStatus from targetStatus ?? summary.status.",
+      "PersonaPanel passes isLoading=(effectiveStatus === loadingTargets || isTargetLoading) to SharedPersonaList.",
+      "SharedPersonaList hides the data table and shows the state table when isLoading is true or rows.length === 0.",
+      "handleRefreshPersonaTargets sets nextStatus to statusFallback whenever nextPage.totalRows > 0."
+    ],
+    "narrowed_cause": "Most likely a frontend state mismatch between fetched rows and retained loading status, but runtime observation is still required.",
+    "remaining_uncertainty": [
+      "Unconfirmed runtime target payload for the failing task.",
+      "Unconfirmed active tab or mount state during reproduction."
+    ],
+    "next_action": "Invoke fix-logging with the listed observation points, reproduce once, then run fix-analysis or proceed directly if the logs isolate the status mismatch.",
+    "suggested_fix_scope": [
+      "Not fixed yet. Scope likely remains within TranslationFlow persona phase frontend state handling and shared list display gating once runtime evidence is collected."
+    ]
+  }
+}

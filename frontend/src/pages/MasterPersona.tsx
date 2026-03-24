@@ -1,33 +1,8 @@
-import type {ColumnDef} from '@tanstack/react-table';
 import ModelSettings from '../components/ModelSettings';
-import DataTable from '../components/DataTable';
 import PersonaDetail from '../components/PersonaDetail';
+import {SharedPersonaList} from '../components/persona';
 import PromptSettingCard from '../components/masterPersona/PromptSettingCard';
-import {type NpcRow} from '../types/npc';
 import {useMasterPersona} from '../hooks/features/masterPersona/useMasterPersona';
-
-
-// ── 列定義 ───────────────────────────────────────────────
-const NPC_COLUMNS: ColumnDef<NpcRow, unknown>[] = [
-    {
-        accessorKey: 'formId',
-        header: 'FormID',
-        cell: (info) => <span className="font-mono text-sm">{info.getValue() as string}</span>,
-    },
-    {
-        accessorKey: 'sourcePlugin',
-        header: 'プラグイン名',
-        cell: (info) => <span className="font-mono text-xs">{info.getValue() as string}</span>,
-    },
-    {
-        accessorKey: 'name',
-        header: 'NPC名 (EditorID)',
-    },
-    {
-        accessorKey: 'updatedAt',
-        header: '生成日時',
-    },
-];
 
 // ── ページコンポーネント ──────────────────────────────────
 /**
@@ -65,9 +40,9 @@ export default function MasterPersona() {
         isPromptConfigHydrated,
         pluginOptions,
         filteredNpcData,
-        pagedNpcData,
+        pagedPersonaListRows,
         totalNpcPages,
-        handleRowSelect,
+        handlePersonaListRowSelect,
         applyNPCFilters,
         clearNPCFilters,
         handlePickJson,
@@ -194,10 +169,18 @@ export default function MasterPersona() {
             {/* 2ペインレイアウト (左: NPC テーブル, 右: PersonaDetail) */}
             <div className="flex gap-4 flex-1 min-h-[500px] overflow-hidden relative">
                 <div className="w-1/2 flex flex-col min-h-[500px] border border-base-200 rounded-xl bg-base-100 overflow-hidden">
-                    <DataTable
-                        columns={NPC_COLUMNS}
-                        data={pagedNpcData}
+                    <SharedPersonaList
+                        rows={pagedPersonaListRows}
                         title="ペルソナ一覧"
+                        totalCount={filteredNpcData.length}
+                        pager={{
+                            page: npcPage,
+                            totalPages: totalNpcPages,
+                            onPrevPage: () => setNpcPage((prev) => Math.max(1, prev - 1)),
+                            onNextPage: () => setNpcPage((prev) => Math.min(totalNpcPages, prev + 1)),
+                            disablePrev: npcPage <= 1,
+                            disableNext: npcPage >= totalNpcPages,
+                        }}
                         headerActions={
                             <div className="flex flex-wrap items-center gap-2">
                                 <input
@@ -223,27 +206,10 @@ export default function MasterPersona() {
                                 <button className="btn btn-ghost btn-xs" onClick={clearNPCFilters}>
                                     解除
                                 </button>
-                                <span className="text-xs text-base-content/60">
-                                    {filteredNpcData.length.toLocaleString()} 件 / {npcPage} / {totalNpcPages} ページ
-                                </span>
-                                <button
-                                    className="btn btn-outline btn-xs"
-                                    disabled={npcPage <= 1}
-                                    onClick={() => setNpcPage((prev) => Math.max(1, prev - 1))}
-                                >
-                                    前へ
-                                </button>
-                                <button
-                                    className="btn btn-outline btn-xs"
-                                    disabled={npcPage >= totalNpcPages}
-                                    onClick={() => setNpcPage((prev) => Math.min(totalNpcPages, prev + 1))}
-                                >
-                                    次へ
-                                </button>
                             </div>
                         }
                         selectedRowId={selectedRowId}
-                        onRowSelect={handleRowSelect}
+                        onSelectRow={handlePersonaListRowSelect}
                     />
                 </div>
 

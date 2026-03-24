@@ -1,4 +1,5 @@
 import ModelSettings from '../ModelSettings';
+import {SharedPersonaList} from '../persona';
 import PromptSettingCard from '../masterPersona/PromptSettingCard';
 import {
     DEFAULT_MASTER_PERSONA_LLM_CONFIG,
@@ -64,14 +65,6 @@ const EMPTY_PAGE = (taskId = ''): PersonaTargetPreviewPage => ({
 const DEFAULT_PERSONA_PROMPT_CONFIG: MasterPersonaPromptConfig = {
     userPrompt: '',
     systemPrompt: '',
-};
-
-const ROW_BADGE: Record<PersonaTargetPreviewRow['viewState'], {label: string; className: string}> = {
-    reused: {label: '既存 Master Persona', className: 'badge-info badge-outline'},
-    pending: {label: '生成対象', className: 'badge-outline'},
-    running: {label: '生成中', className: 'badge-warning badge-outline'},
-    generated: {label: '生成済み', className: 'badge-success badge-outline'},
-    failed: {label: '生成失敗', className: 'badge-error badge-outline'},
 };
 
 const SUMMARY_STATUS_BADGE: Record<PersonaTargetViewState, {label: string; className: string}> = {
@@ -170,6 +163,7 @@ export function PersonaPanel({
     const statusBadge = SUMMARY_STATUS_BADGE[effectiveStatus];
     const listRows = targetPage.rows;
     const selectedRow = selectedTarget ?? listRows[0] ?? null;
+    const selectedRowId = selectedRow?.id ?? null;
     const totalPages = Math.max(1, Math.ceil(targetPage.totalRows / Math.max(1, targetPage.pageSize)));
     const canRun = effectiveStatus === 'ready' && !isRunning && !isTargetLoading && typeof onRun === 'function';
     const canRetry = (effectiveStatus === 'partialFailed' || effectiveStatus === 'failed')
@@ -294,66 +288,38 @@ export function PersonaPanel({
                 </div>
             </div>
 
-            <div className="flex gap-4 flex-1 min-h-0 overflow-hidden relative">
-                <div className="w-2/5 border rounded-xl bg-base-100 flex flex-col min-h-0 overflow-hidden">
-                    <div className="flex items-center justify-between border-b border-base-200 px-3 py-2">
-                        <span className="text-sm font-bold">NPC 一覧 ({targetPage.totalRows} 件)</span>
-                        <div className="flex items-center gap-2 text-xs">
-                            <button
-                                type="button"
-                                className="btn btn-outline btn-xs"
-                                onClick={() => void onTargetPageChange?.(Math.max(1, targetPage.page - 1))}
-                                disabled={targetPage.page <= 1 || isRunning || isTargetLoading || typeof onTargetPageChange !== 'function'}
-                            >
-                                前へ
-                            </button>
-                            <span>{targetPage.page} / {totalPages}</span>
-                            <button
-                                type="button"
-                                className="btn btn-outline btn-xs"
-                                onClick={() => void onTargetPageChange?.(Math.min(totalPages, targetPage.page + 1))}
-                                disabled={targetPage.page >= totalPages || isRunning || isTargetLoading || typeof onTargetPageChange !== 'function'}
-                            >
-                                次へ
-                            </button>
-                        </div>
-                    </div>
-
-                    {(effectiveStatus === 'loadingTargets' || isTargetLoading) && (
-                        <div className="p-4 text-sm text-base-content/60">読込中</div>
-                    )}
-                    {effectiveStatus === 'empty' && (
-                        <div className="p-4 text-sm text-base-content/60">ペルソナ対象 NPC はありません。</div>
-                    )}
-                    {listRows.length > 0 && (
-                        <ul className="menu w-full bg-base-100 flex-1 overflow-y-auto p-2 gap-1">
-                            {listRows.map((row) => {
-                                const rowKey = `${row.sourcePlugin}::${row.speakerId}`;
-                                const isSelected = selectedRow !== null && rowKey === `${selectedRow.sourcePlugin}::${selectedRow.speakerId}`;
-                                const badge = ROW_BADGE[row.viewState];
-                                return (
-                                    <li key={rowKey}>
-                                        <button
-                                            type="button"
-                                            className={`${isSelected ? 'active' : ''} flex-col items-start gap-1`}
-                                            onClick={() => onSelectTarget?.(row.sourcePlugin, row.speakerId)}
-                                        >
-                                            <div className="flex w-full items-center justify-between gap-2">
-                                                <span className="font-semibold truncate">{row.npcName || '(名称なし)'}</span>
-                                                <span className={`badge badge-xs ${badge.className}`}>{badge.label}</span>
-                                            </div>
-                                            <div className="w-full text-left text-xs opacity-70 font-mono truncate">
-                                                {row.sourcePlugin || '(source plugin 未設定)'} / {row.speakerId || '(speaker未設定)'}
-                                            </div>
-                                        </button>
-                                    </li>
-                                );
-                            })}
-                        </ul>
-                    )}
+            <div className="flex gap-4 flex-1 min-h-[28rem] overflow-hidden relative">
+                <div className="w-2/5 border rounded-xl bg-base-100 flex flex-col min-h-[28rem] overflow-hidden">
+                    <SharedPersonaList
+                        rows={listRows}
+                        title="NPC 一覧"
+                        totalCount={targetPage.totalRows}
+                        selectedRowId={selectedRowId}
+                        pager={{
+                            page: targetPage.page,
+                            totalPages,
+                            onPrevPage: () => void onTargetPageChange?.(Math.max(1, targetPage.page - 1)),
+                            onNextPage: () => void onTargetPageChange?.(Math.min(totalPages, targetPage.page + 1)),
+                            disablePrev: targetPage.page <= 1 || isRunning || isTargetLoading || typeof onTargetPageChange !== 'function',
+                            disableNext: targetPage.page >= totalPages || isRunning || isTargetLoading || typeof onTargetPageChange !== 'function',
+                        }}
+                        isLoading={effectiveStatus === 'loadingTargets' || isTargetLoading}
+                        loadingMessage="読込中"
+                        emptyMessage={effectiveStatus === 'empty' ? 'ペルソナ対象 NPC はありません。' : '表示できる NPC がありません。'}
+                        onSelectRow={(_, rowId) => {
+                            if (!rowId) {
+                                return;
+                            }
+                            const matched = listRows.find((row) => row.id === rowId);
+                            if (!matched) {
+                                return;
+                            }
+                            onSelectTarget?.(matched.sourcePlugin, matched.speakerId);
+                        }}
+                    />
                 </div>
 
-                <div className="w-3/5 flex flex-col min-h-0 rounded-xl border bg-base-100">
+                <div className="w-3/5 flex flex-col min-h-[28rem] rounded-xl border bg-base-100">
                     <div className="border-b border-base-200 px-4 py-3">
                         <h3 className="font-bold">詳細</h3>
                     </div>

@@ -8,6 +8,7 @@
 - `lint:file -> 修正 -> 再実行`
 - `typecheck`
 - `lint:frontend`
+- `npm --prefix frontend run build`
 - `Playwright`
 
 ## 停止条件

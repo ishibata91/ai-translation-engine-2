@@ -1,5 +1,6 @@
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {useLocation} from 'react-router-dom';
+import type {PersonaListRow} from '../../../components/persona/types';
 import type {NpcRow} from '../../../types/npc';
 import {SelectJSONFile} from '../../../wailsjs/go/controller/FileDialogController';
 import {
@@ -60,6 +61,14 @@ const progressHeadlineFromPhase = (phase: string): string => {
             return '';
     }
 };
+
+const toPersonaListRow = (row: NpcRow): PersonaListRow => ({
+    id: row.id,
+    formId: row.formId,
+    sourcePlugin: row.sourcePlugin,
+    npcName: row.name,
+    updatedAt: row.updatedAt || undefined,
+});
 
 /**
  * マスターペルソナ画面の state と action を集約し、ページ描画を headless 化する。
@@ -145,6 +154,25 @@ export function useMasterPersona() {
         setSelectedRowId(rowId);
     };
 
+    const handlePersonaListRowSelect = useCallback((row: PersonaListRow | null, rowId: string | null) => {
+        const selectedID = rowId ?? row?.id ?? null;
+        if (!selectedID) {
+            setSelectedRow(null);
+            setSelectedRowId(null);
+            return;
+        }
+
+        const nextSelectedRow = allNpcDataRef.current.find((candidate) => candidate.id === selectedID) ?? null;
+        if (!nextSelectedRow) {
+            setSelectedRow(null);
+            setSelectedRowId(null);
+            return;
+        }
+
+        setSelectedRow(nextSelectedRow);
+        setSelectedRowId(selectedID);
+    }, []);
+
     const setExecutionProfile = useCallback((nextProfile: MasterPersonaExecutionProfile) => {
         setLLMConfig((prev) => {
             if (prev.bulkStrategy === nextProfile) {
@@ -194,6 +222,8 @@ export function useMasterPersona() {
         const start = (npcPage - 1) * PERSONA_PAGE_SIZE;
         return filteredNpcData.slice(start, start + PERSONA_PAGE_SIZE);
     }, [filteredNpcData, npcPage]);
+
+    const pagedPersonaListRows = useMemo(() => pagedNpcData.map(toPersonaListRow), [pagedNpcData]);
 
     const applyNPCFilters = () => {
         setAppliedNpcSearch(npcSearchInput);
@@ -900,8 +930,10 @@ export function useMasterPersona() {
         pluginOptions,
         filteredNpcData,
         pagedNpcData,
+        pagedPersonaListRows,
         totalNpcPages,
         handleRowSelect,
+        handlePersonaListRowSelect,
         applyNPCFilters,
         clearNPCFilters,
         handlePickJson,

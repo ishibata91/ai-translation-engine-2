@@ -2,6 +2,7 @@ import type {
     LoadedTranslationFile,
     PersonaDialogueView,
     PersonaPhaseSummary,
+    PersonaTargetStateBadge,
     PersonaTargetPreviewPage,
     PersonaTargetPreviewRow,
     PersonaTargetRowState,
@@ -97,6 +98,23 @@ const mapPersonaTargetRowState = (value: unknown): PersonaTargetRowState => {
     }
 };
 
+const mapPersonaTargetStateBadge = (viewState: PersonaTargetRowState): PersonaTargetStateBadge => {
+    switch (viewState) {
+    case 'reused':
+        return {label: '既存 Master Persona', tone: 'info'};
+    case 'pending':
+        return {label: '生成対象', tone: 'neutral'};
+    case 'running':
+        return {label: '生成中', tone: 'warning'};
+    case 'generated':
+        return {label: '生成済み', tone: 'success'};
+    case 'failed':
+        return {label: '生成失敗', tone: 'error'};
+    default:
+        return {label: '生成対象', tone: 'neutral'};
+    }
+};
+
 const mapPersonaDialogueView = (payload: WailsPersonaDialogueView): PersonaDialogueView => ({
     recordType: pickString(payload.record_type ?? payload.recordType),
     editorId: pickString(payload.editor_id ?? payload.editorId),
@@ -108,15 +126,24 @@ const mapPersonaDialogueView = (payload: WailsPersonaDialogueView): PersonaDialo
 
 const mapPersonaTargetPreviewRow = (payload: WailsPersonaTargetPreviewRow): PersonaTargetPreviewRow => {
     const rawDialogues = Array.isArray(payload.dialogues) ? payload.dialogues : [];
+    const sourcePlugin = pickString(payload.source_plugin ?? payload.sourcePlugin).trim();
+    const speakerId = pickString(payload.speaker_id ?? payload.speakerId).trim();
+    const rowState = mapPersonaTargetRowState(payload.view_state ?? payload.viewState);
+    const updatedAt = pickString(payload.updated_at ?? payload.updatedAt).trim();
+
     return {
-        sourcePlugin: pickString(payload.source_plugin ?? payload.sourcePlugin),
-        speakerId: pickString(payload.speaker_id ?? payload.speakerId),
+        id: `${sourcePlugin}::${speakerId}`,
+        formId: speakerId,
+        sourcePlugin,
+        speakerId,
         editorId: pickString(payload.editor_id ?? payload.editorId),
         npcName: pickString(payload.npc_name ?? payload.npcName),
+        updatedAt: updatedAt !== '' ? updatedAt : undefined,
         race: pickString(payload.race),
         sex: pickString(payload.sex),
         voiceType: pickString(payload.voice_type ?? payload.voiceType),
-        viewState: mapPersonaTargetRowState(payload.view_state ?? payload.viewState),
+        viewState: rowState,
+        stateBadge: mapPersonaTargetStateBadge(rowState),
         personaText: pickString(payload.persona_text ?? payload.personaText),
         errorMessage: pickString(payload.error_message ?? payload.errorMessage),
         dialogues: rawDialogues.map(mapPersonaDialogueView),

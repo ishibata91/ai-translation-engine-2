@@ -17,6 +17,7 @@
 - lint:file:
 - typecheck:
 - lint:frontend:
+- frontend build:
 - Playwright:
 - validation_result:
 - noise_classification:

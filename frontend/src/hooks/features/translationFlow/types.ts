@@ -61,6 +61,19 @@ export interface PersonaDialogueView {
 export type PersonaTargetRowState = 'reused' | 'pending' | 'running' | 'generated' | 'failed';
 
 /**
+ * shared persona list で使う state badge の tone。
+ */
+type PersonaTargetStateTone = 'neutral' | 'info' | 'warning' | 'success' | 'error';
+
+/**
+ * shared persona list で使う state badge。
+ */
+export interface PersonaTargetStateBadge {
+    label: string;
+    tone?: PersonaTargetStateTone;
+}
+
+/**
  * ペルソナ生成 phase の UI state machine。
  */
 export type PersonaTargetViewState =
@@ -77,14 +90,18 @@ export type PersonaTargetViewState =
  * ペルソナ生成 phase の対象一覧 1 行。
  */
 export interface PersonaTargetPreviewRow {
+    id: string;
+    formId: string;
     sourcePlugin: string;
     speakerId: string;
     editorId: string;
     npcName: string;
+    updatedAt?: string;
     race: string;
     sex: string;
     voiceType: string;
     viewState: PersonaTargetRowState;
+    stateBadge?: PersonaTargetStateBadge | null;
     personaText: string;
     errorMessage: string;
     dialogues: PersonaDialogueView[];
@@ -351,6 +368,8 @@ export interface WailsPersonaTargetPreviewRow {
     editorId?: string;
     npc_name?: string;
     npcName?: string;
+    updated_at?: string;
+    updatedAt?: string;
     race?: string;
     sex?: string;
     voice_type?: string;

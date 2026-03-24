@@ -364,8 +364,26 @@ const isTerminologyCompleted = (status: string): boolean =>
 const isPersonaAdvanceAllowed = (status: PersonaTargetViewState): boolean =>
     status === 'completed' || status === 'cachedOnly' || status === 'empty' || status === 'partialFailed';
 
+const buildPersonaRowKey = (sourcePlugin: string, speakerId: string): string =>
+    `${sourcePlugin.trim()}::${speakerId.trim()}`.trim();
+
 const normalizePersonaRowKey = (row: PersonaTargetPreviewRow): string =>
-    `${row.sourcePlugin}::${row.speakerId}`.trim();
+    row.id.trim() !== '' ? row.id.trim() : buildPersonaRowKey(row.sourcePlugin, row.speakerId);
+
+const normalizePersonaSelectionKey = (sourcePluginOrRowID: string, speakerId: string): string => {
+    const normalizedSourcePluginOrRowID = sourcePluginOrRowID.trim();
+    const normalizedSpeakerID = speakerId.trim();
+    if (normalizedSourcePluginOrRowID === '') {
+        return '';
+    }
+    if (normalizedSpeakerID === '' && normalizedSourcePluginOrRowID.includes('::')) {
+        return normalizedSourcePluginOrRowID;
+    }
+    if (normalizedSpeakerID === '') {
+        return '';
+    }
+    return buildPersonaRowKey(normalizedSourcePluginOrRowID, normalizedSpeakerID);
+};
 
 const normalizeTerminologyProvider = (value: string | undefined): MasterPersonaLLMConfig['provider'] => {
     if (value === 'gemini' || value === 'xai' || value === 'lmstudio') {
@@ -825,12 +843,11 @@ export function useTranslationFlow(): UseTranslationFlowWithPersonaResult {
     }, [handleRefreshPersonaTargets, personaSummary.status, personaTargetPage.pageSize, taskId]);
 
     const handleSelectPersonaTarget = useCallback((sourcePlugin: string, speakerId: string) => {
-        const normalizedSourcePlugin = sourcePlugin.trim();
-        const normalizedSpeakerID = speakerId.trim();
-        if (normalizedSpeakerID === '') {
+        const normalizedSelectionKey = normalizePersonaSelectionKey(sourcePlugin, speakerId);
+        if (normalizedSelectionKey === '') {
             return;
         }
-        setSelectedPersonaTargetKey(`${normalizedSourcePlugin}::${normalizedSpeakerID}`);
+        setSelectedPersonaTargetKey(normalizedSelectionKey);
     }, []);
 
     const handleRunPersonaPhase = useCallback(async (): Promise<void> => {
