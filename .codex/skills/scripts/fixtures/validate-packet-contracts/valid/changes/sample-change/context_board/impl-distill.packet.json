@@ -1,0 +1,14 @@
+{
+  "invoked_skill": "impl-distill",
+  "invoked_by": "impl-direction",
+  "change": "sample-change",
+  "task": "sample impl task",
+  "known_facts": [
+    "artifact is ready"
+  ],
+  "unknowns": [],
+  "current_scope": [
+    "frontend/src/example.tsx"
+  ],
+  "next_action": "impl-workplan"
+}

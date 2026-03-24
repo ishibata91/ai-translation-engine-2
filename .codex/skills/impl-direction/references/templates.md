@@ -1,5 +1,16 @@
 # Impl Direction Templates
 
+## packet 正本
+
+- `impl-distill` 正本: `changes/<id>/context_board/impl-distill.packet.json`
+- `impl-distill` validation: `changes/<id>/context_board/impl-distill.packet.validation.json`
+- `impl-workplan` 正本: `changes/<id>/context_board/impl-workplan.packet.json`
+- `impl-workplan` validation: `changes/<id>/context_board/impl-workplan.packet.validation.json`
+- `impl-review` 正本: `changes/<id>/context_board/impl-review.feedback.json`
+- `impl-review` validation: `changes/<id>/context_board/impl-review.feedback.validation.json`
+
+> downstream packet の正本は会話本文ではなく JSON artifact とし、validation artifact が `valid: true` でない packet は不採用にする。
+
 ## 下流スキル起動
 ```md
 ### Skill Invocation

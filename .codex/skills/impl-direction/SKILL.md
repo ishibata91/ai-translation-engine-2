@@ -11,6 +11,7 @@ description: AI Translation Engine 2 専用。実装依頼、UI 反映、fronten
 
 - artifact 充足確認
 - `impl-distill` と `impl-workplan` の順次起動
+- `changes/<id>/context_board/*.json` の packet / validation artifact 正本管理
 - `tasks.md` と progress summary の正本管理
 - section ごとの dispatch 順と担当 skill の決定
 - 次に起動する skill / agent の選定
@@ -46,11 +47,11 @@ description: AI Translation Engine 2 専用。実装依頼、UI 反映、fronten
 3. `ui.md` `scenarios.md` `logic.md` の有無、鮮度、矛盾を確認する。`tasks.md` が存在する場合は impl lane の progress source of truth として読む。
 4. 不足、古さ、矛盾がある場合は `plan-distill` を起点に plan 系へ handoff する。
 5. 実装に進める場合だけ `impl-distill` を起動する（`ctx_loader` agent を使う）。
-6. `impl-distill` を起動した後は implementation packet を待つ。返却前に自分で追加走査・読解・agent 選定を始めない。
-7. `impl-distill` の返却に unknowns、artifact 不足、曖昧な shared contract 候補が含まれる場合は **section planning を始めず**、不足解消に必要な観点を添えて `impl-distill` を再実行する。
+6. `impl-distill` を起動した後は `changes/<id>/context_board/impl-distill.packet.json` と `impl-distill.packet.validation.json` を待つ。返却前に自分で追加走査・読解・agent 選定を始めない。
+7. `impl-distill` の validation artifact が `valid: false`、unknowns、artifact 不足、曖昧な shared contract 候補を含む場合は **section planning を始めず**、不足解消に必要な観点を添えて `impl-distill` を再実行する。
 8. `impl-distill` が unknowns なしの implementation packet を返したら `impl-workplan` を起動する（`workplan_builder` agent を使う）。
-9. `impl-workplan` を起動した後は section plan、condensed brief、`changes/<id>/tasks.md` を待つ。返却前に自分で section 分割や worker 割り当てを始めない。
-10. `impl-workplan` の返却に unresolved section、未固定 contract、owner 未確定が残る場合は **実装を始めず**、不足解消に必要な観点を添えて `impl-workplan` を再実行する。
+9. `impl-workplan` を起動した後は `changes/<id>/context_board/impl-workplan.packet.json`、`impl-workplan.packet.validation.json`、`changes/<id>/tasks.md` を待つ。返却前に自分で section 分割や worker 割り当てを始めない。
+10. `impl-workplan` の validation artifact が `valid: false`、unresolved section、未固定 contract、owner 未確定が残る場合は **実装を始めず**、不足解消に必要な観点を添えて `impl-workplan` を再実行する。
 11. `impl-workplan` が有効な section plan を返したら、`tasks.md` と progress snapshot を照合して resume reconciliation を行い、`pending` または reroute 指定された section だけを dispatch 候補にする。
 12. dispatch payload は `references/templates.md` の `Section Dispatch` を使い、`title` `goal` `depends_on` `shared_contract` `required_reading` `validation_commands` `acceptance` に加えて `progress_snapshot` と `condensed_brief` を含む full work order schema をそのまま渡す。
    - `owner: frontend` の section は `implementer` agent に `impl-frontend-work` を使わせる。
@@ -60,10 +61,10 @@ description: AI Translation Engine 2 専用。実装依頼、UI 反映、fronten
 14. section 結果が `blocked` で、原因が未固定 contract や progress snapshot 矛盾なら worker 再投入を行わず `impl-workplan` 再実行へ戻す。`external_validation_noise` または `known_pre_existing_issue` だけなら reroute 対象から外す。
 15. section 結果の記録後、完了済み subagent は close し、progress summary の `next_dispatch` を更新する。
 16. 全 section の実装完了後、統合差分を対象に `impl-review` を起動する（`review_cycler` agent を使う）。
-17. `impl-review` が required delta を返すか `score < 0.85` の場合は、`affected_sections` を使って該当 section だけを再 dispatch する。
+17. `impl-review.feedback.json` または `impl-review.feedback.validation.json` が invalid、あるいは `impl-review` が required delta を返すか `score < 0.85` の場合は、`affected_sections` を使って該当 section だけを再 dispatch する。
    - reroute では `impl-workplan` が確定した元の full section 契約を崩さず、`required_delta` に加えて `progress_snapshot` と `carry_over_contracts` を添えた状態要約 packet を渡す。
 18. `score >= 0.85` を満たし、`docs_sync_needed` が true の場合だけ `plan-sync` へ handoff する。
-19. `score >= 0.85` かつ `docs_sync_needed` が false の場合は impl lane 完了として終了する。
+19. `score >= 0.85` かつ `docs_sync_needed` が false の場合は impl lane 完了として終了し、残留リスクがある場合は `tasks.md` に書き戻して終える。
 
 ## 標準チェーン
 - 正本 chain: `impl-distill -> impl-workplan -> impl-frontend-work / impl-backend-work -> impl-review`
@@ -80,6 +81,7 @@ description: AI Translation Engine 2 専用。実装依頼、UI 反映、fronten
 - 起動テンプレートと handoff 形式は `references/templates.md` を使う。
 - artifact readiness と section routing の見分け方は `references/quality-checklist.md` を読む。
 - routing 例は `references/examples.md` を読む。
+- packet schema と validation artifact の検証は `.codex/skills/scripts/validate-packet-contracts.ps1` を使う。
 
 ## 下流スキル起動時のスキル名明示
 - `impl-distill` `impl-workplan` `impl-review` をサブエージェントとして起動するときは、必ず `references/templates.md` の「下流スキル起動」テンプレートを使い、`invoked_skill` と `invoked_by` を明示すること
@@ -90,9 +92,13 @@ description: AI Translation Engine 2 専用。実装依頼、UI 反映、fronten
 ## 原則
 - 指揮役は `orchestration-only` として振る舞い、蒸留・計画・実装・レビューを直接行わない
 - agent 選択は `.codex/agents` を正本にする
+- downstream packet の正本は会話本文ではなく `changes/<id>/context_board/<stage>.json` とし、validation は同名 `.validation.json` を使う
+- schema invalid packet は即停止・不採用とし、同じ skill を再実行する
+- owned scope を越えて返った成果物は採用せず packet violation として止める
 - plan artifact が曖昧なまま `impl-workplan` へ進めない
 - implementation packet に unknowns や未確定 contract が残る状態で `impl-workplan` へ進めない
 - section plan に未確定 owner や shared contract が残る状態で worker へ進めない
+- `impl-workplan` の再計画は同一 scope 内の section 再編だけを許可し、lane 変更や主要 scope の縮退・拡大は許可しない
 - `impl-workplan` を経ない worker 直 dispatch や、`tasks.md` をユーザー入力前提で読む旧フローを復活させない
 - `tasks.md` は section 契約の正本ではなく progress の正本として扱い、section 契約変更は `impl-workplan` 以外で行わない
 - `Workplan Summary` `Section Dispatch` `Review Reroute` の section schema から `shared_contract` `required_reading` `validation_commands` `acceptance` `condensed_brief` を省略しない

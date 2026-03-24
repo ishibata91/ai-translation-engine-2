@@ -1,0 +1,19 @@
+{
+  "score": 0.95,
+  "severity": "low",
+  "location": [],
+  "affected_sections": [],
+  "violated_contract": [],
+  "required_delta": {
+    "scope_failures": [],
+    "external_validation_noise": [],
+    "known_pre_existing_issue": []
+  },
+  "recheck": {
+    "commands": [
+      "powershell -ExecutionPolicy Bypass -File .codex/skills/scripts/validate-packet-contracts.ps1"
+    ],
+    "residual_risk": []
+  },
+  "docs_sync_needed": false
+}

@@ -15,6 +15,9 @@ plan 側で確定済みの artifact を読み、実装開始に必要な packet 
 - section 分割や `tasks.md` 生成は行わない。
 - docs 同期判断は行わない。
 - 実装判断が必要な unknowns はそのまま返す。
+- 出力正本は `changes/<id>/context_board/impl-distill.packet.json` とし、会話本文だけを正本にしない。
+- packet 生成後は `.codex/skills/scripts/validate-packet-contracts.ps1` を実行し、`impl-distill.packet.validation.json` を出力する。
+- validator fail 時は 1 回だけ自己再試行し、それでも fail なら invalid packet と validation artifact を残して終了する。
 
 ## やること
 1. 対象 change と task を確認する。
@@ -24,6 +27,9 @@ plan 側で確定済みの artifact を読み、実装開始に必要な packet 
 5. `impl-workplan` がそのまま使える implementation packet を返す。
 
 ## packet 契約
+- `invoked_skill`: `impl-distill`
+- `invoked_by`: `impl-direction`
+- `change`: 対象 change
 - `task`: 実装対象
 - `scope`: 走査した artifact とコード範囲
 - `must_read`: worker が必ず読む path
@@ -40,3 +46,4 @@ plan 側で確定済みの artifact を読み、実装開始に必要な packet 
 
 ## 参照
 - 返答テンプレートは `references/response-template.md` を使う。
+- packet / validation schema の検証は `.codex/skills/scripts/validate-packet-contracts.ps1` を使う。

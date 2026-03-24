@@ -1,0 +1,20 @@
+{
+  "score": 0.5,
+  "severity": "medium",
+  "location": [],
+  "affected_sections": [],
+  "violated_contract": [],
+  "required_delta": {
+    "scope_failures": [
+      "field mismatch"
+    ],
+    "external_validation_noise": [],
+    "known_pre_existing_issue": []
+  },
+  "recheck": {
+    "commands": [],
+    "residual_risk": []
+  },
+  "docs_sync_needed": false,
+  "reviewer_actions": "none"
+}

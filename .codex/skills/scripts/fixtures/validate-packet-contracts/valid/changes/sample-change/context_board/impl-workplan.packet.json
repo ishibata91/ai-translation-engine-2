@@ -1,0 +1,22 @@
+{
+  "change": "sample-change",
+  "tasks_path": "changes/sample-change/tasks.md",
+  "progress_snapshot": [
+    {
+      "section_id": "frontend-sample",
+      "status": "pending"
+    }
+  ],
+  "shared_contracts": [
+    "sample contract"
+  ],
+  "dispatch_order": [
+    "frontend-sample"
+  ],
+  "sections": [
+    {
+      "section_id": "frontend-sample"
+    }
+  ],
+  "unresolved": []
+}

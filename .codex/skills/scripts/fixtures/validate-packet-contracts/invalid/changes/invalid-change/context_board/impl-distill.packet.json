@@ -1,0 +1,11 @@
+{
+  "invoked_skill": "impl-distill",
+  "invoked_by": "impl-direction",
+  "change": "invalid-change",
+  "task": "invalid impl task",
+  "known_facts": [
+    "artifact exists"
+  ],
+  "unknowns": [],
+  "next_action": "impl-workplan"
+}

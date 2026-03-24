@@ -1,0 +1,9 @@
+{
+  "target_artifact": "changes/invalid-change/context_board/impl-review.feedback.json",
+  "validator": ".codex/skills/scripts/validate-packet-contracts.ps1",
+  "valid": false,
+  "errors": [
+    "unexpected field: reviewer_actions"
+  ],
+  "retry_count": 1
+}

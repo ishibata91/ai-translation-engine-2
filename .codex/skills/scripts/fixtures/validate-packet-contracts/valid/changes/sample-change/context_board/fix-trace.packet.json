@@ -1,0 +1,11 @@
+{
+  "invoked_skill": "fix-trace",
+  "invoked_by": "fix-direction",
+  "change": "sample-change",
+  "current_hypothesis": "tab activation waits for refresh",
+  "unknowns": [],
+  "current_scope": [
+    "frontend/src/example.tsx"
+  ],
+  "next_action": "fix-work"
+}

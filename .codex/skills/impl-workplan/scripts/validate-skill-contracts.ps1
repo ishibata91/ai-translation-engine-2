@@ -8,16 +8,17 @@ $repoRoot = (Resolve-Path (Join-Path $scriptRoot '..\..\..\..')).Path
 $skillsRoot = Join-Path $repoRoot '.codex\skills'
 $agentsRoot = Join-Path $repoRoot '.codex\agents'
 $changesRoot = Join-Path $repoRoot 'changes'
+$packetValidator = Join-Path $repoRoot '.codex\skills\scripts\validate-packet-contracts.ps1'
 
 $standardLoggingPrefix = '[fix-trace]'
 $deprecatedTools = @('find_by_name', 'view_file', 'grep')
 $legacyWorkplanFields = @('validation', 'validation_command', 'quality_gates')
 $pathPatterns = @(
-    'references/[A-Za-z0-9._/-]+\.(?:md|ps1)',
-    'scripts/[A-Za-z0-9._/-]+\.(?:md|ps1)',
-    'docs/[A-Za-z0-9._/-]+\.(?:md|ps1)',
-    '\.codex/[A-Za-z0-9._/-]+\.(?:md|ps1|toml)',
-    'changes/[A-Za-z0-9._/<>\-]+\.(?:md|ps1)',
+    '(?<![A-Za-z0-9._/-])references/[A-Za-z0-9._/-]+\.(?:md|ps1)',
+    '(?<![A-Za-z0-9._/-])scripts/[A-Za-z0-9._/-]+\.(?:md|ps1)',
+    '(?<![A-Za-z0-9._/-])docs/[A-Za-z0-9._/-]+\.(?:md|ps1)',
+    '(?<![A-Za-z0-9._/-])\.codex/[A-Za-z0-9._/-]+\.(?:md|ps1|toml)',
+    '(?<![A-Za-z0-9._/-])changes/[A-Za-z0-9._/<>\-]+\.(?:md|ps1)',
     'AGENTS\.md'
 )
 
@@ -210,6 +211,7 @@ function Test-ValidationCommandsPresence {
 
             $sectionIndent = $Matches['indent'].Length
             $hasValidationCommands = $false
+            $looksLikePlanSection = $false
 
             for ($scanIndex = $lineIndex + 1; $scanIndex -lt $lines.Count; $scanIndex++) {
                 $scanLine = $lines[$scanIndex]
@@ -226,13 +228,17 @@ function Test-ValidationCommandsPresence {
                     break
                 }
 
+                if ($scanLine -match '^\s*(?:-\s*)?title\s*:' -or $scanLine -match '^\s*(?:-\s*)?owner\s*:') {
+                    $looksLikePlanSection = $true
+                }
+
                 if ($scanLine -match '^\s*(?:-\s*)?validation_commands\s*:') {
                     $hasValidationCommands = $true
                     break
                 }
             }
 
-            if (-not $hasValidationCommands) {
+            if ($looksLikePlanSection -and -not $hasValidationCommands) {
                 Add-Finding -Category 'workplan_field_mismatch' -File $file.FullName -Line ($lineIndex + 1) -Detail 'section schema is missing validation_commands'
             }
         }
@@ -254,13 +260,20 @@ Test-LegacyWorkplanFields -Files ($skillMarkdownFiles + $taskFiles)
 Test-ValidationCommandsPresence -Files ($skillMarkdownFiles + $taskFiles)
 
 $sortedFindings = $findings | Sort-Object Category, File, Line, Detail
+$packetValidatorExitCode = 0
+
+if (Test-Path -LiteralPath $packetValidator) {
+    Write-Host 'Packet contract validation (delegated)'
+    & powershell -ExecutionPolicy Bypass -File $packetValidator
+    $packetValidatorExitCode = $LASTEXITCODE
+}
 
 Write-Host 'Skill contract validation'
 Write-Host ("- checked_skill_markdown: {0}" -f $skillMarkdownFiles.Count)
 Write-Host ("- checked_agents: {0}" -f $agentFiles.Count)
 Write-Host ("- checked_tasks: {0}" -f $taskFiles.Count)
 
-if ($sortedFindings.Count -eq 0) {
+if ($sortedFindings.Count -eq 0 -and $packetValidatorExitCode -eq 0) {
     Write-Host '- findings: 0'
     exit 0
 }

@@ -9,6 +9,8 @@ description: AI Translation Engine 2 専用。bugfix 調査で原因仮説と検
 
 この skill は原因仮説、調査計画、調査用ログ配置計画、再現後の原因絞り込みを返す skill。
 絶対に恒久修正を行わないこと｡他スキルのサブエージェントを呼び出したりしないこと｡ログの実際の追加は `fix-logging` が行う｡
+出力正本は `changes/<id>/context_board/fix-trace.packet.json` とし、packet 生成後は `.codex/skills/scripts/validate-packet-contracts.ps1` を実行して `fix-trace.packet.validation.json` を出力する。
+validator fail 時は 1 回だけ自己再試行し、それでも fail なら invalid packet と validation artifact を残して終了する。
 
 ## 使う場面
 - bugfix flow で最初の原因仮説を立てたい
@@ -37,6 +39,7 @@ description: AI Translation Engine 2 専用。bugfix 調査で原因仮説と検
 - 原因仮説と観測事実を分けて返す
 - full history の要約ではなく、state summary 更新に必要な差分だけを返す
 - 次工程や review の起動は決めず、fix plan の前提事実だけを返す
+- 必要観測未充足の間は `fix-work` を起動してよいとは返さない
 
 ## 参照資料
 - handoff には `references/templates.md` を使う。

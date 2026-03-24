@@ -39,6 +39,8 @@ bugfix 差分、関連仕様、検証結果を照合して結果を返す。
 - `score` は `0.0 - 1.0` の範囲で返す
 - `required_delta` には `scope_failures` `external_validation_noise` `known_pre_existing_issue` を区別して書く
 - `recheck` には rerun コマンドと residual risk を区別して書く
+- 正本は `changes/<id>/context_board/fix-review.feedback.json` とし、packet 生成後は `.codex/skills/scripts/validate-packet-contracts.ps1` を実行して `fix-review.feedback.validation.json` を出力する
+- validator fail 時は 1 回だけ自己再試行し、それでも fail なら invalid packet と validation artifact を残して終了する
 
 ## `fix-direction` が判断する条件
 - `score >= 0.85` の review だけを次工程へ渡してよい

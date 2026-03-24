@@ -1,5 +1,16 @@
 # Bug Fix Templates
 
+## packet 正本
+
+- `fix-distill` 正本: `changes/<id>/context_board/fix-distill.packet.json`
+- `fix-distill` validation: `changes/<id>/context_board/fix-distill.packet.validation.json`
+- `fix-trace` 正本: `changes/<id>/context_board/fix-trace.packet.json`
+- `fix-trace` validation: `changes/<id>/context_board/fix-trace.packet.validation.json`
+- `fix-review` 正本: `changes/<id>/context_board/fix-review.feedback.json`
+- `fix-review` validation: `changes/<id>/context_board/fix-review.feedback.validation.json`
+
+> downstream packet の正本は会話本文ではなく JSON artifact とし、validation artifact が `valid: true` でない packet は不採用にする。
+
 ## 下流スキル起動
 ```md
 ### Skill Invocation

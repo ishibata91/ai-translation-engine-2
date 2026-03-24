@@ -1,0 +1,7 @@
+{
+  "target_artifact": "changes/sample-change/context_board/fix-trace.packet.json",
+  "validator": ".codex/skills/scripts/validate-packet-contracts.ps1",
+  "valid": true,
+  "errors": [],
+  "retry_count": 0
+}

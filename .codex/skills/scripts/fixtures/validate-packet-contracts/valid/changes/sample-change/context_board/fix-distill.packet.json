@@ -1,0 +1,16 @@
+{
+  "invoked_skill": "fix-distill",
+  "invoked_by": "fix-direction",
+  "change": "sample-change",
+  "symptom": "panel is missing",
+  "known_facts": [
+    "user reported missing panel"
+  ],
+  "unknowns": [
+    "runtime error"
+  ],
+  "current_scope": [
+    "frontend/src/example.tsx"
+  ],
+  "next_action": "fix-trace"
+}

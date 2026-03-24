@@ -1,6 +1,6 @@
 ---
 name: impl-workplan
-description: AI Translation Engine 2 専用。`impl-distill` の implementation packet を読み込み、モジュール/契約単位の section plan と `changes/id/tasks.md` を生成する。frontend / backend work に渡す実装計画を固めたいときに使う。
+description: AI Translation Engine 2 専用。`impl-distill` の implementation packet を読み込み、モジュール/契約単位の section plan と `changes/<id>/tasks.md` を生成する。frontend / backend work に渡す実装計画を固めたいときに使う。
 ---
 
 # Impl Workplan
@@ -28,6 +28,9 @@ worker に渡す前に `owner / depends_on / shared_contract / condensed_brief /
 - 設計変更やコード実装は行わない。
 - 1 section = 1 owner を崩さない。
 - frontend と backend の品質ゲートを同一 section に混在させない。
+- 出力正本は `changes/<id>/context_board/impl-workplan.packet.json` とし、会話本文だけを正本にしない。
+- packet 生成後は `.codex/skills/scripts/validate-packet-contracts.ps1` を実行し、`impl-workplan.packet.validation.json` を出力する。
+- validator fail 時は 1 回だけ自己再試行し、それでも fail なら invalid packet と validation artifact を残して終了する。
 - unresolved な shared contract が残る場合は worker 起動可能な計画を返さず、unknown として止める。
 - owner 未確定、shared contract 未固定、required field 欠落の section plan は完成扱いにしない。
 - `impl-workplan` は `tasks.md` の section 契約と初期 status snapshot を定義する。runtime 中の status / 実装 / 検証更新は `impl-direction` が行ってよい。
@@ -75,6 +78,7 @@ worker に渡す前に `owner / depends_on / shared_contract / condensed_brief /
 ## 原則
 - `tasks.md` は impl lane の正本 artifact として扱う
 - `tasks.md` の section 契約は `impl-workplan` が定義し、runtime 中の status と検証注記だけを `impl-direction` が更新する
+- 再計画は同一 scope 内の section 再編だけを許可し、lane 変更や主要 scope の縮退・拡大は行わない
 - section はファイル単位ではなくモジュール/契約単位で切る
 - section に placeholder owner や未固定 shared contract を残したまま worker へ流さない
 - shared contract を worker に判断させない

@@ -35,14 +35,9 @@ spec 抜粋、統合差分、検証結果、前回 findings を照合し、requi
 6. 自分では修正、差分編集、worker への差し戻し実行を行わず、レビュー結果だけを返して終了する。
 
 ## 出力形式
-- `score` (0.0 - 1.0)
-- `severity`
-- `location`
-- `affected_sections`
-- `violated_contract`
-- `required_delta`
-- `recheck`
-- `docs_sync_needed`
+- 正本は `changes/<id>/context_board/impl-review.feedback.json` とし、field は `references/templates.md` に完全一致させる
+- packet 生成後は `.codex/skills/scripts/validate-packet-contracts.ps1` を実行し、`impl-review.feedback.validation.json` を出力する
+- validator fail 時は 1 回だけ自己再試行し、それでも fail なら invalid packet と validation artifact を残して終了する
 
 ## 終了条件
 - `score >= 0.85` かつ `critical` と `medium` が 0 件なら review loop を終了してよい

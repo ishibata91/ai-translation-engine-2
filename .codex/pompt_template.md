@@ -31,11 +31,11 @@
 
 ## 設計・仕様策定の概要
 - **対象機能/画面**: 翻訳プロジェクト/ペルソナ生成フェーズ
-- **目的・背景**: 翻訳対象に登場するNPCの口調などの､ペルソナを生成する｡
+- **目的・背景**: モデル設定とプロンプト設定を個別にできるようにする
 
 ## 要求事項
-1. 翻訳対象に登場するNPCのペルソナを生成できること
-2. 既存のマスターペルソナに含まれているNPCは生成対象としないこと
+1. ペルソナ生成フェーズで､ペルソナ生成用のモデル設定ができること｡
+2. システムプロンプトが表示され､ユーザープロンプトを書き換えられること｡
 
 
 ## 制約・前提条件
@@ -51,8 +51,8 @@
 [$impl-direction](F:\ai translation engine 2\.codex\skills\impl-direction\SKILL.md)
 
 ## 実装対象の概要
-- **対象の変更文書 (changes)**: translation-flow-terminology-dictionary-reference-rules
-- **目的**: ペルソナ生成フェーズを実装する
+- **対象の変更文書 (changes)**: persona-generation-excludes-master-persona
+- **目的**: モデル設定とプロンプト設定を個別にできるようにする
 
 ## 実装スコープ
 - **対象領域**: [Frontend / Backend / Mixed]
