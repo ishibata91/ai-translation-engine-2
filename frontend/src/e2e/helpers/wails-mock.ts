@@ -16,6 +16,9 @@ import {
 } from '../fixtures/master-persona/mock-data';
 import {
   TRANSLATION_FLOW_FILE_PAYLOADS,
+  TRANSLATION_FLOW_PERSONA_LLM_CONFIG_BY_NAMESPACE,
+  TRANSLATION_FLOW_PERSONA_LLM_ROOT_CONFIG,
+  TRANSLATION_FLOW_PERSONA_PROMPT_CONFIG,
   TRANSLATION_FLOW_SELECTED_FILES,
   TRANSLATION_FLOW_TASK_ID,
   TRANSLATION_FLOW_TERMINOLOGY_COMPLETED_SUMMARY,
@@ -68,6 +71,9 @@ type TranslationFlowFileFixture = {
 
 type TranslationFlowMockFixture = {
   filePayloads: Record<string, TranslationFlowFileFixture>;
+  personaLLMConfigByNamespace: Record<string, Record<string, string>>;
+  personaLLMRootConfig: Record<string, string>;
+  personaPromptConfig: Record<string, string>;
   selectedFiles: string[];
   taskId: string;
   terminologyCompletedSummary: Record<string, number | string>;
@@ -106,6 +112,9 @@ export async function installWailsMocks(page: Page): Promise<void> {
     },
     translationFlow: {
       filePayloads: TRANSLATION_FLOW_FILE_PAYLOADS,
+      personaLLMConfigByNamespace: TRANSLATION_FLOW_PERSONA_LLM_CONFIG_BY_NAMESPACE,
+      personaLLMRootConfig: TRANSLATION_FLOW_PERSONA_LLM_ROOT_CONFIG,
+      personaPromptConfig: TRANSLATION_FLOW_PERSONA_PROMPT_CONFIG,
       selectedFiles: [...TRANSLATION_FLOW_SELECTED_FILES],
       taskId: TRANSLATION_FLOW_TASK_ID,
       terminologyCompletedSummary: TRANSLATION_FLOW_TERMINOLOGY_COMPLETED_SUMMARY,
@@ -159,8 +168,13 @@ export async function installWailsMocks(page: Page): Promise<void> {
     configStore.set('master_persona.prompt', {...mockFixture.masterPersona.promptConfig});
     configStore.set('translation_flow.terminology.llm', {...mockFixture.translationFlow.terminologyLLMConfig});
     configStore.set('translation_flow.terminology.prompt', {...mockFixture.translationFlow.terminologyPromptConfig});
+    configStore.set('translation_flow.persona.llm', {...mockFixture.translationFlow.personaLLMRootConfig});
+    configStore.set('translation_flow.persona.prompt', {...mockFixture.translationFlow.personaPromptConfig});
 
     for (const [namespace, values] of Object.entries(mockFixture.masterPersona.llmConfigByNamespace)) {
+      configStore.set(namespace, {...values});
+    }
+    for (const [namespace, values] of Object.entries(mockFixture.translationFlow.personaLLMConfigByNamespace)) {
       configStore.set(namespace, {...values});
     }
 

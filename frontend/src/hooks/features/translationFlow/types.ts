@@ -175,6 +175,10 @@ interface TranslationFlowState {
     terminologyPromptConfig: MasterPersonaPromptConfig;
     isTerminologyConfigHydrated: boolean;
     isTerminologyPromptHydrated: boolean;
+    personaConfig?: MasterPersonaLLMConfig;
+    personaPromptConfig?: MasterPersonaPromptConfig;
+    isPersonaConfigHydrated?: boolean;
+    isPersonaPromptHydrated?: boolean;
 }
 
 /**
@@ -193,6 +197,8 @@ interface TranslationFlowActions {
     handleTerminologyTargetPageChange: (page: number) => Promise<void>;
     handleTerminologyConfigChange: (next: MasterPersonaLLMConfig) => void;
     handleTerminologyPromptChange: (next: MasterPersonaPromptConfig) => void;
+    handlePersonaConfigChange?: (next: MasterPersonaLLMConfig) => void;
+    handlePersonaPromptChange?: (next: MasterPersonaPromptConfig) => void;
     handleAdvanceFromTerminology: () => void;
 }
 

@@ -165,3 +165,24 @@ export const TRANSLATION_FLOW_TERMINOLOGY_PROMPT_CONFIG = {
   user_prompt: 'Translate the provided term.',
   system_prompt: 'You are a translator for a Skyrim mod.',
 } as const;
+
+export const TRANSLATION_FLOW_PERSONA_LLM_ROOT_CONFIG = {
+  selected_provider: 'gemini',
+} as const;
+
+export const TRANSLATION_FLOW_PERSONA_LLM_CONFIG_BY_NAMESPACE = {
+  'translation_flow.persona.llm.gemini': {
+    model: 'gemini-2.5-pro',
+    endpoint: '',
+    api_key: 'persona-gemini-key',
+    temperature: '0.4',
+    context_length: '32768',
+    sync_concurrency: '2',
+    bulk_strategy: 'sync',
+  },
+} as const;
+
+export const TRANSLATION_FLOW_PERSONA_PROMPT_CONFIG = {
+  user_prompt: 'Generate a concise RPG persona for the NPC from the provided dialogue excerpts.',
+  system_prompt: 'You are a character persona analyzer for Skyrim dialogue.',
+} as const;

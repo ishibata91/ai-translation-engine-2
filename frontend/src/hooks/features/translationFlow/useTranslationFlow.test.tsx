@@ -150,6 +150,7 @@ function PersonaProbe() {
             <div data-testid="persona-error">{state.personaErrorMessage}</div>
             <div data-testid="persona-selected-speaker">{state.selectedPersonaTarget?.speakerId ?? ''}</div>
             <div data-testid="terminology-provider">{state.terminologyConfig.provider}</div>
+            <div data-testid="persona-provider">{state.personaConfig?.provider ?? ''}</div>
             <button type="button" onClick={() => void actions.handleRunPersonaPhase()}>
                 run persona
             </button>
@@ -158,6 +159,9 @@ function PersonaProbe() {
             </button>
             <button type="button" onClick={() => actions.handleTabChange(2)}>
                 go persona tab
+            </button>
+            <button type="button" onClick={() => actions.handleAdvanceFromTerminology()}>
+                advance from terminology
             </button>
             <button type="button" onClick={() => actions.handleTabChange(3)}>
                 go summary tab
@@ -855,7 +859,7 @@ describe('useTranslationFlow persona phase', () => {
                 return asConfigMap({
                     model: 'grok-3-beta',
                     endpoint: 'https://api.x.ai/v1',
-                    api_key: 'persona-api-key',
+                    api_key: 'terminology-api-key',
                     temperature: '0.2',
                     context_length: '12288',
                     sync_concurrency: '3',
@@ -863,6 +867,26 @@ describe('useTranslationFlow persona phase', () => {
                 });
             }
             if (namespace === 'translation_flow.terminology.prompt') {
+                return asConfigMap({
+                    user_prompt: 'terminology-user-prompt',
+                    system_prompt: 'terminology-system-prompt',
+                });
+            }
+            if (namespace === 'translation_flow.persona.llm') {
+                return asConfigMap({selected_provider: 'gemini'});
+            }
+            if (namespace === 'translation_flow.persona.llm.gemini') {
+                return asConfigMap({
+                    model: 'gemini-2.5-pro',
+                    endpoint: '',
+                    api_key: 'persona-api-key',
+                    temperature: '0.4',
+                    context_length: '32768',
+                    sync_concurrency: '2',
+                    bulk_strategy: 'sync',
+                });
+            }
+            if (namespace === 'translation_flow.persona.prompt') {
                 return asConfigMap({
                     user_prompt: 'persona-user-prompt',
                     system_prompt: 'persona-system-prompt',
@@ -1108,7 +1132,7 @@ describe('useTranslationFlow persona phase', () => {
         expect(screen.getByTestId('active-tab')).toHaveTextContent('0');
     });
 
-    it('partialFailed では retry でき、実行時に terminology 設定と prompt を再利用する', async () => {
+    it('partialFailed では retry でき、実行時に persona 設定と prompt を利用する', async () => {
         getPersonaPhaseMock.mockResolvedValue(buildPersonaPhaseResult({
             task_id: 'existing-task',
             status: 'partial_failed',
@@ -1143,7 +1167,7 @@ describe('useTranslationFlow persona phase', () => {
             expect(screen.getByTestId('persona-status')).toHaveTextContent('partialFailed');
         });
         await waitFor(() => {
-            expect(screen.getByTestId('terminology-provider')).toHaveTextContent('xai');
+            expect(screen.getByTestId('persona-provider')).toHaveTextContent('gemini');
         });
 
         fireEvent.click(screen.getByRole('button', {name: 'retry persona'}));
@@ -1154,19 +1178,73 @@ describe('useTranslationFlow persona phase', () => {
         expect(runPersonaPhaseMock).toHaveBeenCalledWith(
             'existing-task',
             expect.objectContaining({
-                provider: 'xai',
-                model: 'grok-3-beta',
-                endpoint: 'https://api.x.ai/v1',
+                provider: 'gemini',
+                model: 'gemini-2.5-pro',
+                endpoint: 'http://localhost:1234',
                 api_key: 'persona-api-key',
-                temperature: 0.2,
-                context_length: 12288,
-                sync_concurrency: 3,
-                bulk_strategy: 'batch',
+                temperature: 0.4,
+                context_length: 32768,
+                sync_concurrency: 2,
+                bulk_strategy: 'sync',
             }),
             expect.objectContaining({
                 user_prompt: 'persona-user-prompt',
                 system_prompt: 'persona-system-prompt',
             }),
+        );
+    });
+
+    it('persona namespace 未保存時は terminology 設定から初回 hydrate して persona namespace へ保存する', async () => {
+        vi.mocked(ConfigGetAll).mockImplementation(async (namespace: string) => {
+            if (namespace === 'translation_flow.terminology.llm') {
+                return asConfigMap({selected_provider: 'xai'});
+            }
+            if (namespace === 'translation_flow.terminology.llm.xai') {
+                return asConfigMap({
+                    model: 'grok-3-beta',
+                    endpoint: 'https://api.x.ai/v1',
+                    api_key: 'shared-api-key',
+                    temperature: '0.3',
+                    context_length: '8192',
+                    sync_concurrency: '4',
+                    bulk_strategy: 'batch',
+                });
+            }
+            if (namespace === 'translation_flow.terminology.prompt') {
+                return asConfigMap({
+                    user_prompt: 'shared-user-prompt',
+                    system_prompt: 'shared-system-prompt',
+                });
+            }
+            return asConfigMap({});
+        });
+
+        render(
+            <MemoryRouter initialEntries={['/translation_flow']}>
+                <PersonaProbe />
+            </MemoryRouter>,
+        );
+
+        await waitFor(() => {
+            expect(screen.getByTestId('persona-provider')).toHaveTextContent('xai');
+        });
+
+        await waitFor(() => {
+            expect(ConfigSet).toHaveBeenCalledWith(
+                'translation_flow.persona.llm',
+                'selected_provider',
+                'xai',
+            );
+        });
+        expect(ConfigSet).toHaveBeenCalledWith(
+            'translation_flow.persona.prompt',
+            'user_prompt',
+            'shared-user-prompt',
+        );
+        expect(ConfigSet).toHaveBeenCalledWith(
+            'translation_flow.persona.prompt',
+            'system_prompt',
+            'shared-system-prompt',
         );
     });
 
@@ -1197,6 +1275,42 @@ describe('useTranslationFlow persona phase', () => {
         fireEvent.click(screen.getByRole('button', {name: 'go summary tab'}));
         await waitFor(() => {
             expect(screen.getByTestId('active-tab')).toHaveTextContent('3');
+        });
+    });
+
+    it('handleAdvanceFromTerminology は persona refresh 完了待ちにせず先に persona tab を開く', async () => {
+        let resolvePersonaSummary: ((value: Record<string, unknown>) => void) | null = null;
+        getPersonaPhaseMock.mockImplementation(() =>
+            new Promise((resolve) => {
+                resolvePersonaSummary = resolve;
+            }));
+
+        render(
+            <MemoryRouter initialEntries={['/translation_flow']}>
+                <PersonaProbe />
+            </MemoryRouter>,
+        );
+
+        await waitFor(() => {
+            expect(screen.getByTestId('task-id')).toHaveTextContent('existing-task');
+        });
+
+        fireEvent.click(screen.getByRole('button', {name: 'advance from terminology'}));
+
+        await waitFor(() => {
+            expect(screen.getByTestId('active-tab')).toHaveTextContent('2');
+        });
+        expect(getPersonaPhaseMock).toHaveBeenCalledWith('existing-task');
+
+        act(() => {
+            resolvePersonaSummary?.(buildPersonaPhaseResult({
+                task_id: 'existing-task',
+                status: 'ready',
+            }));
+        });
+
+        await waitFor(() => {
+            expect(screen.getByTestId('persona-status')).toHaveTextContent('ready');
         });
     });
 });

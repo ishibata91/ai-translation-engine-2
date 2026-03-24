@@ -1,3 +1,10 @@
+import ModelSettings from '../ModelSettings';
+import PromptSettingCard from '../masterPersona/PromptSettingCard';
+import {
+    DEFAULT_MASTER_PERSONA_LLM_CONFIG,
+    type MasterPersonaLLMConfig,
+    type MasterPersonaPromptConfig,
+} from '../../types/masterPersona';
 import type {
     PersonaDialogueView,
     PersonaPhaseSummary,
@@ -17,7 +24,13 @@ interface PersonaPanelProps {
     targetErrorMessage?: string;
     isTargetLoading?: boolean;
     isRunning?: boolean;
+    llmConfig?: MasterPersonaLLMConfig;
+    promptConfig?: MasterPersonaPromptConfig;
+    isConfigHydrated?: boolean;
+    isPromptHydrated?: boolean;
     selectedTarget?: PersonaTargetPreviewRow | null;
+    onConfigChange?: (next: MasterPersonaLLMConfig) => void;
+    onPromptChange?: (next: MasterPersonaPromptConfig) => void;
     onSelectTarget?: (sourcePlugin: string, speakerId: string) => void;
     onRun?: () => Promise<void>;
     onRetry?: () => Promise<void>;
@@ -47,6 +60,11 @@ const EMPTY_PAGE = (taskId = ''): PersonaTargetPreviewPage => ({
     totalRows: 0,
     rows: [],
 });
+
+const DEFAULT_PERSONA_PROMPT_CONFIG: MasterPersonaPromptConfig = {
+    userPrompt: '',
+    systemPrompt: '',
+};
 
 const ROW_BADGE: Record<PersonaTargetPreviewRow['viewState'], {label: string; className: string}> = {
     reused: {label: '既存 Master Persona', className: 'badge-info badge-outline'},
@@ -134,7 +152,13 @@ export function PersonaPanel({
     targetErrorMessage = '',
     isTargetLoading = false,
     isRunning = false,
+    llmConfig = DEFAULT_MASTER_PERSONA_LLM_CONFIG,
+    promptConfig = DEFAULT_PERSONA_PROMPT_CONFIG,
+    isConfigHydrated = false,
+    isPromptHydrated = false,
     selectedTarget = null,
+    onConfigChange,
+    onPromptChange,
     onSelectTarget,
     onRun,
     onRetry,
@@ -157,6 +181,7 @@ export function PersonaPanel({
         || effectiveStatus === 'completed'
         || effectiveStatus === 'partialFailed'
     );
+    const settingsLocked = isRunning;
 
     return (
         <div className={`tab-content-panel flex-col gap-4 h-full overflow-y-auto ${isActive ? 'flex' : 'hidden'}`}>
@@ -233,8 +258,40 @@ export function PersonaPanel({
                 )}
             </div>
 
-            <div className="rounded-xl border border-dashed border-base-300 bg-base-50 p-3 text-sm text-base-content/70">
-                モデル設定 / prompt 設定は translation flow の既存設定を再利用します。
+            <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+                <ModelSettings
+                    title="ペルソナ生成モデル設定"
+                    value={llmConfig}
+                    onChange={onConfigChange ?? (() => undefined)}
+                    enabled={isConfigHydrated}
+                    namespace="translation_flow.persona"
+                    locked={settingsLocked}
+                    collapsible={false}
+                    labels={{
+                        executionProfile: '生成方式',
+                    }}
+                />
+
+                <div className="grid grid-cols-1 gap-4">
+                    <PromptSettingCard
+                        title="System Prompt"
+                        description="ペルソナ生成 phase で共通に使う system prompt です。"
+                        value={promptConfig.systemPrompt}
+                        onChange={onPromptChange ? (value) => onPromptChange({...promptConfig, systemPrompt: value}) : undefined}
+                        readOnly={!isPromptHydrated || settingsLocked}
+                        badgeLabel={!isPromptHydrated ? '読込中' : settingsLocked ? '固定' : '編集可'}
+                        footerText="変更内容は persona phase 専用 prompt として自動保存されます。"
+                    />
+                    <PromptSettingCard
+                        title="User Prompt"
+                        description="NPC ごとの会話抜粋へ差し込む user prompt です。"
+                        value={promptConfig.userPrompt}
+                        onChange={onPromptChange ? (value) => onPromptChange({...promptConfig, userPrompt: value}) : undefined}
+                        readOnly={!isPromptHydrated || settingsLocked}
+                        badgeLabel={!isPromptHydrated ? '読込中' : settingsLocked ? '固定' : '編集可'}
+                        footerText="terminology phase とは別 namespace に保存され、再表示時にも復元されます。"
+                    />
+                </div>
             </div>
 
             <div className="flex gap-4 flex-1 min-h-0 overflow-hidden relative">

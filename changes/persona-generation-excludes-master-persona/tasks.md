@@ -1,149 +1,91 @@
-## 1. Translation Input Persona Projection
+## 1. Persona Config Contracts
 
-- section_id: backend-translationinput-persona-projection
-- owner: backend
-- goal: `translationinput` artifact から persona phase 用の候補投影を提供し、`source_plugin + speaker_id` 正規化に必要な NPC / dialogue 情報を workflow へ渡せるようにする。
+- section_id: frontend-translationflow-persona-config-contracts
+- owner: frontend
+- status: completed
+- goal: `useTranslationFlow` と `TranslationFlow` が terminology 設定と独立した persona 用 LLM/prompt state と action を公開できるよう、translation flow の公開型契約を固定する。
 - depends_on: []
-- shared_contract: [`translationinput.PersonaInput`, `translationinput.PersonaNPC`, `translationinput.PersonaDialogue`, `translationinput.Repository.LoadPersonaInput(ctx, taskID string) (PersonaInput, error)`]
-- owned_paths: [`pkg/artifact/translationinput/contract.go`, `pkg/artifact/translationinput/repository.go`, `pkg/artifact/translationinput/repository_test.go`]
-- forbidden_paths: [`pkg/slice/translationflow/*`, `pkg/workflow/*`, `pkg/controller/*`, `frontend/src/*`, `pkg/artifact/master_persona_artifact/*`, `docs/*`, `changes/*`]
-- required_reading: [`changes/persona-generation-excludes-master-persona/ui.md`, `changes/persona-generation-excludes-master-persona/scenarios.md`, `changes/persona-generation-excludes-master-persona/logic.md`, `docs/workflow/translation-flow-persona-phase/spec.md`, `pkg/artifact/translationinput/contract.go`, `pkg/artifact/translationinput/repository.go`, `pkg/artifact/master_persona_artifact/contract.go`, `pkg/artifact/master_persona_artifact/repository.go`]
-- validation_commands: [`go test ./pkg/artifact/translationinput`]
-- acceptance: [`persona 候補投影が NPC / dialogue / source hint / source plugin を返せる`, `既存 terminology 投影を流用せず persona 専用 API を追加する`, `lookup key 補完に必要な `UNKNOWN` / file hint フォールバックの材料を DTO 側で失わない`]
+- shared_contract: [`UseTranslationFlowResult.state.personaConfig`, `UseTranslationFlowResult.state.personaPromptConfig`, `UseTranslationFlowResult.state.isPersonaConfigHydrated`, `UseTranslationFlowResult.state.isPersonaPromptHydrated`, `UseTranslationFlowResult.actions.handlePersonaConfigChange`, `UseTranslationFlowResult.actions.handlePersonaPromptChange`]
+- condensed_brief:
+  - why_now: hook と panel/page が persona 用 namespace と編集 UI を前提に進めるため、先に公開 contract を固定する必要がある。
+  - fixed_contracts: persona phase は `translation_flow.persona.llm` / `translation_flow.persona.llm.<provider>` / `translation_flow.persona.prompt` を使い、terminology phase の state/action 名は維持する。
+  - non_goals: backend DTO 変更、Wails binding 変更、panel 実装、hook の hydrate/persist ロジック実装。
+  - known_blockers: なし。
+  - validation_baseline: `frontend/src/hooks/features/translationFlow/types.ts` は terminology 契約を保持したまま persona 契約を追加できる。
+  - carry_over_notes: 旧 `tasks.md` の section 7 は persona state machine 型までで止まっており、config state/action 契約は未定義として再計画する。
+- owned_paths: [`frontend/src/hooks/features/translationFlow/types.ts`]
+- forbidden_paths: [`frontend/src/hooks/features/translationFlow/useTranslationFlow.tsx`, `frontend/src/hooks/features/translationFlow/useTranslationFlow.test.tsx`, `frontend/src/components/translation-flow/*`, `frontend/src/pages/TranslationFlow.tsx`, `frontend/src/e2e/*`, `pkg/*`, `docs/*`, `changes/*`]
+- required_reading: [`changes/persona-generation-excludes-master-persona/ui.md`, `changes/persona-generation-excludes-master-persona/scenarios.md`, `changes/persona-generation-excludes-master-persona/logic.md`, `frontend/src/hooks/features/translationFlow/types.ts`, `frontend/src/hooks/features/masterPersona/useMasterPersona.tsx`, `frontend/src/components/ModelSettings.tsx`, `frontend/src/components/masterPersona/PromptSettingCard.tsx`]
+- validation_commands: [`cd frontend && npm run typecheck`, `cd frontend && npm run lint:file -- src/hooks/features/translationFlow/types.ts`]
+- acceptance: [`translation flow の公開 state/actions に persona 用 config/prompt と hydration flag が追加される`, `terminology 用 state/actions 名と型が壊れない`, `後続 section が `types.ts` だけを読めば persona 設定 contract を参照できる`]
 - [x] 1.1 実装
 - [x] 1.2 検証
 
-## 2. Translation Flow Persona Read Contracts
+## 2. Persona Hook Config Runtime
 
-- section_id: backend-translationflow-persona-store-contracts
-- owner: backend
-- goal: workflow が `translationinput` / `master_persona_artifact` の詳細型へ直接依存しないよう、persona 候補・既存 final lookup を `translationflow` slice ローカル contract に閉じ込める。
-- depends_on: [`backend-translationinput-persona-projection`]
-- shared_contract: [`translationflow.PersonaCandidateInput`, `translationflow.PersonaCandidate`, `translationflow.PersonaDialogueExcerpt`, `translationflow.PersonaFinalSummary`, `translationflow.PersonaLookupKey`, `translationflow.Service.LoadPersonaCandidates(ctx, taskID string) (PersonaCandidateInput, error)`, `translationflow.Service.FindPersonaFinal(ctx, key PersonaLookupKey) (PersonaFinalSummary, bool, error)`]
-- owned_paths: [`pkg/slice/translationflow/contract.go`, `pkg/slice/translationflow/service.go`]
-- forbidden_paths: [`pkg/artifact/translationinput/*`, `pkg/workflow/*`, `pkg/controller/*`, `frontend/src/*`, `docs/*`, `changes/*`]
-- required_reading: [`changes/persona-generation-excludes-master-persona/logic.md`, `docs/workflow/translation-flow-persona-phase/spec.md`, `docs/governance/architecture/spec.md`, `pkg/slice/translationflow/contract.go`, `pkg/slice/translationflow/service.go`, `pkg/artifact/translationinput/contract.go`, `pkg/artifact/translationinput/repository.go`, `pkg/artifact/master_persona_artifact/contract.go`, `pkg/artifact/master_persona_artifact/repository.go`]
-- validation_commands: [`go test ./pkg/slice/translationflow ./pkg/artifact/translationinput ./pkg/artifact/master_persona_artifact`]
-- acceptance: [`workflow が `translationinput.PersonaInput` と `master_persona_artifact.LookupKey` を直接 import せずに候補・既存 final を扱える`, `translationflow slice が artifact 依存を吸収しつつ orchestration ルールは持ち込まない`, `既存 load / terminology 用 API の挙動を壊さない`]
-- [ ] 2.1 実装
-- [ ] 2.2 検証
-
-## 3. Master Persona Execution Contract
-
-- section_id: backend-master-persona-execution-contract
-- owner: backend
-- goal: persona phase の bootstrap/resume/runtime snapshot を `translation_project.task_id` 境界で扱う workflow-local contract を定義し、`request/prompt` を実実装へ伝搬させる。
-- depends_on: []
-- shared_contract: [`workflow.PersonaExecutionInput`, `workflow.PersonaRuntimeEntry`, `workflow.MasterPersona.RunPersonaPhase(ctx, input PersonaExecutionInput) error`, `workflow.MasterPersona.ListPersonaRuntime(ctx, taskID string) ([]PersonaRuntimeEntry, error)`]
-- owned_paths: [`pkg/workflow/master_persona.go`, `pkg/workflow/master_persona_service.go`, `pkg/workflow/master_persona_service_test.go`]
-- forbidden_paths: [`pkg/controller/*`, `frontend/src/*`, `docs/*`, `changes/*`]
-- required_reading: [`changes/persona-generation-excludes-master-persona/scenarios.md`, `changes/persona-generation-excludes-master-persona/logic.md`, `docs/workflow/translation-flow-persona-phase/spec.md`, `docs/governance/architecture/spec.md`, `pkg/workflow/master_persona.go`, `pkg/workflow/master_persona_service.go`, `pkg/workflow/task/manager.go`, `pkg/runtime/queue/queue.go`]
-- validation_commands: [`go test ./pkg/workflow ./pkg/runtime/queue`]
-- acceptance: [`別 task を新規発行せず `translation_project.task_id` 配下で初回 bootstrap と resume が成立する`, `request/prompt` が persona request 生成契約へ実際に渡る`, `workflow が `runtimequeue.JobRequest` へ直接依存せず runtime snapshot を受け取れる`]
-- [ ] 3.1 実装
-- [ ] 3.2 検証
-
-## 4. Translation Flow Persona Workflow
-
-- section_id: backend-translationflow-persona-workflow
-- owner: backend
-- goal: persona phase の preview / execute / resume / retry / no-op 完了 / partial failure 復元を、slice と master persona の local contract だけで orchestration する。
-- depends_on: [`backend-translationflow-persona-store-contracts`, `backend-master-persona-execution-contract`]
-- shared_contract: [`workflow.PersonaTargetPreviewRow`, `workflow.PersonaDialogueView`, `workflow.PersonaTargetPreviewPage`, `workflow.RunTranslationFlowPersonaPhaseInput`, `workflow.PersonaPhaseResult`, `workflow.TranslationFlow.ListTranslationFlowPersonaTargets`, `workflow.TranslationFlow.RunTranslationFlowPersonaPhase`, `workflow.TranslationFlow.GetTranslationFlowPersonaPhase`]
-- owned_paths: [`pkg/workflow/translation_flow.go`, `pkg/workflow/translation_flow_service.go`, `pkg/workflow/translation_flow_service_test.go`]
-- forbidden_paths: [`pkg/controller/*`, `frontend/src/*`, `docs/*`, `changes/*`]
-- required_reading: [`changes/persona-generation-excludes-master-persona/ui.md`, `changes/persona-generation-excludes-master-persona/scenarios.md`, `changes/persona-generation-excludes-master-persona/logic.md`, `docs/workflow/translation-flow-persona-phase/spec.md`, `docs/governance/architecture/spec.md`, `pkg/workflow/translation_flow.go`, `pkg/workflow/translation_flow_service.go`, `pkg/workflow/translation_flow_service_test.go`, `pkg/workflow/master_persona.go`, `pkg/slice/translationflow/contract.go`]
-- validation_commands: [`go test ./pkg/workflow ./pkg/controller ./pkg/runtime/queue`]
-- acceptance: [`fresh translation task で request 未生成なら bootstrap し、生成済みなら resume する`, `preview と execute が同一 planner を使い、既存 final は request 化しない`, `pending 0 件では runtime を呼ばず no-op 完了になる`, `queue 未生成でも `empty` / `ready` / `cachedOnly` を正常導出できる`, `workflow が artifact/runtime の詳細型へ直接依存しない`]
-- [ ] 4.1 実装
-- [ ] 4.2 検証
-
-## 5. Translation Flow Persona Runtime Wiring
-
-- section_id: backend-translationflow-persona-runtime-wiring
-- owner: backend
-- goal: `main.go` で revision 後の `translationflow` / `master persona` / `translation flow` contract を注入し、既存 app 起動配線を壊さずに runtime wiring を完成させる。
-- depends_on: [`backend-master-persona-execution-contract`, `backend-translationflow-persona-workflow`]
-- shared_contract: [`translationflow.NewService(...)`, `workflow.NewMasterPersonaService(...)`, `workflow.NewTranslationFlowService(parser, store, terminology, personaWorkflow, executor, notifier)`]
-- owned_paths: [`main.go`]
-- forbidden_paths: [`pkg/artifact/translationinput/*`, `pkg/slice/translationflow/*`, `pkg/workflow/*`, `pkg/controller/*`, `frontend/src/*`, `docs/*`, `changes/*`]
-- required_reading: [`changes/persona-generation-excludes-master-persona/logic.md`, `docs/workflow/translation-flow-persona-phase/spec.md`, `main.go`, `pkg/workflow/master_persona.go`, `pkg/workflow/master_persona_service.go`, `pkg/workflow/translation_flow_service.go`, `pkg/slice/translationflow/service.go`]
-- validation_commands: [`go test . ./pkg/workflow ./pkg/runtime/queue`]
-- acceptance: [`translation flow workflow が revision 後の persona contract を受け取る`, `translationflow slice / master persona workflow / controller 既存 wiring を壊さない`, `runtime wiring が compile 順と依存順の両方で整合する`]
-- [ ] 5.1 実装
-- [ ] 5.2 検証
-
-## 6. Task Controller Persona API
-
-- section_id: backend-task-controller-persona-api
-- owner: backend
-- goal: Wails 向け `TaskController` の persona phase API を revision 後の workflow 契約に追従させ、`translation_project.task_id` 境界のまま preview / run / get を公開する。
-- depends_on: [`backend-translationflow-persona-workflow`]
-- shared_contract: [`TaskController.ListTranslationFlowPersonaTargets`, `TaskController.RunTranslationFlowPersona`, `TaskController.GetTranslationFlowPersona`, `workflow.RunTranslationFlowPersonaPhaseInput`, `workflow.PersonaPhaseResult`]
-- owned_paths: [`pkg/controller/task_controller.go`, `pkg/controller/task_controller_test.go`]
-- forbidden_paths: [`pkg/artifact/translationinput/*`, `pkg/slice/translationflow/*`, `frontend/src/*`, `docs/*`, `changes/*`]
-- required_reading: [`changes/persona-generation-excludes-master-persona/scenarios.md`, `docs/workflow/translation-flow-persona-phase/spec.md`, `pkg/controller/task_controller.go`, `pkg/controller/task_controller_test.go`, `pkg/workflow/translation_flow.go`]
-- validation_commands: [`go test ./pkg/controller ./pkg/workflow`]
-- acceptance: [`controller が別 persona task 前提を持たず、同一 `translation_project.task_id` のまま persona phase を呼び出す`, `preview / run / get の 3 API が workflow revision 契約に沿って公開される`, `既存 load / terminology API の解決フローを壊さない`]
-- [ ] 6.1 実装
-- [ ] 6.2 検証
-
-## 7. Translation Flow Persona Types And Adapters
-
-- section_id: frontend-translationflow-persona-types-adapters
+- section_id: frontend-translationflow-persona-hook-config-runtime
 - owner: frontend
-- goal: backend persona DTO を受ける TypeScript の state / payload / adapter 契約を追加し、persona state machine を表現できるようにする。
-- depends_on: [`backend-task-controller-persona-api`]
-- shared_contract: [`PersonaTargetPreviewRow`, `PersonaDialogueView`, `PersonaTargetPreviewPage`, `PersonaPhaseSummary`, `PersonaTargetViewState`, `WailsPersonaTargetPreviewPage`, `WailsPersonaPhaseResult`]
-- owned_paths: [`frontend/src/hooks/features/translationFlow/types.ts`, `frontend/src/hooks/features/translationFlow/adapters.ts`]
-- forbidden_paths: [`frontend/src/hooks/features/translationFlow/useTranslationFlow.tsx`, `frontend/src/components/translation-flow/*`, `frontend/src/pages/TranslationFlow.tsx`, `pkg/*`, `docs/*`, `changes/*`]
-- required_reading: [`changes/persona-generation-excludes-master-persona/ui.md`, `docs/frontend/translation-flow-persona-ui/spec.md`, `frontend/src/hooks/features/translationFlow/types.ts`, `frontend/src/hooks/features/translationFlow/adapters.ts`, `pkg/workflow/translation_flow.go`]
-- validation_commands: [`cd frontend && npm run typecheck`, `cd frontend && npm run lint:file -- src/hooks/features/translationFlow/types.ts src/hooks/features/translationFlow/adapters.ts`]
-- acceptance: [`types が loadingTargets / empty / ready / cachedOnly / running / completed / partialFailed / failed を表現できる`, `adapter が snake_case / camelCase の persona payload を正規化する`, `terminology 既存型を壊さず persona 用型を追加する`]
-- [x] 7.1 実装
-- [x] 7.2 検証
-
-## 8. Translation Flow Persona Hook
-
-- section_id: frontend-translationflow-persona-hook
-- owner: frontend
-- goal: `useTranslationFlow` を revision 後の backend status / run 契約に追従させ、初回 persona 表示が `failed` に倒れないことを regression test で固定する。
-- depends_on: [`backend-task-controller-persona-api`, `frontend-translationflow-persona-types-adapters`]
-- shared_contract: [`useTranslationFlow` persona state / actions contract, `TaskController` persona bindings, `PersonaTargetPreviewPage`, `PersonaPhaseSummary`]
+- status: completed
+- goal: `useTranslationFlow` が persona 用 namespace を hydrate/persist し、初回は terminology 値から persona namespace へ移行したうえで、persona 実行時に persona 専用 request/prompt を使うようにする。
+- depends_on: [`frontend-translationflow-persona-config-contracts`]
+- shared_contract: [`translation_flow.persona.llm`, `translation_flow.persona.llm.<provider>`, `translation_flow.persona.prompt`, `persona namespace 未保存時は terminology 値を初回コピーしてから persona state を hydrate する`, `RunTranslationFlowPersona(taskID, request, prompt)` には persona config/prompt を渡す]
+- condensed_brief:
+  - why_now: change の主目的は persona phase の model/prompt 分離であり、hook が terminology 設定を流用している現状をここで止める必要がある。
+  - fixed_contracts: backend の persona 実行 DTO は変更しない。provider 切替と debounce save は terminology と同等の運用を保つ。既存 task では persona namespace が空でも terminology 値から復元される。
+  - non_goals: panel 見た目調整、page props 配線、backend/controller 実装。
+  - known_blockers: `ConfigController` は `translation_flow.persona.*` の既定値を持たないため、hook 側で migration fallback を完結させる前提。
+  - validation_baseline: 既存 `useTranslationFlow.test.tsx` には persona phase probe と terminology config namespace test があり、namespace 分離と run payload の退行を同ファイルで固定できる。
+  - carry_over_notes: old plan の hook section は backend 依存を含んでいたが、今回 packet では frontend hook 内の保存戦略変更だけで閉じる。
 - owned_paths: [`frontend/src/hooks/features/translationFlow/useTranslationFlow.tsx`, `frontend/src/hooks/features/translationFlow/useTranslationFlow.test.tsx`]
-- forbidden_paths: [`frontend/src/hooks/features/translationFlow/types.ts`, `frontend/src/hooks/features/translationFlow/adapters.ts`, `frontend/src/components/translation-flow/*`, `frontend/src/pages/TranslationFlow.tsx`, `pkg/*`, `docs/*`, `changes/*`]
-- required_reading: [`changes/persona-generation-excludes-master-persona/ui.md`, `changes/persona-generation-excludes-master-persona/scenarios.md`, `docs/frontend/translation-flow-persona-ui/spec.md`, `frontend/src/hooks/features/translationFlow/useTranslationFlow.tsx`, `frontend/src/hooks/features/translationFlow/useTranslationFlow.test.tsx`, `frontend/src/hooks/features/translationFlow/types.ts`, `frontend/src/hooks/features/translationFlow/adapters.ts`]
-- validation_commands: [`cd frontend && npm run test -- src/hooks/features/translationFlow/useTranslationFlow.test.tsx`, `cd frontend && npm run typecheck`]
-- acceptance: [`hook が persona phase を terminology の次・summary の前で制御する`, `mount/tab-change 時に queue 未生成でも `failed` へ落ちない`, `cachedOnly / empty / running / partialFailed の操作可否を state で制御する`, `persona phase の config / prompt は revision 後の backend 契約と一致する`]
-- [ ] 8.1 実装
-- [ ] 8.2 検証
+- forbidden_paths: [`frontend/src/hooks/features/translationFlow/types.ts`, `frontend/src/hooks/features/translationFlow/adapters.ts`, `frontend/src/components/translation-flow/*`, `frontend/src/pages/TranslationFlow.tsx`, `frontend/src/e2e/*`, `pkg/*`, `docs/*`, `changes/*`]
+- required_reading: [`changes/persona-generation-excludes-master-persona/ui.md`, `changes/persona-generation-excludes-master-persona/scenarios.md`, `changes/persona-generation-excludes-master-persona/logic.md`, `frontend/src/hooks/features/translationFlow/useTranslationFlow.tsx`, `frontend/src/hooks/features/translationFlow/useTranslationFlow.test.tsx`, `frontend/src/hooks/features/translationFlow/types.ts`, `frontend/src/hooks/features/masterPersona/useMasterPersona.tsx`, `frontend/src/hooks/features/masterPersona/helpers.ts`, `pkg/controller/config_controller.go`, `pkg/workflow/config/master_persona_prompt_defaults.go`, `docs/gateway/config/spec.md`]
+- validation_commands: [`cd frontend && npm run test -- src/hooks/features/translationFlow/useTranslationFlow.test.tsx`, `cd frontend && npm run typecheck`, `cd frontend && npm run lint:file -- src/hooks/features/translationFlow/useTranslationFlow.tsx src/hooks/features/translationFlow/useTranslationFlow.test.tsx`]
+- acceptance: [`persona phase 実行時に terminology ではなく persona namespace 由来の request/prompt が使われる`, `persona namespace 未保存の既存 task でも初回 hydrate で terminology 値が persona state に移行される`, `再表示時に persona config/prompt が復元される`, `terminology phase の保存挙動とテストが壊れない`]
+- [x] 2.1 実装
+- [x] 2.2 検証
 
-## 9. Persona Panel Rendering
+## 3. Persona Panel Settings UI
 
-- section_id: frontend-persona-panel-rendering
+- section_id: frontend-persona-panel-settings-ui
 - owner: frontend
-- goal: revision 後の state semantics に合わせて `PersonaPanel` の summary/list/detail/footer を整え、初回表示と partialFailed 表示を安定させる。
-- depends_on: [`frontend-translationflow-persona-types-adapters`, `frontend-translationflow-persona-hook`]
-- shared_contract: [`PersonaPanelProps`, `PersonaTargetPreviewRow`, `PersonaPhaseSummary`, `PersonaDialogueView`, `PersonaTargetViewState`]
+- status: completed
+- goal: `PersonaPanel` に persona 用 model 設定と prompt 設定の編集 UI を追加し、state machine ごとの操作可否を維持したまま summary/list/detail と同居させる。
+- depends_on: [`frontend-translationflow-persona-config-contracts`]
+- shared_contract: [`PersonaPanel` は persona 用 `llmConfig` `promptConfig` `isConfigHydrated` `isPromptHydrated` `onConfigChange` `onPromptChange` を受け取る, settings UI は `ModelSettings` と `PromptSettingCard` を流用する, props 未配線時でも compile を壊さない default を持てる]
+- condensed_brief:
+  - why_now: UI contract で要求される settings card を panel 内に実装しないと、hook で分離した persona 設定を編集できない。
+  - fixed_contracts: 既存 summary/list/detail/footer の state semantics は維持する。cached/generated は persona 本文表示、pending/failed は会話抜粋表示のままにする。
+  - non_goals: hook の永続化ロジック、page からの props 配線、e2e mock 更新。
+  - known_blockers: page 側配線前でもこの section 単体で lint/typecheck 可能なよう props は安全な default を持たせる必要がある。
+  - validation_baseline: `PersonaPanel.tsx` は現状 settings placeholder 文のみで、独立 section として UI 差し替えが完結する。
+  - carry_over_notes: old plan の panel section は rendering 回帰中心だったが、本 reroute では settings card 導入が主目的になる。
 - owned_paths: [`frontend/src/components/translation-flow/PersonaPanel.tsx`]
-- forbidden_paths: [`frontend/src/hooks/features/translationFlow/*`, `frontend/src/pages/TranslationFlow.tsx`, `pkg/*`, `docs/*`, `changes/*`]
-- required_reading: [`changes/persona-generation-excludes-master-persona/ui.md`, `docs/frontend/translation-flow-persona-ui/spec.md`, `frontend/src/components/translation-flow/PersonaPanel.tsx`, `frontend/src/hooks/features/translationFlow/types.ts`]
+- forbidden_paths: [`frontend/src/hooks/features/translationFlow/*`, `frontend/src/pages/TranslationFlow.tsx`, `frontend/src/e2e/*`, `pkg/*`, `docs/*`, `changes/*`]
+- required_reading: [`changes/persona-generation-excludes-master-persona/ui.md`, `frontend/src/components/translation-flow/PersonaPanel.tsx`, `frontend/src/components/ModelSettings.tsx`, `frontend/src/components/masterPersona/PromptSettingCard.tsx`, `frontend/src/hooks/features/translationFlow/types.ts`]
 - validation_commands: [`cd frontend && npm run typecheck`, `cd frontend && npm run lint:file -- src/components/translation-flow/PersonaPanel.tsx`]
-- acceptance: [`summary/list/detail/footer が `empty` / `ready` / `cachedOnly` / `running` / `completed` / `partialFailed` / `failed` と整合する`, `cached/generated は persona 本文、pending/failed は未生成理由と会話抜粋を表示する`, `初回表示で backend 正常状態を `failed` 扱いしない`]
-- [ ] 9.1 実装
-- [ ] 9.2 検証
+- acceptance: [`persona panel に model 設定と prompt 設定 UI が追加される`, `settings UI が `ready` / `cachedOnly` / `completed` / `partialFailed` で表示され、running 中は編集/実行の可否が state に従う`, `summary/list/detail/footer の既存 state 表示を壊さない`]
+- [x] 3.1 実装
+- [x] 3.2 検証
 
-## 10. Translation Flow Page Wiring
+## 4. Translation Flow Persona Page Wiring
 
-- section_id: frontend-translationflow-page-wiring
+- section_id: frontend-translationflow-persona-page-wiring
 - owner: frontend
-- goal: `TranslationFlow` ページで revision 後の persona hook/panel 契約を配線し、load -> terminology -> persona -> summary の導線と初回表示回帰を閉じる。
-- depends_on: [`frontend-translationflow-persona-hook`, `frontend-persona-panel-rendering`]
-- shared_contract: [`TranslationFlow` tab order contract, `PersonaPanelProps`, `useTranslationFlow` actions contract]
-- owned_paths: [`frontend/src/pages/TranslationFlow.tsx`]
-- forbidden_paths: [`frontend/src/hooks/features/translationFlow/*`, `frontend/src/components/translation-flow/*`, `pkg/*`, `docs/*`, `changes/*`]
-- required_reading: [`changes/persona-generation-excludes-master-persona/ui.md`, `docs/frontend/translation-flow-persona-ui/spec.md`, `frontend/src/pages/TranslationFlow.tsx`, `frontend/src/hooks/features/translationFlow/useTranslationFlow.tsx`, `frontend/src/components/translation-flow/PersonaPanel.tsx`]
-- validation_commands: [`cd frontend && npm run typecheck`, `cd frontend && npm run lint:file -- src/pages/TranslationFlow.tsx`, `cd frontend && npm run e2e -- src/e2e/translation-flow-required-scenarios.spec.ts`]
-- acceptance: [`page が persona panel に revision 後の state/actions を渡す`, `タブ遷移が load -> terminology -> persona -> summary の順を保つ`, `persona 初回表示が `failed` へ倒れない`, `他 phase の panel wiring を壊さない`]
-- [ ] 10.1 実装
-- [ ] 10.2 検証
+- status: completed
+- goal: `TranslationFlow` ページと translation-flow E2E mock を persona 用 config contract に追従させ、panel への props 配線と required scenario の回帰確認基盤を揃える。
+- depends_on: [`frontend-translationflow-persona-hook-config-runtime`, `frontend-persona-panel-settings-ui`]
+- shared_contract: [`TranslationFlow` は persona panel に persona config/prompt/hydration/actions を渡す, e2e mock config store は `translation_flow.persona.llm` / `translation_flow.persona.llm.<provider>` / `translation_flow.persona.prompt` を返せる, required scenarios は translation flow 既存導線を壊さない]
+- condensed_brief:
+  - why_now: hook と panel をつないで mock 側も persona namespace を返せるようにしないと、実画面と E2E の両方で regression を検知できない。
+  - fixed_contracts: tab 順は `load -> terminology -> persona -> summary` のまま。existing terminology mock 値は維持し、persona 用値は別 namespace で追加する。
+  - non_goals: page object 拡張、backend mock/controller 実装追加、design docs 更新。
+  - known_blockers: existing required scenario spec は persona assertions をまだ持たないため、この section では mock と page 配線の整合を優先し既存 suite の green を守る。
+  - validation_baseline: `TranslationFlow.tsx` は props 配線のみ、`frontend/src/e2e/helpers/wails-mock.ts` と `frontend/src/e2e/fixtures/translation-flow/mock-data.ts` は translation flow 固有 mock を閉じ込めている。
+  - carry_over_notes: old plan の page section から backend 依存を除去し、frontend mock/wiring に閉じる。
+- owned_paths: [`frontend/src/pages/TranslationFlow.tsx`, `frontend/src/e2e/helpers/wails-mock.ts`, `frontend/src/e2e/fixtures/translation-flow/mock-data.ts`]
+- forbidden_paths: [`frontend/src/hooks/features/translationFlow/*`, `frontend/src/components/translation-flow/*`, `frontend/src/e2e/page-objects/*`, `pkg/*`, `docs/*`, `changes/*`]
+- required_reading: [`changes/persona-generation-excludes-master-persona/ui.md`, `changes/persona-generation-excludes-master-persona/scenarios.md`, `frontend/src/pages/TranslationFlow.tsx`, `frontend/src/components/translation-flow/PersonaPanel.tsx`, `frontend/src/hooks/features/translationFlow/useTranslationFlow.tsx`, `frontend/src/e2e/helpers/wails-mock.ts`, `frontend/src/e2e/fixtures/translation-flow/mock-data.ts`, `frontend/src/e2e/translation-flow-required-scenarios.spec.ts`]
+- validation_commands: [`cd frontend && npm run typecheck`, `cd frontend && npm run lint:file -- src/pages/TranslationFlow.tsx src/e2e/helpers/wails-mock.ts src/e2e/fixtures/translation-flow/mock-data.ts`, `cd frontend && npm run e2e -- src/e2e/translation-flow-required-scenarios.spec.ts`]
+- acceptance: [`TranslationFlow が persona panel に persona config/prompt と change handlers を配線する`, `translation flow E2E mock が persona namespace の config 値を返し、既存 terminology namespace と衝突しない`, `required scenario suite が green のまま translation flow の既存導線を維持する`]
+- [x] 4.1 実装
+- [x] 4.2 検証

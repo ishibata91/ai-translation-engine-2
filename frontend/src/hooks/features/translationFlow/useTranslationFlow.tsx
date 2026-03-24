@@ -40,8 +40,10 @@ import type {
 
 const PREVIEW_PAGE_SIZE = 50;
 const TERMINOLOGY_LLM_NAMESPACE = 'translation_flow.terminology.llm';
+const PERSONA_LLM_NAMESPACE = 'translation_flow.persona.llm';
 const TERMINOLOGY_SELECTED_PROVIDER_KEY = 'selected_provider';
 const TERMINOLOGY_PROMPT_NAMESPACE = 'translation_flow.terminology.prompt';
+const PERSONA_PROMPT_NAMESPACE = 'translation_flow.persona.prompt';
 const TERMINOLOGY_USER_PROMPT_KEY = 'user_prompt';
 const TERMINOLOGY_SYSTEM_PROMPT_KEY = 'system_prompt';
 const TERMINOLOGY_PROGRESS_EVENT = 'translation_flow.terminology.progress';
@@ -372,12 +374,25 @@ const normalizeTerminologyProvider = (value: string | undefined): MasterPersonaL
     return DEFAULT_MASTER_PERSONA_LLM_CONFIG.provider;
 };
 
-const terminologyProviderNamespace = (provider: MasterPersonaLLMConfig['provider']): string =>
-    `${TERMINOLOGY_LLM_NAMESPACE}.${provider}`;
+const hasStoredConfig = (loaded: Record<string, string>): boolean => Object.keys(loaded).length > 0;
 
-const normalizeTerminologyPromptConfig = (loaded: Record<string, string>): MasterPersonaPromptConfig => ({
-    userPrompt: loaded[TERMINOLOGY_USER_PROMPT_KEY] ?? DEFAULT_TERMINOLOGY_PROMPT_CONFIG.userPrompt,
-    systemPrompt: loaded[TERMINOLOGY_SYSTEM_PROMPT_KEY] ?? DEFAULT_TERMINOLOGY_PROMPT_CONFIG.systemPrompt,
+const llmProviderNamespace = (
+    namespace: string,
+    provider: MasterPersonaLLMConfig['provider'],
+): string => `${namespace}.${provider}`;
+
+const terminologyProviderNamespace = (provider: MasterPersonaLLMConfig['provider']): string =>
+    llmProviderNamespace(TERMINOLOGY_LLM_NAMESPACE, provider);
+
+const personaProviderNamespace = (provider: MasterPersonaLLMConfig['provider']): string =>
+    llmProviderNamespace(PERSONA_LLM_NAMESPACE, provider);
+
+const normalizePromptConfig = (
+    loaded: Record<string, string>,
+    fallback: MasterPersonaPromptConfig,
+): MasterPersonaPromptConfig => ({
+    userPrompt: loaded[TERMINOLOGY_USER_PROMPT_KEY] ?? fallback.userPrompt,
+    systemPrompt: loaded[TERMINOLOGY_SYSTEM_PROMPT_KEY] ?? fallback.systemPrompt,
 });
 
 const terminologyStatusLabel = (
@@ -483,28 +498,49 @@ export function useTranslationFlow(): UseTranslationFlowWithPersonaResult {
     const [selectedPersonaTargetKey, setSelectedPersonaTargetKey] = useState('');
     const [terminologyConfig, setTerminologyConfig] = useState<MasterPersonaLLMConfig>(DEFAULT_MASTER_PERSONA_LLM_CONFIG);
     const [terminologyPromptConfig, setTerminologyPromptConfig] = useState<MasterPersonaPromptConfig>(DEFAULT_TERMINOLOGY_PROMPT_CONFIG);
+    const [personaConfig, setPersonaConfig] = useState<MasterPersonaLLMConfig>(DEFAULT_MASTER_PERSONA_LLM_CONFIG);
+    const [personaPromptConfig, setPersonaPromptConfig] = useState<MasterPersonaPromptConfig>(DEFAULT_TERMINOLOGY_PROMPT_CONFIG);
     const [isTerminologyConfigHydrated, setIsTerminologyConfigHydrated] = useState(false);
     const [isTerminologyPromptHydrated, setIsTerminologyPromptHydrated] = useState(false);
-    const llmSaveTimerRef = useRef<number | null>(null);
-    const promptSaveTimerRef = useRef<number | null>(null);
+    const [isPersonaConfigHydrated, setIsPersonaConfigHydrated] = useState(false);
+    const [isPersonaPromptHydrated, setIsPersonaPromptHydrated] = useState(false);
+    const terminologyLLMSaveTimerRef = useRef<number | null>(null);
+    const terminologyPromptSaveTimerRef = useRef<number | null>(null);
+    const personaLLMSaveTimerRef = useRef<number | null>(null);
+    const personaPromptSaveTimerRef = useRef<number | null>(null);
     const latestTerminologyConfigRef = useRef<MasterPersonaLLMConfig>(DEFAULT_MASTER_PERSONA_LLM_CONFIG);
+    const latestPersonaConfigRef = useRef<MasterPersonaLLMConfig>(DEFAULT_MASTER_PERSONA_LLM_CONFIG);
     const previousTerminologyProviderRef = useRef<MasterPersonaLLMConfig['provider']>(DEFAULT_MASTER_PERSONA_LLM_CONFIG.provider);
+    const previousPersonaProviderRef = useRef<MasterPersonaLLMConfig['provider']>(DEFAULT_MASTER_PERSONA_LLM_CONFIG.provider);
     const isSwitchingTerminologyProviderRef = useRef(false);
+    const isSwitchingPersonaProviderRef = useRef(false);
 
-    const persistTerminologyLLMConfig = useCallback((current: MasterPersonaLLMConfig): Promise<void> =>
+    const persistLLMConfig = useCallback((namespace: string, current: MasterPersonaLLMConfig): Promise<void> =>
         Promise.all([
-            ConfigSet(TERMINOLOGY_LLM_NAMESPACE, TERMINOLOGY_SELECTED_PROVIDER_KEY, current.provider),
-            ConfigSet(terminologyProviderNamespace(current.provider), 'model', current.model),
-            ConfigSet(terminologyProviderNamespace(current.provider), 'endpoint', current.endpoint),
+            ConfigSet(namespace, TERMINOLOGY_SELECTED_PROVIDER_KEY, current.provider),
+            ConfigSet(llmProviderNamespace(namespace, current.provider), 'model', current.model),
+            ConfigSet(llmProviderNamespace(namespace, current.provider), 'endpoint', current.endpoint),
             ConfigSet(
-                terminologyProviderNamespace(current.provider),
+                llmProviderNamespace(namespace, current.provider),
                 'api_key',
                 current.provider === 'lmstudio' ? '' : current.apiKey,
             ),
-            ConfigSet(terminologyProviderNamespace(current.provider), 'temperature', String(current.temperature)),
-            ConfigSet(terminologyProviderNamespace(current.provider), 'context_length', String(current.contextLength)),
-            ConfigSet(terminologyProviderNamespace(current.provider), 'sync_concurrency', String(current.syncConcurrency)),
-            ConfigSet(terminologyProviderNamespace(current.provider), 'bulk_strategy', current.bulkStrategy),
+            ConfigSet(llmProviderNamespace(namespace, current.provider), 'temperature', String(current.temperature)),
+            ConfigSet(llmProviderNamespace(namespace, current.provider), 'context_length', String(current.contextLength)),
+            ConfigSet(llmProviderNamespace(namespace, current.provider), 'sync_concurrency', String(current.syncConcurrency)),
+            ConfigSet(llmProviderNamespace(namespace, current.provider), 'bulk_strategy', current.bulkStrategy),
+        ]).then(() => undefined), []);
+
+    const persistTerminologyLLMConfig = useCallback((current: MasterPersonaLLMConfig): Promise<void> =>
+        persistLLMConfig(TERMINOLOGY_LLM_NAMESPACE, current), [persistLLMConfig]);
+
+    const persistPersonaLLMConfig = useCallback((current: MasterPersonaLLMConfig): Promise<void> =>
+        persistLLMConfig(PERSONA_LLM_NAMESPACE, current), [persistLLMConfig]);
+
+    const persistPromptConfig = useCallback((namespace: string, current: MasterPersonaPromptConfig): Promise<void> =>
+        Promise.all([
+            ConfigSet(namespace, TERMINOLOGY_USER_PROMPT_KEY, current.userPrompt),
+            ConfigSet(namespace, TERMINOLOGY_SYSTEM_PROMPT_KEY, current.systemPrompt),
         ]).then(() => undefined), []);
 
     useWailsEvent<WailsTerminologyProgressEvent>(TERMINOLOGY_PROGRESS_EVENT, (payload) => {
@@ -830,18 +866,18 @@ export function useTranslationFlow(): UseTranslationFlowWithPersonaResult {
             const payload = await runTranslationFlowPersonaBinding(
                 taskId,
                 {
-                    provider: terminologyConfig.provider,
-                    model: terminologyConfig.model,
-                    endpoint: terminologyConfig.endpoint,
-                    api_key: terminologyConfig.provider === 'lmstudio' ? '' : terminologyConfig.apiKey,
-                    temperature: terminologyConfig.temperature,
-                    context_length: terminologyConfig.contextLength,
-                    sync_concurrency: terminologyConfig.syncConcurrency,
-                    bulk_strategy: terminologyConfig.bulkStrategy,
+                    provider: personaConfig.provider,
+                    model: personaConfig.model,
+                    endpoint: personaConfig.endpoint,
+                    api_key: personaConfig.provider === 'lmstudio' ? '' : personaConfig.apiKey,
+                    temperature: personaConfig.temperature,
+                    context_length: personaConfig.contextLength,
+                    sync_concurrency: personaConfig.syncConcurrency,
+                    bulk_strategy: personaConfig.bulkStrategy,
                 },
                 {
-                    user_prompt: terminologyPromptConfig.userPrompt,
-                    system_prompt: terminologyPromptConfig.systemPrompt,
+                    user_prompt: personaPromptConfig.userPrompt,
+                    system_prompt: personaPromptConfig.systemPrompt,
                 },
             );
             const summary = mapPersonaPhaseResult(payload);
@@ -872,16 +908,16 @@ export function useTranslationFlow(): UseTranslationFlowWithPersonaResult {
         personaTargetPage.totalRows,
         personaTargetStatus,
         taskId,
-        terminologyConfig.apiKey,
-        terminologyConfig.bulkStrategy,
-        terminologyConfig.contextLength,
-        terminologyConfig.endpoint,
-        terminologyConfig.model,
-        terminologyConfig.provider,
-        terminologyConfig.syncConcurrency,
-        terminologyConfig.temperature,
-        terminologyPromptConfig.systemPrompt,
-        terminologyPromptConfig.userPrompt,
+        personaConfig.apiKey,
+        personaConfig.bulkStrategy,
+        personaConfig.contextLength,
+        personaConfig.endpoint,
+        personaConfig.model,
+        personaConfig.provider,
+        personaConfig.syncConcurrency,
+        personaConfig.temperature,
+        personaPromptConfig.systemPrompt,
+        personaPromptConfig.userPrompt,
     ]);
 
     const handleRetryPersonaPhase = useCallback(async (): Promise<void> => {
@@ -929,14 +965,19 @@ export function useTranslationFlow(): UseTranslationFlowWithPersonaResult {
     }, [terminologyConfig]);
 
     useEffect(() => {
+        latestPersonaConfigRef.current = personaConfig;
+    }, [personaConfig]);
+
+    useEffect(() => {
         let alive = true;
 
         const loadProviderConfig = async (
+            namespace: string,
             provider: MasterPersonaLLMConfig['provider'],
             fallback?: Record<string, string>,
         ): Promise<MasterPersonaLLMConfig> => {
-            const loaded = await ConfigGetAll(terminologyProviderNamespace(provider));
-            const source = Object.keys(loaded).length > 0 ? loaded : (fallback ?? {});
+            const loaded = await ConfigGetAll(llmProviderNamespace(namespace, provider));
+            const source = hasStoredConfig(loaded) ? loaded : (fallback ?? {});
             return {
                 ...normalizeTerminologyLLMConfig(source),
                 provider,
@@ -949,16 +990,50 @@ export function useTranslationFlow(): UseTranslationFlowWithPersonaResult {
                 const selectedProvider = normalizeTerminologyProvider(
                     root[TERMINOLOGY_SELECTED_PROVIDER_KEY] || root.provider,
                 );
-                const loaded = await loadProviderConfig(selectedProvider, root);
+                const loaded = await loadProviderConfig(TERMINOLOGY_LLM_NAMESPACE, selectedProvider, root);
                 if (!alive) {
                     return;
                 }
                 setTerminologyConfig(loaded);
                 latestTerminologyConfigRef.current = loaded;
                 previousTerminologyProviderRef.current = selectedProvider;
+
+                const personaRoot = await ConfigGetAll(PERSONA_LLM_NAMESPACE);
+                const personaSelectedProvider = normalizeTerminologyProvider(
+                    personaRoot[TERMINOLOGY_SELECTED_PROVIDER_KEY] || personaRoot.provider || loaded.provider,
+                );
+                const personaProviderLoaded = await ConfigGetAll(personaProviderNamespace(personaSelectedProvider));
+                const personaFallback = hasStoredConfig(personaRoot)
+                    ? personaRoot
+                    : {
+                        provider: loaded.provider,
+                        model: loaded.model,
+                        endpoint: loaded.endpoint,
+                        api_key: loaded.provider === 'lmstudio' ? '' : loaded.apiKey,
+                        temperature: String(loaded.temperature),
+                        context_length: String(loaded.contextLength),
+                        sync_concurrency: String(loaded.syncConcurrency),
+                        bulk_strategy: loaded.bulkStrategy,
+                    };
+                const loadedPersonaConfig = {
+                    ...normalizeTerminologyLLMConfig(
+                        hasStoredConfig(personaProviderLoaded) ? personaProviderLoaded : personaFallback,
+                    ),
+                    provider: personaSelectedProvider,
+                };
+                if (!alive) {
+                    return;
+                }
+                setPersonaConfig(loadedPersonaConfig);
+                latestPersonaConfigRef.current = loadedPersonaConfig;
+                previousPersonaProviderRef.current = personaSelectedProvider;
+                if (!hasStoredConfig(personaRoot) && !hasStoredConfig(personaProviderLoaded)) {
+                    void persistPersonaLLMConfig(loadedPersonaConfig);
+                }
             } finally {
                 if (alive) {
                     setIsTerminologyConfigHydrated(true);
+                    setIsPersonaConfigHydrated(true);
                 }
             }
         })();
@@ -966,13 +1041,28 @@ export function useTranslationFlow(): UseTranslationFlowWithPersonaResult {
         void (async () => {
             try {
                 const loaded = await ConfigGetAll(TERMINOLOGY_PROMPT_NAMESPACE);
+                const normalizedTerminologyPrompt = normalizePromptConfig(loaded, DEFAULT_TERMINOLOGY_PROMPT_CONFIG);
                 if (!alive) {
                     return;
                 }
-                setTerminologyPromptConfig(normalizeTerminologyPromptConfig(loaded));
+                setTerminologyPromptConfig(normalizedTerminologyPrompt);
+
+                const personaLoaded = await ConfigGetAll(PERSONA_PROMPT_NAMESPACE);
+                const normalizedPersonaPrompt = normalizePromptConfig(
+                    personaLoaded,
+                    normalizedTerminologyPrompt,
+                );
+                if (!alive) {
+                    return;
+                }
+                setPersonaPromptConfig(normalizedPersonaPrompt);
+                if (!hasStoredConfig(personaLoaded)) {
+                    void persistPromptConfig(PERSONA_PROMPT_NAMESPACE, normalizedPersonaPrompt);
+                }
             } finally {
                 if (alive) {
                     setIsTerminologyPromptHydrated(true);
+                    setIsPersonaPromptHydrated(true);
                 }
             }
         })();
@@ -980,7 +1070,7 @@ export function useTranslationFlow(): UseTranslationFlowWithPersonaResult {
         return () => {
             alive = false;
         };
-    }, []);
+    }, [persistPersonaLLMConfig, persistPromptConfig]);
 
     useEffect(() => {
         if (!isTerminologyConfigHydrated) {
@@ -1020,46 +1110,119 @@ export function useTranslationFlow(): UseTranslationFlowWithPersonaResult {
     }, [isTerminologyConfigHydrated, persistTerminologyLLMConfig, terminologyConfig.provider]);
 
     useEffect(() => {
+        if (!isPersonaConfigHydrated) {
+            return;
+        }
+        const currentProvider = personaConfig.provider;
+        const previousProvider = previousPersonaProviderRef.current;
+        if (currentProvider === previousProvider) {
+            return;
+        }
+        previousPersonaProviderRef.current = currentProvider;
+        isSwitchingPersonaProviderRef.current = true;
+        let alive = true;
+
+        void ConfigGetAll(personaProviderNamespace(currentProvider))
+            .then((loaded) => {
+                if (!alive) {
+                    return;
+                }
+                const nextConfig = {
+                    ...normalizeTerminologyLLMConfig(loaded),
+                    provider: currentProvider,
+                };
+                setPersonaConfig(nextConfig);
+                latestPersonaConfigRef.current = nextConfig;
+            })
+            .finally(() => {
+                if (alive) {
+                    isSwitchingPersonaProviderRef.current = false;
+                    void persistPersonaLLMConfig(latestPersonaConfigRef.current);
+                }
+            });
+
+        return () => {
+            alive = false;
+        };
+    }, [isPersonaConfigHydrated, persistPersonaLLMConfig, personaConfig.provider]);
+
+    useEffect(() => {
         if (!isTerminologyConfigHydrated) {
             return;
         }
         if (isSwitchingTerminologyProviderRef.current) {
             return;
         }
-        if (llmSaveTimerRef.current) {
-            window.clearTimeout(llmSaveTimerRef.current);
+        if (terminologyLLMSaveTimerRef.current) {
+            window.clearTimeout(terminologyLLMSaveTimerRef.current);
         }
-        llmSaveTimerRef.current = window.setTimeout(() => {
+        terminologyLLMSaveTimerRef.current = window.setTimeout(() => {
             void persistTerminologyLLMConfig(latestTerminologyConfigRef.current);
         }, 250);
 
         return () => {
-            if (llmSaveTimerRef.current) {
-                window.clearTimeout(llmSaveTimerRef.current);
+            if (terminologyLLMSaveTimerRef.current) {
+                window.clearTimeout(terminologyLLMSaveTimerRef.current);
             }
         };
     }, [isTerminologyConfigHydrated, persistTerminologyLLMConfig, terminologyConfig]);
 
     useEffect(() => {
-        if (!isTerminologyPromptHydrated) {
+        if (!isPersonaConfigHydrated) {
             return;
         }
-        if (promptSaveTimerRef.current) {
-            window.clearTimeout(promptSaveTimerRef.current);
+        if (isSwitchingPersonaProviderRef.current) {
+            return;
         }
-        promptSaveTimerRef.current = window.setTimeout(() => {
-            void Promise.all([
-                ConfigSet(TERMINOLOGY_PROMPT_NAMESPACE, TERMINOLOGY_USER_PROMPT_KEY, terminologyPromptConfig.userPrompt),
-                ConfigSet(TERMINOLOGY_PROMPT_NAMESPACE, TERMINOLOGY_SYSTEM_PROMPT_KEY, terminologyPromptConfig.systemPrompt),
-            ]);
+        if (personaLLMSaveTimerRef.current) {
+            window.clearTimeout(personaLLMSaveTimerRef.current);
+        }
+        personaLLMSaveTimerRef.current = window.setTimeout(() => {
+            void persistPersonaLLMConfig(latestPersonaConfigRef.current);
         }, 250);
 
         return () => {
-            if (promptSaveTimerRef.current) {
-                window.clearTimeout(promptSaveTimerRef.current);
+            if (personaLLMSaveTimerRef.current) {
+                window.clearTimeout(personaLLMSaveTimerRef.current);
             }
         };
-    }, [isTerminologyPromptHydrated, terminologyPromptConfig]);
+    }, [isPersonaConfigHydrated, persistPersonaLLMConfig, personaConfig]);
+
+    useEffect(() => {
+        if (!isTerminologyPromptHydrated) {
+            return;
+        }
+        if (terminologyPromptSaveTimerRef.current) {
+            window.clearTimeout(terminologyPromptSaveTimerRef.current);
+        }
+        terminologyPromptSaveTimerRef.current = window.setTimeout(() => {
+            void persistPromptConfig(TERMINOLOGY_PROMPT_NAMESPACE, terminologyPromptConfig);
+        }, 250);
+
+        return () => {
+            if (terminologyPromptSaveTimerRef.current) {
+                window.clearTimeout(terminologyPromptSaveTimerRef.current);
+            }
+        };
+    }, [isTerminologyPromptHydrated, persistPromptConfig, terminologyPromptConfig]);
+
+    useEffect(() => {
+        if (!isPersonaPromptHydrated) {
+            return;
+        }
+        if (personaPromptSaveTimerRef.current) {
+            window.clearTimeout(personaPromptSaveTimerRef.current);
+        }
+        personaPromptSaveTimerRef.current = window.setTimeout(() => {
+            void persistPromptConfig(PERSONA_PROMPT_NAMESPACE, personaPromptConfig);
+        }, 250);
+
+        return () => {
+            if (personaPromptSaveTimerRef.current) {
+                window.clearTimeout(personaPromptSaveTimerRef.current);
+            }
+        };
+    }, [isPersonaPromptHydrated, persistPromptConfig, personaPromptConfig]);
 
     useEffect(() => {
         if (!isTaskIDResolved) {
@@ -1272,10 +1435,8 @@ export function useTranslationFlow(): UseTranslationFlowWithPersonaResult {
         if (!isTerminologyCompleted(terminologySummary.status)) {
             return;
         }
-        void (async () => {
-            await handleRefreshPersonaPhase(taskId);
-            setActiveTab(2);
-        })();
+        setActiveTab(2);
+        void handleRefreshPersonaPhase(taskId);
     }, [handleRefreshPersonaPhase, taskId, terminologySummary.status]);
 
     const handleAdvanceFromPersona = useCallback(() => {
@@ -1291,6 +1452,14 @@ export function useTranslationFlow(): UseTranslationFlowWithPersonaResult {
 
     const handleTerminologyPromptChange = useCallback((next: MasterPersonaPromptConfig) => {
         setTerminologyPromptConfig(next);
+    }, []);
+
+    const handlePersonaConfigChange = useCallback((next: MasterPersonaLLMConfig) => {
+        setPersonaConfig(next);
+    }, []);
+
+    const handlePersonaPromptChange = useCallback((next: MasterPersonaPromptConfig) => {
+        setPersonaPromptConfig(next);
     }, []);
 
     const handleTabChange = useCallback((index: number) => {
@@ -1350,6 +1519,10 @@ export function useTranslationFlow(): UseTranslationFlowWithPersonaResult {
             terminologyPromptConfig,
             isTerminologyConfigHydrated,
             isTerminologyPromptHydrated,
+            personaConfig,
+            personaPromptConfig,
+            isPersonaConfigHydrated,
+            isPersonaPromptHydrated,
             personaSummary,
             personaStatusLabel: personaStatusLabel(personaSummary, personaTargetStatus),
             personaErrorMessage,
@@ -1374,6 +1547,8 @@ export function useTranslationFlow(): UseTranslationFlowWithPersonaResult {
             handleTerminologyTargetPageChange,
             handleTerminologyConfigChange,
             handleTerminologyPromptChange,
+            handlePersonaConfigChange,
+            handlePersonaPromptChange,
             handleAdvanceFromTerminology,
             handleRunPersonaPhase,
             handleRetryPersonaPhase,

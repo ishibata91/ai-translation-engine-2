@@ -126,7 +126,13 @@ export default function TranslationFlow() {
                         targetErrorMessage={state.personaTargetErrorMessage}
                         isTargetLoading={state.isPersonaTargetLoading}
                         isRunning={state.isPersonaRunning}
+                        llmConfig={state.personaConfig}
+                        promptConfig={state.personaPromptConfig}
+                        isConfigHydrated={state.isPersonaConfigHydrated}
+                        isPromptHydrated={state.isPersonaPromptHydrated}
                         selectedTarget={state.selectedPersonaTarget}
+                        onConfigChange={actions.handlePersonaConfigChange}
+                        onPromptChange={actions.handlePersonaPromptChange}
                         onSelectTarget={actions.handleSelectPersonaTarget}
                         onRun={actions.handleRunPersonaPhase}
                         onRetry={actions.handleRetryPersonaPhase}
