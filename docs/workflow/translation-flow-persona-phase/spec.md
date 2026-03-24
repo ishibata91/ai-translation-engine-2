@@ -45,3 +45,16 @@
 - **WHEN** ユーザーが既存 translation task を開き直す
 - **THEN** workflow は final 成果物と task summary を使って `既存 Master Persona` `生成済み` `生成失敗` を復元しなければならない
 - **AND** stale な UI state だけを根拠に復元してはならない
+
+### Requirement: persona phase の NPC 一覧は MasterPersona 一覧と同じ table shell を使わなければならない
+システムは、translation flow の persona phase に表示する NPC 一覧を、MasterPersona 一覧と同じ table shell、列順、選択ハイライトで表示しなければならない。`speaker_id` は一覧上 `FormID` 列として扱い、`source_plugin` と `npc_name` を同じ主列で表示しなければならない。一方で phase 固有の `既存 Master Persona` `生成対象` `生成中` `生成済み` `生成失敗` は補助表示として識別できなければならない。
+
+#### Scenario: persona phase 一覧が MasterPersona と同じ表形式で描画される
+- **WHEN** ユーザーが translation flow の persona phase を開く
+- **THEN** システムは MasterPersona 一覧と同じ table shell と選択スタイルで NPC 行を描画しなければならない
+- **AND** `speaker_id` を `FormID` 列へ表示しなければならない
+
+#### Scenario: row state を保ったまま shared list contract で表示できる
+- **WHEN** persona target row が `reused` `pending` `running` `generated` `failed` のいずれかで返る
+- **THEN** システムは shared list contract の主列を崩さずに phase state を補助表示で識別できなければならない
+- **AND** row state 可視性を詳細ペインだけへ押し込めてはならない
