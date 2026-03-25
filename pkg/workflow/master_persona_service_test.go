@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"strings"
@@ -11,6 +12,8 @@ import (
 
 	"github.com/ishibata91/ai-translation-engine-2/pkg/format/parser/skyrim"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/foundation/llmio"
+	progress "github.com/ishibata91/ai-translation-engine-2/pkg/foundation/progress"
+	gatewayllm "github.com/ishibata91/ai-translation-engine-2/pkg/gateway/llm"
 	runtimequeue "github.com/ishibata91/ai-translation-engine-2/pkg/runtime/queue"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/slice/persona"
 	task2 "github.com/ishibata91/ai-translation-engine-2/pkg/workflow/task"
@@ -35,6 +38,15 @@ func TestMasterPersonaServiceRunPersonaPhaseBootstrapsFreshTask(t *testing.T) {
 	}
 	service, queue, _, cleanup := newMasterPersonaServiceHarness(t, parser, generator, nil)
 	defer cleanup()
+	client := &stubMasterPersonaLLMClient{}
+	service.worker = runtimequeue.NewWorker(
+		queue,
+		&stubMasterPersonaLLMManager{client: client},
+		&stubMasterPersonaConfigStore{},
+		&stubMasterPersonaSecretStore{},
+		progress.NewNoopNotifier(),
+		testLogger(),
+	)
 
 	input := PersonaExecutionInput{
 		TaskID:            "translation-task-1",
@@ -87,6 +99,9 @@ func TestMasterPersonaServiceRunPersonaPhaseBootstrapsFreshTask(t *testing.T) {
 	if got := strings.TrimSpace(metadataString(queued.Metadata, "execution_model")); got != input.Request.Model {
 		t.Fatalf("unexpected execution model metadata: got=%q want=%q", got, input.Request.Model)
 	}
+	if client.completeCalls == 0 {
+		t.Fatalf("expected bootstrap flow to continue into runtime execution")
+	}
 }
 
 func TestMasterPersonaServiceRunPersonaPhaseResumesOnlyWhenRuntimeExists(t *testing.T) {
@@ -123,6 +138,38 @@ func TestMasterPersonaServiceRunPersonaPhaseResumesOnlyWhenRuntimeExists(t *test
 	}
 	if !strings.Contains(err.Error(), "source_json_path is required for persona bootstrap") {
 		t.Fatalf("bootstrap validation was not selected: err=%v", err)
+	}
+}
+
+func TestMasterPersonaProcessOptionsUsesTranslationFlowNamespaceAndOverrides(t *testing.T) {
+	ctx := withPersonaPhaseRunConfig(context.Background(), TranslationRequestConfig{
+		Provider: "lmstudio",
+		Model:    "community-model",
+		Endpoint: "http://127.0.0.1:1234",
+	}, TranslationPromptConfig{})
+	currentTask := &task2.Task{
+		ID:   "translation-task",
+		Type: task2.TypePersonaExtraction,
+		Metadata: task2.TaskMetadata{
+			"entrypoint": "translation_flow_persona_phase",
+		},
+	}
+
+	opts := masterPersonaProcessOptions(ctx, currentTask)
+	if opts.ConfigNamespace != translationFlowLLMNS {
+		t.Fatalf("unexpected config namespace: got=%q want=%q", opts.ConfigNamespace, translationFlowLLMNS)
+	}
+	if opts.ConfigRead.Namespace != translationFlowLLMNS {
+		t.Fatalf("unexpected config read namespace: got=%q want=%q", opts.ConfigRead.Namespace, translationFlowLLMNS)
+	}
+	if opts.ProviderOverride != "lmstudio" {
+		t.Fatalf("unexpected provider override: got=%q", opts.ProviderOverride)
+	}
+	if opts.ModelOverride != "community-model" {
+		t.Fatalf("unexpected model override: got=%q", opts.ModelOverride)
+	}
+	if opts.EndpointOverride != "http://127.0.0.1:1234" {
+		t.Fatalf("unexpected endpoint override: got=%q", opts.EndpointOverride)
 	}
 }
 
@@ -390,4 +437,97 @@ func (s *stubMasterPersona) ListPersonaRuntime(ctx context.Context, taskID strin
 		entries = append(entries, entry)
 	}
 	return entries, nil
+}
+
+type stubMasterPersonaLLMManager struct {
+	client gatewayllm.LLMClient
+}
+
+func (s *stubMasterPersonaLLMManager) GetClient(ctx context.Context, config gatewayllm.LLMConfig) (gatewayllm.LLMClient, error) {
+	_ = ctx
+	_ = config
+	if s.client == nil {
+		return nil, fmt.Errorf("llm client is not configured")
+	}
+	return s.client, nil
+}
+
+func (s *stubMasterPersonaLLMManager) GetBatchClient(ctx context.Context, config gatewayllm.LLMConfig) (gatewayllm.BatchClient, error) {
+	_ = ctx
+	_ = config
+	return nil, fmt.Errorf("batch client is not configured")
+}
+
+func (s *stubMasterPersonaLLMManager) ResolveBulkStrategy(ctx context.Context, strategy gatewayllm.BulkStrategy, provider string) gatewayllm.BulkStrategy {
+	_ = ctx
+	_ = provider
+	if strings.TrimSpace(string(strategy)) == "" {
+		return gatewayllm.BulkStrategySync
+	}
+	return strategy
+}
+
+type stubMasterPersonaLLMClient struct {
+	completeCalls int
+}
+
+func (s *stubMasterPersonaLLMClient) ListModels(ctx context.Context) ([]gatewayllm.ModelInfo, error) {
+	_ = ctx
+	return []gatewayllm.ModelInfo{{ID: "stub-model", DisplayName: "stub-model"}}, nil
+}
+
+func (s *stubMasterPersonaLLMClient) Complete(ctx context.Context, req gatewayllm.Request) (gatewayllm.Response, error) {
+	_ = ctx
+	_ = req
+	s.completeCalls++
+	return gatewayllm.Response{Success: true, Content: `{"persona":"ok"}`}, nil
+}
+
+func (s *stubMasterPersonaLLMClient) GenerateStructured(ctx context.Context, req gatewayllm.Request) (gatewayllm.Response, error) {
+	return s.Complete(ctx, req)
+}
+
+func (s *stubMasterPersonaLLMClient) StreamComplete(ctx context.Context, req gatewayllm.Request) (gatewayllm.StreamResponse, error) {
+	_ = ctx
+	_ = req
+	return &stubMasterPersonaStreamResponse{}, nil
+}
+
+func (s *stubMasterPersonaLLMClient) GetEmbedding(ctx context.Context, text string) ([]float32, error) {
+	_ = ctx
+	_ = text
+	return nil, nil
+}
+
+func (s *stubMasterPersonaLLMClient) HealthCheck(ctx context.Context) error {
+	_ = ctx
+	return nil
+}
+
+type stubMasterPersonaStreamResponse struct{}
+
+func (s *stubMasterPersonaStreamResponse) Next() (gatewayllm.Response, bool) {
+	return gatewayllm.Response{}, false
+}
+
+func (s *stubMasterPersonaStreamResponse) Close() error {
+	return nil
+}
+
+type stubMasterPersonaConfigStore struct{}
+
+func (s *stubMasterPersonaConfigStore) Get(ctx context.Context, namespace string, key string) (string, error) {
+	_ = ctx
+	_ = namespace
+	_ = key
+	return "", nil
+}
+
+type stubMasterPersonaSecretStore struct{}
+
+func (s *stubMasterPersonaSecretStore) GetSecret(ctx context.Context, namespace string, key string) (string, error) {
+	_ = ctx
+	_ = namespace
+	_ = key
+	return "", nil
 }

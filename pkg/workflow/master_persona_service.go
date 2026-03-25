@@ -46,6 +46,8 @@ const (
 	phaseBatchPolling         = "BATCH_POLLING"
 	phaseRequestSaving        = "REQUEST_SAVING"
 	phaseRequestCompleted     = "REQUEST_COMPLETED"
+	masterPersonaLLMNamespace = "master_persona.llm"
+	translationFlowLLMNS      = "translation_flow.persona.llm"
 )
 
 // NewMasterPersonaService constructs the workflow implementation.
@@ -127,7 +129,13 @@ func (s *MasterPersonaService) RunPersonaPhase(ctx context.Context, input Person
 		if err := s.executeRequestPreparation(bootstrapCtx, trimmedTaskID, bootstrapInput, func(_ string, _ float64) {}); err != nil {
 			return fmt.Errorf("bootstrap persona requests task_id=%s: %w", trimmedTaskID, err)
 		}
-		return nil
+		runtimeEntries, err = s.ListPersonaRuntime(ctx, trimmedTaskID)
+		if err != nil {
+			return fmt.Errorf("list persona runtime after bootstrap task_id=%s: %w", trimmedTaskID, err)
+		}
+		if len(runtimeEntries) == 0 {
+			return nil
+		}
 	}
 
 	if err := s.runPersonaRuntime(ctx, input); err != nil {
@@ -340,7 +348,7 @@ func (s *MasterPersonaService) runPersonaExecution(ctx context.Context, currentT
 		return fmt.Errorf("request queue worker is not configured")
 	}
 
-	processOpts := masterPersonaProcessOptions()
+	processOpts := masterPersonaProcessOptions(ctx, currentTask)
 	profile, err := s.worker.ValidateExecutionProfile(ctx, processOpts)
 	if err != nil {
 		return fmt.Errorf("validate execution profile task_id=%s: %w", currentTask.ID, err)
@@ -387,16 +395,39 @@ func (s *MasterPersonaService) runPersonaExecution(ctx context.Context, currentT
 	return s.finalizePersonaExecution(ctx, currentTask, updatedState, taskMetadata)
 }
 
-func masterPersonaProcessOptions() runtimequeue.ProcessOptions {
-	return runtimequeue.ProcessOptions{
-		ConfigNamespace:        "master_persona.llm",
+func masterPersonaProcessOptions(ctx context.Context, currentTask *task2.Task) runtimequeue.ProcessOptions {
+	namespace := masterPersonaLLMNamespace
+	if isTranslationFlowPersonaEntrypoint(currentTask) {
+		namespace = translationFlowLLMNS
+	}
+	opts := runtimequeue.ProcessOptions{
+		ConfigNamespace:        namespace,
 		UseConfigProviderModel: true,
 		ConfigRead: runtimequeue.ConfigReadOptions{
-			Namespace:           "master_persona.llm",
+			Namespace:           namespace,
 			DefaultProvider:     "lmstudio",
 			SelectedProviderKey: "selected_provider",
 		},
 	}
+	requestCfg, _, ok := personaPhaseRunConfigFromContext(ctx)
+	if !ok {
+		return opts
+	}
+	opts.ProviderOverride = strings.TrimSpace(requestCfg.Provider)
+	opts.ModelOverride = strings.TrimSpace(requestCfg.Model)
+	opts.EndpointOverride = strings.TrimSpace(requestCfg.Endpoint)
+	if overrideDefaultProvider := strings.TrimSpace(requestCfg.Provider); overrideDefaultProvider != "" {
+		opts.ConfigRead.DefaultProvider = overrideDefaultProvider
+	}
+	return opts
+}
+
+func isTranslationFlowPersonaEntrypoint(currentTask *task2.Task) bool {
+	if currentTask == nil {
+		return false
+	}
+	entrypoint := metadataString(map[string]any(currentTask.Metadata), "entrypoint")
+	return entrypoint == "translation_flow_persona_phase"
 }
 
 func executionProfileMetadata(profile runtimequeue.ExecutionProfile) task2.TaskMetadata {

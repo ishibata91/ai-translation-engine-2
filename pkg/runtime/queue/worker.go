@@ -50,6 +50,9 @@ type ProcessOptions struct {
 	ConfigNamespace        string
 	RequireProvider        string
 	UseConfigProviderModel bool
+	ProviderOverride       string
+	ModelOverride          string
+	EndpointOverride       string
 	ConfigRead             ConfigReadOptions
 	Hooks                  *ProcessHooks
 }
@@ -886,6 +889,9 @@ func (w *Worker) fetchLLMConfig(ctx context.Context, opts ProcessOptions) (gatew
 		rawProvider = w.getConfigString(ctx, ns, "provider", defaultProvider)
 	}
 	provider := gatewayllm.NormalizeProvider(rawProvider)
+	if override := gatewayllm.NormalizeProvider(opts.ProviderOverride); override != "" {
+		provider = override
+	}
 	providerNS := ns + "." + provider
 	model := w.getConfigString(ctx, ns, "model", "")
 	if model == "" {
@@ -917,6 +923,12 @@ func (w *Worker) fetchLLMConfig(ctx context.Context, opts ProcessOptions) (gatew
 		if endpoint == "" {
 			endpoint = w.getConfigString(ctx, ns, "local-llm_endpoint", "")
 		}
+	}
+	if override := strings.TrimSpace(opts.ModelOverride); override != "" {
+		model = override
+	}
+	if override := strings.TrimSpace(opts.EndpointOverride); override != "" {
+		endpoint = override
 	}
 
 	apiKey := ""

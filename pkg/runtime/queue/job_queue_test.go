@@ -941,6 +941,58 @@ func TestWorker_ProcessWithOptions_UsesProviderScopedBulkStrategy(t *testing.T) 
 	}
 }
 
+func TestWorker_ProcessWithOptions_AppliesExecutionOverrides(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	q, err := NewQueue(ctx, ":memory:", logger)
+	if err != nil {
+		t.Fatalf("failed to create queue: %v", err)
+	}
+	defer q.Close()
+
+	processID := "persona-override-profile"
+	if err := q.SubmitTaskRequests(ctx, processID, "persona_extraction", []llm.Request{{UserPrompt: "q"}}); err != nil {
+		t.Fatalf("SubmitTaskRequests failed: %v", err)
+	}
+
+	client := &mockLLMClient{}
+	manager := &mockLLMManager{client: client}
+	cfg := &mapConfigStore{
+		values: map[string]string{
+			"custom.llm::selected_provider": "gemini",
+			"custom.llm.gemini::model":      "stale-model",
+			"custom.llm.gemini::endpoint":   "https://stale.example",
+		},
+	}
+	worker := NewWorker(q, manager, cfg, &mockSecretStore{}, progress.NewNoopNotifier(), logger)
+
+	err = worker.ProcessProcessIDWithOptions(ctx, processID, ProcessOptions{
+		UseConfigProviderModel: true,
+		ProviderOverride:       "lmstudio",
+		ModelOverride:          "lmstudio-community-model",
+		EndpointOverride:       "http://127.0.0.1:1234",
+		ConfigRead: ConfigReadOptions{
+			Namespace:           "custom.llm",
+			DefaultProvider:     "gemini",
+			SelectedProviderKey: "selected_provider",
+		},
+	})
+	if err != nil {
+		t.Fatalf("ProcessProcessIDWithOptions failed: %v", err)
+	}
+	if manager.lastConfig.Provider != "lmstudio" {
+		t.Fatalf("expected provider override to win, got %q", manager.lastConfig.Provider)
+	}
+	if manager.lastConfig.Model != "lmstudio-community-model" {
+		t.Fatalf("expected model override to win, got %q", manager.lastConfig.Model)
+	}
+	if manager.lastConfig.Endpoint != "http://127.0.0.1:1234" {
+		t.Fatalf("expected endpoint override to win, got %q", manager.lastConfig.Endpoint)
+	}
+}
+
 func TestWorker_ProcessWithOptions_FallsBackToLegacyBulkStrategyKey(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
