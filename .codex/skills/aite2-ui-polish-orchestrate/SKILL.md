@@ -10,7 +10,7 @@ description: AI Translation Engine 2 専用。`impl-direction` 配下で既存 U
 ## 適用境界
 - user-facing 入口の判定は `impl-direction` が担う
 - この skill は `impl-direction` が既存 UI の見た目調整だけを切り出したときにだけ使う
-- この skill への直指定は受け付けず、必要なら `impl-direction` への handoff を返す
+- この skill への直指定を受けた場合は、`impl-direction` への handoff を返す
 
 ## 使う場面
 - `impl-direction` が「余白を直して」のような既存 UI の見た目修正を specialized branch として切り出した
@@ -25,7 +25,7 @@ description: AI Translation Engine 2 専用。`impl-direction` 配下で既存 U
 - ui-polish 指揮役は、`impl-direction` 配下の補助フローとして必要な前段 skill を subagent として起動する
 - change が無い場合は `scripts/init-change-ui-refine-docs.ps1` で `changes/<id>/context_board/` を作る
 - `plan-distill` が初期観測を整理した board を読む
-- 修正方針と変更結果は board に残して次の skill へ渡す
+- 修正方針と変更結果は board に残して `impl-direction` が次判断できる状態で返す
 - ロジック変更は board に明示的な指示が無い限り扱わない
 
 ## subagent 起動規約
@@ -48,11 +48,11 @@ description: AI Translation Engine 2 専用。`impl-direction` 配下で既存 U
 - 観測メモと修正メモは `references/templates.md` を使う。
 - 修正前の確認項目は `references/checklist.md` を使う。
 
-## 原則
+## 許可される動作
 - 作業は対話内でタスク化し、常に 1 ステップずつ進める
 - 一度に複数箇所へ広げず、指定された対象から順に直す
 - 各ステップで対象、観測結果、次の 1 手を明確にする
-- 指揮役は orchestration 以外を行わず、自分で修正や review をしない
-- 指定されていないファイルへ勝手に範囲を広げない
-- デザイン修正にロジック変更を混ぜない
-- board を更新せずに次の skill へ handoff しない
+- 指揮役の責務は orchestration に限り、修正と review は下流 skill へ委譲する
+- 変更対象は指定されたファイルと既存 UI の見た目調整に限る
+- デザイン修正ではロジック変更を分離して扱う
+- `impl-direction` へ返す前に board を更新する

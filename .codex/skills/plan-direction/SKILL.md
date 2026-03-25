@@ -15,16 +15,16 @@ description: AI Translation Engine 2 専用。設計依頼、仕様補完、docs
 - UI、シナリオ、ロジックのどこを先に確定すべきか決めたい
 - 設計レビューや docs 同期まで含めた順番を決めたい
 
-## 入口制約
+## 入口許可リスト
 - ユーザーから直接受けてよいのは設計、仕様補完、docs 同期、artifact 不足整理だけとする。
-- `plan-ui` `plan-scenario` `plan-logic` `plan-review` `plan-sync` のような non-direction skill の直指定は受け付けず、`plan-direction` へ戻す handoff を返して停止する。
-- 自由文が実装、UI 反映、コード修正、bugfix、再現、原因調査を要求している場合は conflict として扱い、処理を進めず適切な direction skill を返して停止する。
+- `plan-ui` `plan-scenario` `plan-logic` `plan-review` `plan-sync` のような non-direction skill の直指定を受けた場合は、`plan-direction` へ戻す handoff を返す入口として扱う。
+- 自由文が実装、UI 反映、コード修正、bugfix、再現、原因調査を要求している場合は、適切な direction skill へ振り分ける conflict 入口として扱う。
 
-## Conflict Policy
+## 許可される振り分け
 - `plan-direction` の正当入力 lane は `設計 / 仕様補完 / docs 同期 / artifact 不足整理` とする。
 - 自由文の意図に `実装 / UI 反映 / task 着手` が含まれる場合は `impl-direction` へ handoff する。
 - 自由文の意図に `不具合 / 再現 / 原因切り分け / 修正方針整理` が含まれる場合は `fix-direction` へ handoff する。
-- conflict を検出したら downstream skill を起動せず、`references/templates.md` の conflict template で返答して終了する。
+- conflict を検出した場合の返答は、`references/templates.md` の conflict template を使った handoff に限る。
 
 ## agent / skill 対応
 - 判断材料の蒸留は `ctx_loader` に `plan-distill` を使わせる
@@ -65,14 +65,14 @@ description: AI Translation Engine 2 専用。設計依頼、仕様補完、docs
 - `invoked_skill` には起動する下流スキル名（例: `plan-distill`）、`invoked_by` には `plan-direction` を設定する
 - サブエージェントは起動時にこの情報で「自分がどのスキルとして起動されたか」を確認できる
 
-## 原則
-- 指揮役は `orchestration-only` として振る舞い、設計 artifact 作成そのものは行わず、plan chain の実行管理だけを行う
-- agent 選択は `.codex/agents` を正本にする
-- plan artifact が不足したまま implementation へ進めない
-- 各 handoff で確定事項、未確定事項、次の 1 手を明示する
-- spec、コード、changes の読解は `plan-distill` に委譲し、自分では packet 前に読まない
-- distill 起動後は packet を待ち、自分で追加走査、追加読解、下流 skill 起動を行わない
-- 追加読解が必要なら自分で読まず、同じ distill skill を再実行する
-- plan lane に属する依頼では、次 skill を 1 つ決めて止まらず、必要な plan chain を最後まで自律実行する
-- review で required delta が返るか `score < 0.85` の場合は plan lane の中で回収し、未解決のまま impl へ handoff しない
-- conflict を検出したら自動補正や自動続行を行わず、停止して handoff だけを返す
+## 許可される動作
+- 指揮役は `orchestration-only` として振る舞い、設計 artifact 作成は下流へ委譲したうえで plan chain の実行管理を担う
+- agent 選択は `.codex/agents` を正本として行う
+- implementation へ進める判断は、必要な plan artifact が揃った場合に限る
+- 各 handoff では確定事項、未確定事項、次の 1 手を明示する
+- spec、コード、changes の packet 前読解は `plan-distill` への委譲として扱う
+- distill 起動後の次動作は packet 待ちとし、その返却を起点に下流 skill を判断する
+- 追加読解が必要な場合は、同じ distill skill の再実行で補う
+- plan lane に属する依頼では、必要な plan chain を最後まで自律実行する
+- review で required delta が返るか `score < 0.85` の場合は、plan lane の中で回収したうえで impl へ handoff する
+- conflict を検出した場合の返答は、適切な direction skill への handoff に限る

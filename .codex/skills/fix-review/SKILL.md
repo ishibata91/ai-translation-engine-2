@@ -66,11 +66,11 @@ bugfix 差分、関連仕様、検証結果を照合して結果を返す。
 - ただし external validation noise だけが残る場合は、`score = 0.90` を上限に `fix-direction` が residual risk として扱う余地を残す
 - `low` のみでも 5 件以上ある場合は `score = 0.75` とし、review loop を継続する
 
-## 原則
+## 許可される動作
 - 実装方針の好みより退行と未解消リスクを優先する
-- 必須レビュー観点を一通り確認する前に green 判定しない
-- `critical` / `medium` を未解消のまま `score >= 0.85` にしない
+- green 判定は、必須レビュー観点を一通り確認した後に行う
+- `score >= 0.85` とするのは、`critical` / `medium` が未解消でない場合に限る
 - `external_validation_noise` と `known_pre_existing_issue` は通常欠陥より軽く扱うが、score 上限は `0.90` とする
-- `docs_sync_needed` を score 減点理由に使わない
+- `docs_sync_needed` は score 減点理由ではなく handoff 判断材料として扱う
 - read-only として振る舞う
-- review 結果は返すが、`fix-work` や `plan-sync` など次工程を自分で起動しない
+- 返却内容は review 結果に限り、次工程起動は `fix-direction` に委ねる

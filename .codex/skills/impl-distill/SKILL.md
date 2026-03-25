@@ -1,6 +1,6 @@
 ---
 name: impl-distill
-description: AI Translation Engine 2 専用。確定済み artifacts を実装 packet に蒸留する。`ui.md` `scenarios.md` `logic.md` から `impl-workplan` が section planning を始められる implementation packet を作りたいときに使う。
+description: AI Translation Engine 2 専用。確定済み artifacts を実装 packet に蒸留する。`ui.md` `scenarios.md` `logic.md` から `impl-direction` が次判断できる implementation packet を作りたいときに使う。
 ---
 
 # Impl Distill
@@ -10,10 +10,10 @@ description: AI Translation Engine 2 専用。確定済み artifacts を実装 p
 この skill は実装開始に必要な implementation packet を作る skill。
 plan 側で確定済みの artifact を読み、実装開始に必要な packet を返す。
 基本的にMCP経由で走査すること｡
-## 制約
-- 仕様の再解釈や設計判断を行わない。
-- section 分割や `tasks.md` 生成は行わない。
-- docs 同期判断は行わない。
+## 許可される運用範囲
+- 返却内容は implementation packet の蒸留に限り、仕様再解釈や設計判断は含めない。
+- section 分割と `tasks.md` 生成の判断は `impl-direction` に委ねる。
+- docs 同期判断は下流の review / sync 系判断材料に委ねる。
 - 実装判断が必要な unknowns はそのまま返す。
 - 出力正本は `changes/<id>/context_board/impl-distill.packet.json` とし、会話本文だけを正本にしない。
 - packet 生成後は `.codex/skills/scripts/validate-packet-contracts.ps1` を実行し、`impl-distill.packet.validation.json` を出力する。
@@ -24,7 +24,7 @@ plan 側で確定済みの artifact を読み、実装開始に必要な packet 
 2. `ui.md` `scenarios.md` `logic.md` と関連 docs / コードを必要最小限だけ読む。
 3. 実装に必要な interface、entry point、module 候補、edit boundary、validation_commands を抽出する。
 4. shared contract 候補と implementation を止める unknowns を分けて整理する。
-5. `impl-workplan` がそのまま使える implementation packet を返す。
+5. `impl-direction` が次判断できる implementation packet を返す。
 
 ## packet 契約
 - `invoked_skill`: `impl-distill`
@@ -42,7 +42,7 @@ plan 側で確定済みの artifact を読み、実装開始に必要な packet 
 - `constraints`: 実装時の固定条件
 - `acceptance`: 完了条件
 - `unknowns`: 実装判断を止める論点
-- `handoff`: 次に使う skill と must-read
+- `handoff`: 返却先 direction と must-read
 
 ## 参照
 - 返答テンプレートは `references/response-template.md` を使う。

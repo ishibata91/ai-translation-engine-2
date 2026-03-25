@@ -1,6 +1,6 @@
 ---
 name: fix-logging
-description: AI Translation Engine 2 専用。fix-trace の観測計画に従って一時ログの add/remove を行う。恒久修正は行わない。
+description: AI Translation Engine 2 専用。fix-trace の観測計画に従って一時ログの add/remove を行う。観測用ログ操作に限定して扱う。
 ---
 
 # Fix Logging
@@ -8,7 +8,7 @@ description: AI Translation Engine 2 専用。fix-trace の観測計画に従っ
 > **起動確認**: このスキルが起動されたら、まず `invoked_skill` が `fix-logging` であることを確認する。不一致の場合は作業を開始せずエラーを返す。
 
 この skill は `fix-trace` が「観測ログが必要」と判断した後の `add` と、最終 accept 後の `remove` cleanup を担当する skill。
-恒久修正は行わない。他スキルのサブエージェントを呼び出さない。
+責務は観測用ログ操作に限り、サブエージェント起動判断は含めない。
 
 ## 使う場面
 - `fix-trace` がログ追加を必要と判断し、`fix-direction` 経由で起動された場合
@@ -31,8 +31,8 @@ description: AI Translation Engine 2 専用。fix-trace の観測計画に従っ
 6. `fix-direction` が state summary を更新できるよう、`active_logs` または cleanup 完了状態を戻り値に含める。
 7. `fix-direction` へ、`add` では「ログ追加完了・再現待ち」、`remove` では「cleanup 完了」を返す。
 
-## 原則
-- 恒久修正は行わない
+## 許可される動作
+- 恒久修正は扱わず、観測用ログの add/remove に集中する
 - repo 常設 logger を汚さない
 - 一時ログの prefix は必ず `[fix-trace]` を使い、add/remove の両 operation で同じ契約を維持する
 - フロントエンドのログは必ず `src/lib/logger.ts` の `logger.*` を使う（`console.*` は不可）。

@@ -23,17 +23,17 @@ description: AI Translation Engine 2 専用。実装依頼、UI 反映、fronten
 - 長時間 change の resume / reroute で進捗を取り違えずに再開したい
 - review 結果に応じて affected section へ差し戻すか `plan-sync` へ handoff するか決めたい
 
-## 入口制約
+## 入口許可リスト
 - ユーザーから直接受けてよいのは実装、UI 反映、frontend / backend task 着手、plan artifact 充足確認だけとする。
-- `ui.md` が無いことだけを根拠に backend-only と判定してはならず、`references/quality-checklist.md` の routing matrix で frontend 影響有無を判定する。
-- `impl-distill` `impl-workplan` `impl-frontend-work` `impl-backend-work` `impl-review` のような non-direction skill の直指定は受け付けず、`impl-direction` へ戻す handoff を返して停止する。
-- 自由文が設計、仕様補完、docs 同期、bugfix、再現、原因調査を要求している場合は conflict として扱い、処理を進めず適切な direction skill を返して停止する。
+- frontend 影響有無の判定は、`ui.md` の有無だけで決めず `references/quality-checklist.md` の routing matrix を正本として行う。
+- `impl-distill` `impl-workplan` `impl-frontend-work` `impl-backend-work` `impl-review` のような non-direction skill の直指定を受けた場合は、`impl-direction` へ戻す handoff を返す入口として扱う。
+- 自由文が設計、仕様補完、docs 同期、bugfix、再現、原因調査を要求している場合は、適切な direction skill へ振り分ける conflict 入口として扱う。
 
-## Conflict Policy
+## 許可される振り分け
 - `impl-direction` の正当入力 lane は `実装 / UI 反映 / frontend task / backend task / artifact readiness` とする。
 - 自由文の意図に `設計 / 仕様補完 / docs 同期 / artifact 不足整理` が含まれる場合は `plan-direction` へ handoff する。
 - 自由文の意図に `不具合 / 再現 / 原因切り分け / 修正方針整理` が含まれる場合は `fix-direction` へ handoff する。
-- conflict を検出したら `impl-distill` 以降へ進まず、`references/templates.md` の conflict template で返答して終了する。
+- conflict を検出した場合の返答は、`impl-distill` 以降へ進まず `references/templates.md` の conflict template を使った handoff に限る。
 
 ## agent / skill 対応
 - 実装 packet の蒸留は `ctx_loader` に `impl-distill` を使わせる
@@ -89,24 +89,23 @@ description: AI Translation Engine 2 専用。実装依頼、UI 反映、fronten
 - `invoked_skill` には起動する下流スキル名（例: `impl-workplan`）、`invoked_by` には `impl-direction` を設定する
 - サブエージェントは起動時にこの情報で「自分がどのスキルとして起動されたか」を確認できる
 
-## 原則
-- 指揮役は `orchestration-only` として振る舞い、蒸留・計画・実装・レビューを直接行わない
-- agent 選択は `.codex/agents` を正本にする
-- downstream packet の正本は会話本文ではなく `changes/<id>/context_board/<stage>.json` とし、validation は同名 `.validation.json` を使う
-- schema invalid packet は即停止・不採用とし、同じ skill を再実行する
-- owned scope を越えて返った成果物は採用せず packet violation として止める
-- plan artifact が曖昧なまま `impl-workplan` へ進めない
-- implementation packet に unknowns や未確定 contract が残る状態で `impl-workplan` へ進めない
-- section plan に未確定 owner や shared contract が残る状態で worker へ進めない
-- `impl-workplan` の再計画は同一 scope 内の section 再編だけを許可し、lane 変更や主要 scope の縮退・拡大は許可しない
-- `impl-workplan` を経ない worker 直 dispatch や、`tasks.md` をユーザー入力前提で読む旧フローを復活させない
-- `tasks.md` は section 契約の正本ではなく progress の正本として扱い、section 契約変更は `impl-workplan` 以外で行わない
-- `Workplan Summary` `Section Dispatch` `Review Reroute` の section schema から `shared_contract` `required_reading` `validation_commands` `acceptance` `condensed_brief` を省略しない
-- review feedback を要約せず、必要な affected section へそのまま返す
-- `score >= 0.85` を満たさない review では次工程へ進めない。採点根拠は `impl-review` の rubric を正本として読む
-- distill / workplan 起動後は packet を待ち、自分で追加走査・読解・section 分割を行わない
-- implementation packet が不足しているなら自分で読むのではなく `impl-distill` を再実行する
-- section plan が不足しているなら自分で埋めず、`impl-workplan` を再実行する
-- worker の `completed_scope` `remaining_gap` `noise_classification` を見ずに reroute 判断しない
-- completed subagent を開いたまま次 section を始めない
-- conflict を検出したら自動補正や自動続行を行わず、停止して handoff だけを返す
+## 許可される動作
+- 指揮役は `orchestration-only` として振る舞い、蒸留・計画・実装・レビューは下流へ委譲したうえで進行管理を担う
+- agent 選択は `.codex/agents` を正本として行う
+- downstream packet の正本は `changes/<id>/context_board/<stage>.json` とし、validation は同名 `.validation.json` を使う
+- 採用対象は schema valid な packet に限り、invalid の場合は同じ skill を再実行する
+- 採用対象は owned scope 内で返った成果物に限り、逸脱分は packet violation として扱う
+- `impl-workplan` へ進めるのは、plan artifact が明確で implementation packet に unknowns や未確定 contract が残っていない場合に限る
+- worker へ進めるのは、section plan の owner と shared contract が確定している場合に限る
+- `impl-workplan` の再計画では、同一 scope 内の section 再編を扱う
+- worker dispatch は `impl-workplan` を経た flow とし、`tasks.md` は progress の正本として扱う
+- section 契約の変更は `impl-workplan` を通して行う
+- `Workplan Summary` `Section Dispatch` `Review Reroute` の section schema では `shared_contract` `required_reading` `validation_commands` `acceptance` `condensed_brief` を常に含める
+- review feedback は要約せず、必要な affected section へそのまま返す
+- 次工程へ進める review は `score >= 0.85` を満たすものとし、採点根拠は `impl-review` の rubric を正本として読む
+- distill / workplan 起動後の次動作は packet 待ちとし、その返却を起点に section 分割と dispatch を判断する
+- implementation packet が不足している場合は `impl-distill` を再実行する
+- section plan が不足している場合は `impl-workplan` を再実行する
+- reroute 判断では worker の `completed_scope` `remaining_gap` `noise_classification` を読む
+- 次 section を始める前に completed subagent を close する
+- conflict を検出した場合の返答は、適切な direction skill への handoff に限る

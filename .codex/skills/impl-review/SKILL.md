@@ -62,13 +62,13 @@ spec 抜粋、統合差分、検証結果、前回 findings を照合し、requi
 - `score < 0.85` の場合は `required_delta` を返して review loop を継続する
 - `low` のみ残る場合でも、3-4 件までは残留リスクとして返してよいが、5 件以上なら `score = 0.75` として review loop を継続する
 
-## 原則
+## 許可される動作
 - Observation Masking 前提で、不要な背景説明を受け取らない
 - 実装方針の好みより仕様逸脱と退行を優先する
-- 必須レビュー観点を一通り確認する前に green 判定しない
-- frontend 差分で build 結果が無いレビューを green 扱いにしない
-- `critical` / `medium` を未解消のまま `score >= 0.85` にしない
+- green 判定は、必須レビュー観点を一通り確認した後に行う
+- frontend 差分を green 扱いにするのは、build 結果が verification に含まれる場合に限る
+- `score >= 0.85` とするのは、`critical` / `medium` が未解消でない場合に限る
 - `external_validation_noise` と `known_pre_existing_issue` は通常欠陥より軽く扱うが、score 上限は `0.90` とする
-- `docs_sync_needed` を score 減点理由に使わない
+- `docs_sync_needed` は score 減点理由ではなく handoff 判断材料として扱う
 - read-only として振る舞う
-- 自分では修正、差分編集、worker 起動、差し戻し実行を行わず、レビュー結果だけを返す
+- 返却内容はレビュー結果に限り、修正や worker 起動は `impl-direction` に委ねる
