@@ -10,6 +10,14 @@ description: AI Translation Engine 2 専用。bugfix 差分をレビューし、
 この skill は bugfix 差分をレビューし、未解消の退行や仕様逸脱を返す read-only skill。
 bugfix 差分、関連仕様、検証結果を照合して結果を返す。
 
+## 必須レビュー観点
+- 仕様適合レビュー: bugfix scope、関連仕様、期待挙動に対して修正が過不足なく適合しているかを確認する
+- 差分の危険箇所レビュー: 修正点の周辺、再発しやすい条件、関連フローへの退行リスクを確認する
+- テスト不足レビュー: 再現手順、回帰確認、追加ケース、既存検証で不足しているものがないかを確認する
+- 例外・失敗時レビュー: 修正後も失敗系、境界条件、エラー復旧、部分失敗時の挙動が破綻しないかを確認する
+- 既存設計との整合性レビュー: 応急処置で責務境界や既存 contract を壊していないかを確認する
+- セキュリティ・性能レビュー: 修正に伴う入力起点の危険、権限逸脱、過負荷、無駄なリトライや重複処理を確認する
+
 ## 使う場面
 - bugfix 修正後の退行確認をしたい
 - 修正で別の contract を壊していないか見たい
@@ -28,10 +36,20 @@ bugfix 差分、関連仕様、検証結果を照合して結果を返す。
    - `docs/governance/architecture/spec.md`
    - `docs/governance/backend-coding-standards/spec.md`
    - `docs/frontend/frontend-coding-standards/spec.md`
-3. 退行、未解消リスク、仕様逸脱、未検証を優先して見る。
-4. `references/templates.md` の `## review feedback` を唯一の schema 正本として、`score` `severity` `location` `violated_contract` `required_delta` `recheck` `docs_sync_needed` をその順で返す。
-5. `score < 0.85` の場合は `required_delta` を欠落させず、review loop を継続できる形で返す。`required_delta` と `recheck` の本文では、未解消 scope、external validation noise、residual risk を区別して書く。
-6. 次工程の起動は行わず、結果だけを `fix-direction` へ返す。
+3. 必須レビュー観点を順に確認する。観点を飛ばさず、仕様適合、危険箇所、テスト不足、例外・失敗時、既存設計整合性、セキュリティ・性能の順で見落としを潰す。
+4. 退行、未解消リスク、仕様逸脱、未検証を優先して見る。bugfix scope 未達、退行、新規の仕様逸脱を severity 判定の中心に置く。
+5. `severity` は未解消の最高重大度を返す。`critical` `medium` `low` の 3 段階を使い、好みや任意改善は指摘理由に含めない。
+6. `score` は「欠陥の重さ」を表す離散バンドで返す。判定優先順位は `critical > medium > verification不足 > low件数 > external noise` とし、複数条件がある場合は最も低いバンドを採用する。
+7. `score` は以下の rubric に従う。
+   - `1.00`: 未解消の品質欠陥なし。required verification も満たしている。
+   - `0.90`: 未解消が `low` 1-2 件のみ、または `external_validation_noise` / `known_pre_existing_issue` のみ。
+   - `0.85`: 未解消が `low` 3-4 件のみ。
+   - `0.75`: 未解消の `medium` が 1 件以上ある、required verification 不足がある、または `low` が 5 件以上ある。
+   - `0.50`: 未解消の `critical` が 1 件以上ある。
+8. `references/templates.md` の `## review feedback` を唯一の schema 正本として、`score` `severity` `location` `violated_contract` `required_delta` `recheck` `docs_sync_needed` をその順で返す。
+9. `score < 0.85` の場合は `required_delta` を欠落させず、review loop を継続できる形で返す。`required_delta` と `recheck` の本文では、未解消 scope、external validation noise、residual risk を区別して書く。
+10. `docs_sync_needed` は score に影響させず、docs handoff 判断専用で返す。
+11. 次工程の起動は行わず、結果だけを `fix-direction` へ返す。
 
 ## 出力形式
 - `references/templates.md` の `## review feedback` を唯一の schema 正本として扱う
@@ -45,9 +63,14 @@ bugfix 差分、関連仕様、検証結果を照合して結果を返す。
 ## `fix-direction` が判断する条件
 - `score >= 0.85` の review だけを次工程へ渡してよい
 - `score < 0.85` の場合は `required_delta` を返して review loop を継続する
-- ただし external validation noise だけが残る場合は、`fix-direction` が residual risk として扱う余地を残す
+- ただし external validation noise だけが残る場合は、`score = 0.90` を上限に `fix-direction` が residual risk として扱う余地を残す
+- `low` のみでも 5 件以上ある場合は `score = 0.75` とし、review loop を継続する
 
 ## 原則
 - 実装方針の好みより退行と未解消リスクを優先する
+- 必須レビュー観点を一通り確認する前に green 判定しない
+- `critical` / `medium` を未解消のまま `score >= 0.85` にしない
+- `external_validation_noise` と `known_pre_existing_issue` は通常欠陥より軽く扱うが、score 上限は `0.90` とする
+- `docs_sync_needed` を score 減点理由に使わない
 - read-only として振る舞う
 - review 結果は返すが、`fix-work` や `plan-sync` など次工程を自分で起動しない

@@ -61,7 +61,7 @@ description: AI Translation Engine 2 専用。実装依頼、UI 反映、fronten
 14. section 結果が `blocked` で、原因が未固定 contract や progress snapshot 矛盾なら worker 再投入を行わず `impl-workplan` 再実行へ戻す。`external_validation_noise` または `known_pre_existing_issue` だけなら reroute 対象から外す。
 15. section 結果の記録後、完了済み subagent は close し、progress summary の `next_dispatch` を更新する。
 16. 全 section の実装完了後、統合差分を対象に `impl-review` を起動する（`review_cycler` agent を使う）。
-17. `impl-review.feedback.json` または `impl-review.feedback.validation.json` が invalid、あるいは `impl-review` が required delta を返すか `score < 0.85` の場合は、`affected_sections` を使って該当 section だけを再 dispatch する。
+17. `impl-review.feedback.json` または `impl-review.feedback.validation.json` が invalid、あるいは `impl-review` が required delta を返すか `score < 0.85` の場合は、`affected_sections` を使って該当 section だけを再 dispatch する。`score` の読み方は `impl-review` 側 rubric を正本とし、`low` のみでも 5 件以上なら loop 継続として扱う。
    - reroute では `impl-workplan` が確定した元の full section 契約を崩さず、`required_delta` に加えて `progress_snapshot` と `carry_over_contracts` を添えた状態要約 packet を渡す。
 18. `score >= 0.85` を満たし、`docs_sync_needed` が true の場合だけ `plan-sync` へ handoff する。
 19. `score >= 0.85` かつ `docs_sync_needed` が false の場合は impl lane 完了として終了し、残留リスクがある場合は `tasks.md` に書き戻して終える。
@@ -103,7 +103,7 @@ description: AI Translation Engine 2 専用。実装依頼、UI 反映、fronten
 - `tasks.md` は section 契約の正本ではなく progress の正本として扱い、section 契約変更は `impl-workplan` 以外で行わない
 - `Workplan Summary` `Section Dispatch` `Review Reroute` の section schema から `shared_contract` `required_reading` `validation_commands` `acceptance` `condensed_brief` を省略しない
 - review feedback を要約せず、必要な affected section へそのまま返す
-- `score >= 0.85` を満たさない review では次工程へ進めない
+- `score >= 0.85` を満たさない review では次工程へ進めない。採点根拠は `impl-review` の rubric を正本として読む
 - distill / workplan 起動後は packet を待ち、自分で追加走査・読解・section 分割を行わない
 - implementation packet が不足しているなら自分で読むのではなく `impl-distill` を再実行する
 - section plan が不足しているなら自分で埋めず、`impl-workplan` を再実行する
