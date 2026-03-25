@@ -126,6 +126,84 @@ func TestMasterPersonaServiceRunPersonaPhaseResumesOnlyWhenRuntimeExists(t *test
 	}
 }
 
+func TestMasterPersonaServiceCleanupCompletedTaskRemovesTranslationProjectPersonaRuntime(t *testing.T) {
+	ctx := context.Background()
+	service, queue, _, cleanup := newMasterPersonaServiceHarness(t, nil, nil, nil)
+	defer cleanup()
+
+	taskID := "translation-project-persona"
+	if err := queue.SubmitTaskSharedRequests(ctx, taskID, string(task2.TypePersonaExtraction), []llmio.Request{
+		{
+			SystemPrompt: "system",
+			UserPrompt:   "user",
+			Metadata: map[string]interface{}{
+				"source_plugin": "Skyrim.esm",
+				"speaker_id":    "00012345",
+			},
+		},
+	}); err != nil {
+		t.Fatalf("SubmitTaskSharedRequests failed: %v", err)
+	}
+
+	if err := service.CleanupCompletedTask(ctx, &task2.Task{
+		ID:   taskID,
+		Type: task2.TypeTranslationProject,
+		Metadata: task2.TaskMetadata{
+			"entrypoint": "translation_flow_persona_phase",
+		},
+	}); err != nil {
+		t.Fatalf("CleanupCompletedTask failed: %v", err)
+	}
+
+	requests, err := queue.GetTaskRequests(ctx, taskID)
+	if err != nil {
+		t.Fatalf("GetTaskRequests failed: %v", err)
+	}
+	if len(requests) != 0 {
+		t.Fatalf("translation project completion must remove runtime requests: got=%d", len(requests))
+	}
+}
+
+func TestMasterPersonaServiceCleanupCompletedTaskPreventsStaleRuntimeReuse(t *testing.T) {
+	ctx := context.Background()
+	service, queue, _, cleanup := newMasterPersonaServiceHarness(t, nil, nil, nil)
+	defer cleanup()
+
+	taskID := "translation-project-reuse"
+	if err := queue.SubmitTaskSharedRequests(ctx, taskID, string(task2.TypePersonaExtraction), []llmio.Request{
+		{
+			SystemPrompt: "system",
+			UserPrompt:   "user",
+			Metadata: map[string]interface{}{
+				"source_plugin": "Skyrim.esm",
+				"speaker_id":    "00012345",
+			},
+		},
+	}); err != nil {
+		t.Fatalf("SubmitTaskSharedRequests failed: %v", err)
+	}
+
+	if err := service.CleanupCompletedTask(ctx, &task2.Task{
+		ID:   taskID,
+		Type: task2.TypeTranslationProject,
+		Metadata: task2.TaskMetadata{
+			"entrypoint": "translation_flow_persona_phase",
+		},
+	}); err != nil {
+		t.Fatalf("CleanupCompletedTask failed: %v", err)
+	}
+
+	err := service.RunPersonaPhase(ctx, PersonaExecutionInput{
+		TaskID: taskID,
+	})
+	if err == nil {
+		t.Fatalf("RunPersonaPhase unexpectedly succeeded without bootstrap source path")
+	}
+	if !strings.Contains(err.Error(), "source_json_path is required for persona bootstrap") {
+		t.Fatalf("stale runtime was reused unexpectedly: err=%v", err)
+	}
+}
+
 func TestMasterPersonaServiceListPersonaRuntimeResolvesAcrossServiceRecreation(t *testing.T) {
 	ctx := context.Background()
 	service, queue, manager, cleanup := newMasterPersonaServiceHarness(t, nil, nil, nil)

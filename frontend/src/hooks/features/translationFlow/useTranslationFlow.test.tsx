@@ -8,6 +8,7 @@ import {
     GetTranslationFlowTerminology,
     ListLoadedTranslationFlowFiles,
     ListTranslationFlowTerminologyTargets,
+    ResumeTask,
     RunTranslationFlowTerminology,
 } from '../../../wailsjs/go/controller/TaskController';
 import type {FrontendTask} from '../../../types/task';
@@ -58,6 +59,7 @@ vi.mock('../../../wailsjs/go/controller/TaskController', () => ({
     ListTranslationFlowTerminologyTargets: vi.fn(),
     ListTranslationFlowPreviewRows: vi.fn(),
     LoadTranslationFlowFiles: vi.fn(),
+    ResumeTask: vi.fn(),
     RunTranslationFlowTerminology: vi.fn(),
 }));
 
@@ -849,6 +851,7 @@ describe('useTranslationFlow persona phase', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         runtimeEventHandlers.clear();
+        vi.mocked(ResumeTask).mockResolvedValue(undefined);
         installPersonaBinding();
         vi.mocked(ConfigSet).mockResolvedValue(undefined as never);
         vi.mocked(ConfigGetAll).mockImplementation(async (namespace: string) => {
@@ -960,6 +963,44 @@ describe('useTranslationFlow persona phase', () => {
 
     afterEach(() => {
         cleanup();
+    });
+
+    it('REQUEST_GENERATED イベントが重複しても ResumeTask は 1 回だけ呼ぶ', async () => {
+        render(
+            <MemoryRouter initialEntries={['/translation_flow']}>
+                <PersonaProbe />
+            </MemoryRouter>,
+        );
+
+        await waitFor(() => {
+            expect(screen.getByTestId('task-id')).toHaveTextContent('existing-task');
+        });
+
+        const taskUpdatedHandler = runtimeEventHandlers.get('task:updated');
+        const phaseCompletedHandler = runtimeEventHandlers.get('task:phase_completed');
+        if (!taskUpdatedHandler || !phaseCompletedHandler) {
+            throw new Error('runtime event handler is not registered');
+        }
+
+        act(() => {
+            taskUpdatedHandler(buildTask({
+                id: 'existing-task',
+                status: 'request_generated',
+            }));
+            phaseCompletedHandler({
+                taskId: 'existing-task',
+                phase: 'REQUEST_GENERATED',
+            });
+            phaseCompletedHandler({
+                taskId: 'existing-task',
+                phase: 'REQUEST_GENERATED',
+            });
+        });
+
+        await waitFor(() => {
+            expect(ResumeTask).toHaveBeenCalledTimes(1);
+        });
+        expect(ResumeTask).toHaveBeenCalledWith('existing-task');
     });
 
     it('resume 時に persona summary と target 一覧を再読込し、選択状態を更新できる', async () => {

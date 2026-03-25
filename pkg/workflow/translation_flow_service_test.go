@@ -21,6 +21,7 @@ import (
 	runtimequeue "github.com/ishibata91/ai-translation-engine-2/pkg/runtime/queue"
 	terminologyslice "github.com/ishibata91/ai-translation-engine-2/pkg/slice/terminology"
 	"github.com/ishibata91/ai-translation-engine-2/pkg/slice/translationflow"
+	taskworkflow "github.com/ishibata91/ai-translation-engine-2/pkg/workflow/task"
 	_ "modernc.org/sqlite"
 )
 
@@ -875,6 +876,94 @@ func TestTranslationFlowServiceRunTranslationFlowPersonaPhaseResumesWhenRuntimeR
 	}
 	if result.PendingCount != 1 || result.Status != "ready" {
 		t.Fatalf("unexpected persona summary after fresh run: %+v", result)
+	}
+}
+
+func TestTranslationFlowServiceRunResumesTranslationProjectPersonaPhaseFromTaskMetadata(t *testing.T) {
+	testCases := []struct {
+		name       string
+		entrypoint string
+	}{
+		{
+			name:       "translation_flow_persona_phase",
+			entrypoint: "translation_flow_persona_phase",
+		},
+		{
+			name:       "master_persona",
+			entrypoint: "master_persona",
+		},
+	}
+
+	for _, tc := range testCases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			store := &stubTranslationFlowStore{
+				personaInput: translationflow.PersonaCandidateInput{
+					TaskID: "task-persona-runner",
+					Candidates: map[string]translationflow.PersonaCandidate{
+						"npc-b": {
+							SpeakerID:    "00054321",
+							SourcePlugin: "Update.esm",
+						},
+					},
+					Dialogues: []translationflow.PersonaDialogueExcerpt{
+						{
+							ID:           "dlg-b-1",
+							SpeakerID:    "00054321",
+							RecordType:   "DIAL:INFO",
+							Text:         "We stand ready.",
+							SourcePlugin: "Update.esm",
+							Order:        1,
+						},
+					},
+				},
+				finalPersonasByLookup: map[string]translationflow.PersonaFinalSummary{},
+			}
+			personaWorkflow := &stubMasterPersona{
+				requestsMap: map[string][]runtimequeue.JobRequest{
+					"task-persona-runner": {
+						buildPersonaJobRequest("task-persona-runner", runtimequeue.RequestStatePending, "Update.esm", "00054321", nil),
+					},
+				},
+			}
+			service := &TranslationFlowService{
+				store:           store,
+				personaWorkflow: personaWorkflow,
+			}
+
+			err := service.Run(context.Background(), &taskworkflow.Task{
+				ID:     "task-persona-runner",
+				Type:   taskworkflow.TypeTranslationProject,
+				Status: taskworkflow.StatusRequestGenerated,
+				Metadata: taskworkflow.TaskMetadata{
+					"entrypoint": tc.entrypoint,
+					"request_config": map[string]any{
+						"provider":         "openai",
+						"model":            "gpt-4.1-mini",
+						"sync_concurrency": 1,
+					},
+					"prompt_config": map[string]any{
+						"user_prompt":   "persona user prompt",
+						"system_prompt": "persona system prompt",
+					},
+				},
+			}, func(_ string, _ float64) {})
+			if err != nil {
+				t.Fatalf("Run failed: %v", err)
+			}
+			if personaWorkflow.resumeCalls != 1 {
+				t.Fatalf("translation-project runner must resume persona workflow: got=%d", personaWorkflow.resumeCalls)
+			}
+			if len(personaWorkflow.resumeTaskIDs) != 1 || personaWorkflow.resumeTaskIDs[0] != "task-persona-runner" {
+				t.Fatalf("runner must reuse translation task id: task_ids=%v", personaWorkflow.resumeTaskIDs)
+			}
+			if !personaWorkflow.resumeConfigProvided {
+				t.Fatalf("runner must reconstruct request config from task metadata")
+			}
+			if personaWorkflow.lastResumeRequest.Model != "gpt-4.1-mini" || personaWorkflow.lastResumeRequest.Provider != "openai" {
+				t.Fatalf("unexpected reconstructed request config: %+v", personaWorkflow.lastResumeRequest)
+			}
+		})
 	}
 }
 

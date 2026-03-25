@@ -234,7 +234,7 @@ func (s *MasterPersonaService) CancelTask(ctx context.Context, taskID string) {
 
 // CleanupCompletedTask removes queued requests after a MasterPersona task is confirmed completed.
 func (s *MasterPersonaService) CleanupCompletedTask(ctx context.Context, currentTask *task2.Task) error {
-	if currentTask.Type != task2.TypePersonaExtraction {
+	if !shouldCleanupCompletedPersonaTask(currentTask) {
 		return nil
 	}
 	if s.queue == nil {
@@ -244,6 +244,20 @@ func (s *MasterPersonaService) CleanupCompletedTask(ctx context.Context, current
 		return fmt.Errorf("delete completed task requests task_id=%s: %w", currentTask.ID, err)
 	}
 	return nil
+}
+
+func shouldCleanupCompletedPersonaTask(currentTask *task2.Task) bool {
+	if currentTask == nil {
+		return false
+	}
+	if currentTask.Type == task2.TypePersonaExtraction {
+		return true
+	}
+	if currentTask.Type != task2.TypeTranslationProject {
+		return false
+	}
+	entrypoint := metadataString(map[string]any(currentTask.Metadata), "entrypoint")
+	return entrypoint == "translation_flow_persona_phase" || entrypoint == "master_persona"
 }
 
 // Run satisfies task.Runner and keeps task execution in workflow.

@@ -69,7 +69,8 @@ const TARGET_COLUMNS: ColumnDef<TerminologyTargetPreviewRow, unknown>[] = [
         cell: ({row}) => {
             const translationState = row.original.translationState;
             const translatedText = row.original.translatedText;
-            if (translationState !== 'translated' || translatedText.trim() === '') {
+            const isTranslated = translationState === 'translated' || translationState === 'cached';
+            if (!isTranslated || translatedText.trim() === '') {
                 return <span className="badge badge-outline badge-warning">未翻訳</span>;
             }
             return <span>{translatedText}</span>;

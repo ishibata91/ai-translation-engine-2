@@ -65,6 +65,38 @@ func NewTranslationFlowService(
 	}
 }
 
+// Run satisfies task.Runner for translation-project resume paths.
+func (s *TranslationFlowService) Run(ctx context.Context, currentTask *taskworkflow.Task, update func(phase string, progress float64)) error {
+	if currentTask == nil {
+		return fmt.Errorf("translation project task is required")
+	}
+	if currentTask.Type != taskworkflow.TypeTranslationProject {
+		return fmt.Errorf("unsupported task type for translation flow runner")
+	}
+
+	entrypoint := metadataString(map[string]any(currentTask.Metadata), "entrypoint")
+	switch entrypoint {
+	case "translation_flow_persona_phase", "master_persona":
+		requestConfig, promptConfig, err := translationFlowPersonaConfigFromMetadata(currentTask.Metadata)
+		if err != nil {
+			return fmt.Errorf("resolve translation flow persona config task_id=%s: %w", currentTask.ID, err)
+		}
+		if update != nil {
+			update(personaProgressPhase, currentTask.Progress)
+		}
+		if _, err := s.RunTranslationFlowPersonaPhase(ctx, RunTranslationFlowPersonaPhaseInput{
+			TaskID:  currentTask.ID,
+			Request: requestConfig,
+			Prompt:  promptConfig,
+		}); err != nil {
+			return fmt.Errorf("resume translation flow persona phase task_id=%s: %w", currentTask.ID, err)
+		}
+		return nil
+	default:
+		return fmt.Errorf("unsupported translation project entrypoint=%q", entrypoint)
+	}
+}
+
 // LoadFiles parses selected files and stores them under the task boundary.
 func (s *TranslationFlowService) LoadFiles(ctx context.Context, input LoadTranslationFlowInput) (TranslationLoadResult, error) {
 	trimmedTaskID := strings.TrimSpace(input.TaskID)
@@ -360,7 +392,6 @@ func (s *TranslationFlowService) RunTerminologyPhase(ctx context.Context, input 
 	if err != nil {
 		return TerminologyPhaseResult{}, fmt.Errorf("prepare terminology prompts task_id=%s: %w", trimmedTaskID, err)
 	}
-
 	if len(requests) > 0 {
 		baseSummary, err := s.terminology.GetPhaseSummary(ctx, trimmedTaskID)
 		if err != nil {
@@ -434,7 +465,8 @@ func (s *TranslationFlowService) RunTerminologyPhase(ctx context.Context, input 
 		}
 	}
 
-	return s.GetTerminologyPhase(ctx, trimmedTaskID)
+	result, err := s.GetTerminologyPhase(ctx, trimmedTaskID)
+	return result, err
 }
 
 // GetTerminologyPhase returns the current terminology phase summary.
@@ -732,6 +764,94 @@ func metadataString(metadata map[string]any, key string) string {
 		return ""
 	}
 	return strings.TrimSpace(value)
+}
+
+func metadataMap(metadata map[string]any, key string) map[string]any {
+	if metadata == nil {
+		return nil
+	}
+	raw, ok := metadata[key]
+	if !ok {
+		return nil
+	}
+	value, ok := raw.(map[string]any)
+	if !ok {
+		return nil
+	}
+	return value
+}
+
+func metadataIntValue(metadata map[string]any, key string) int {
+	if metadata == nil {
+		return 0
+	}
+	raw, ok := metadata[key]
+	if !ok {
+		return 0
+	}
+	switch value := raw.(type) {
+	case int:
+		return value
+	case int32:
+		return int(value)
+	case int64:
+		return int(value)
+	case float32:
+		return int(value)
+	case float64:
+		return int(value)
+	default:
+		return 0
+	}
+}
+
+func metadataFloat32Value(metadata map[string]any, key string) float32 {
+	if metadata == nil {
+		return 0
+	}
+	raw, ok := metadata[key]
+	if !ok {
+		return 0
+	}
+	switch value := raw.(type) {
+	case float32:
+		return value
+	case float64:
+		return float32(value)
+	case int:
+		return float32(value)
+	case int32:
+		return float32(value)
+	case int64:
+		return float32(value)
+	default:
+		return 0
+	}
+}
+
+func translationFlowPersonaConfigFromMetadata(metadata taskworkflow.TaskMetadata) (TranslationRequestConfig, TranslationPromptConfig, error) {
+	root := map[string]any(metadata)
+	requestMetadata := metadataMap(root, "request_config")
+	promptMetadata := metadataMap(root, "prompt_config")
+
+	requestConfig := TranslationRequestConfig{
+		Provider:        metadataString(requestMetadata, "provider"),
+		Model:           metadataString(requestMetadata, "model"),
+		Endpoint:        metadataString(requestMetadata, "endpoint"),
+		Temperature:     metadataFloat32Value(requestMetadata, "temperature"),
+		ContextLength:   metadataIntValue(requestMetadata, "context_length"),
+		SyncConcurrency: metadataIntValue(requestMetadata, "sync_concurrency"),
+		BulkStrategy:    metadataString(requestMetadata, "bulk_strategy"),
+	}
+	promptConfig := TranslationPromptConfig{
+		UserPrompt:   metadataString(promptMetadata, "user_prompt"),
+		SystemPrompt: metadataString(promptMetadata, "system_prompt"),
+	}
+
+	if strings.TrimSpace(requestConfig.Model) == "" {
+		return TranslationRequestConfig{}, TranslationPromptConfig{}, fmt.Errorf("request_config.model is required")
+	}
+	return requestConfig, promptConfig, nil
 }
 
 func withPersonaPhaseRunConfig(ctx context.Context, request TranslationRequestConfig, prompt TranslationPromptConfig) context.Context {

@@ -177,7 +177,9 @@ func main() {
 		llmexec.NewSyncExecutor(llmManager),
 		translationFlowProgressNotifier,
 	)
+	taskManager.RegisterRunner(task2.TypeTranslationProject, translationFlowWorkflow)
 	taskManager.RegisterRunner(task2.TypePersonaExtraction, masterPersonaWorkflow)
+	taskManager.RegisterCompletionHook(task2.TypeTranslationProject, masterPersonaWorkflow.CleanupCompletedTask)
 	taskManager.RegisterCompletionHook(task2.TypePersonaExtraction, masterPersonaWorkflow.CleanupCompletedTask)
 	taskController := controller.NewTaskController(taskManager)
 	taskController.SetTranslationFlowWorkflow(translationFlowWorkflow)

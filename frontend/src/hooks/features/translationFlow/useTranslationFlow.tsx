@@ -5,6 +5,7 @@ import {SelectTranslationInputFiles} from '../../../wailsjs/go/controller/FileDi
 import {useWailsEvent} from '../../useWailsEvent';
 import {
     GetAllTasks,
+    ResumeTask,
     GetTranslationFlowTerminology,
     ListLoadedTranslationFlowFiles,
     ListTranslationFlowPreviewRows,
@@ -12,6 +13,8 @@ import {
     LoadTranslationFlowFiles,
     RunTranslationFlowTerminology,
 } from '../../../wailsjs/go/controller/TaskController';
+import type {FrontendTask, PhaseCompletedEvent} from '../../../types/task';
+import * as Events from '../../../wailsjs/runtime/runtime';
 import {
     DEFAULT_MASTER_PERSONA_LLM_CONFIG,
     type MasterPersonaLLMConfig,
@@ -513,6 +516,7 @@ export function useTranslationFlow(): UseTranslationFlowWithPersonaResult {
     const [personaTargetErrorMessage, setPersonaTargetErrorMessage] = useState('');
     const [isPersonaTargetLoading, setIsPersonaTargetLoading] = useState(false);
     const [isPersonaRunning, setIsPersonaRunning] = useState(false);
+    const personaResumeRequestedRef = useRef(false);
     const [selectedPersonaTargetKey, setSelectedPersonaTargetKey] = useState('');
     const [terminologyConfig, setTerminologyConfig] = useState<MasterPersonaLLMConfig>(DEFAULT_MASTER_PERSONA_LLM_CONFIG);
     const [terminologyPromptConfig, setTerminologyPromptConfig] = useState<MasterPersonaPromptConfig>(DEFAULT_TERMINOLOGY_PROMPT_CONFIG);
@@ -834,6 +838,84 @@ export function useTranslationFlow(): UseTranslationFlowWithPersonaResult {
         await handleRefreshPersonaTargets(resolvedTaskID, 1, PREVIEW_PAGE_SIZE, summary.status);
     }, [handleRefreshPersonaSummary, handleRefreshPersonaTargets, taskId]);
 
+    const handleResumePersonaTask = useCallback(async (nextTaskId: string): Promise<void> => {
+        if (nextTaskId === '' || personaResumeRequestedRef.current) {
+            return;
+        }
+
+        personaResumeRequestedRef.current = true;
+        setPersonaErrorMessage('');
+        setPersonaTargetErrorMessage('');
+        setIsPersonaRunning(true);
+        setPersonaTargetStatus('running');
+        setPersonaSummary((previous) => ({
+            ...previous,
+            taskId: nextTaskId,
+            status: 'running',
+            progressMode: previous.progressTotal > 0 ? previous.progressMode : 'indeterminate',
+            progressMessage: 'リクエストを実行しています...',
+        }));
+
+        try {
+            await ResumeTask(nextTaskId);
+        } catch (error) {
+            personaResumeRequestedRef.current = false;
+            setIsPersonaRunning(false);
+            setPersonaTargetStatus('failed');
+            setPersonaErrorMessage(toErrorMessage(error, 'キュー実行の開始に失敗しました'));
+        }
+    }, []);
+
+    useEffect(() => {
+        if (taskId === '') {
+            personaResumeRequestedRef.current = false;
+            return;
+        }
+
+        const offTaskUpdated = Events.EventsOn('task:updated', (task: FrontendTask) => {
+            if (task.id !== taskId || task.type !== 'translation_project') {
+                return;
+            }
+
+            if (task.status === 'request_generated') {
+                void handleResumePersonaTask(task.id);
+                return;
+            }
+
+            if (!personaResumeRequestedRef.current && !isPersonaRunning && personaSummary.status !== 'running') {
+                return;
+            }
+
+            if (
+                task.status === 'failed' ||
+                task.status === 'cancelled' ||
+                task.status === 'paused' ||
+                task.status === 'completed'
+            ) {
+                personaResumeRequestedRef.current = false;
+                void handleRefreshPersonaPhase(task.id);
+            }
+        });
+
+        const offPhaseCompleted = Events.EventsOn('task:phase_completed', (payload: PhaseCompletedEvent) => {
+            if (payload.taskId !== taskId) {
+                return;
+            }
+
+            if (payload.phase === 'REQUEST_GENERATED') {
+                void handleResumePersonaTask(payload.taskId);
+                return;
+            }
+
+            void handleRefreshPersonaPhase(payload.taskId);
+        });
+
+        return () => {
+            offTaskUpdated();
+            offPhaseCompleted();
+        };
+    }, [handleRefreshPersonaPhase, handleResumePersonaTask, isPersonaRunning, personaSummary.status, taskId]);
+
     const handlePersonaTargetPageChange = useCallback(async (page: number): Promise<void> => {
         if (taskId === '') {
             return;
@@ -863,6 +945,7 @@ export function useTranslationFlow(): UseTranslationFlowWithPersonaResult {
         }
 
         setIsPersonaRunning(true);
+        personaResumeRequestedRef.current = false;
         setPersonaErrorMessage('');
         setPersonaTargetErrorMessage('');
         const initialTotal = Math.max(0, personaTargetPage.totalRows);
