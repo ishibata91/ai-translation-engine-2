@@ -3,6 +3,7 @@ import {act, cleanup, fireEvent, render, screen, waitFor} from '@testing-library
 import {MemoryRouter} from 'react-router-dom';
 import {useTranslationFlow} from './useTranslationFlow';
 import {ConfigGetAll, ConfigSet} from '../../../wailsjs/go/controller/ConfigController';
+import {DEFAULT_PERSONA_PROMPT_CONFIG} from '../../../types/masterPersona';
 import {
     GetAllTasks,
     GetTranslationFlowTerminology,
@@ -1235,7 +1236,7 @@ describe('useTranslationFlow persona phase', () => {
         );
     });
 
-    it('persona namespace 未保存時は terminology 設定から初回 hydrate して persona namespace へ保存する', async () => {
+    it('persona prompt namespace 未保存時は master persona default で初回 hydrate して persona namespace へ保存する', async () => {
         vi.mocked(ConfigGetAll).mockImplementation(async (namespace: string) => {
             if (namespace === 'translation_flow.terminology.llm') {
                 return asConfigMap({selected_provider: 'xai'});
@@ -1280,12 +1281,12 @@ describe('useTranslationFlow persona phase', () => {
         expect(ConfigSet).toHaveBeenCalledWith(
             'translation_flow.persona.prompt',
             'user_prompt',
-            'shared-user-prompt',
+            DEFAULT_PERSONA_PROMPT_CONFIG.userPrompt,
         );
         expect(ConfigSet).toHaveBeenCalledWith(
             'translation_flow.persona.prompt',
             'system_prompt',
-            'shared-system-prompt',
+            DEFAULT_PERSONA_PROMPT_CONFIG.systemPrompt,
         );
     });
 

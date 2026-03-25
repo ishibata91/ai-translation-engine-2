@@ -17,6 +17,7 @@ import type {FrontendTask, PhaseCompletedEvent} from '../../../types/task';
 import * as Events from '../../../wailsjs/runtime/runtime';
 import {
     DEFAULT_MASTER_PERSONA_LLM_CONFIG,
+    DEFAULT_PERSONA_PROMPT_CONFIG,
     type MasterPersonaLLMConfig,
     type MasterPersonaPromptConfig,
 } from '../../../types/masterPersona';
@@ -521,7 +522,7 @@ export function useTranslationFlow(): UseTranslationFlowWithPersonaResult {
     const [terminologyConfig, setTerminologyConfig] = useState<MasterPersonaLLMConfig>(DEFAULT_MASTER_PERSONA_LLM_CONFIG);
     const [terminologyPromptConfig, setTerminologyPromptConfig] = useState<MasterPersonaPromptConfig>(DEFAULT_TERMINOLOGY_PROMPT_CONFIG);
     const [personaConfig, setPersonaConfig] = useState<MasterPersonaLLMConfig>(DEFAULT_MASTER_PERSONA_LLM_CONFIG);
-    const [personaPromptConfig, setPersonaPromptConfig] = useState<MasterPersonaPromptConfig>(DEFAULT_TERMINOLOGY_PROMPT_CONFIG);
+    const [personaPromptConfig, setPersonaPromptConfig] = useState<MasterPersonaPromptConfig>(DEFAULT_PERSONA_PROMPT_CONFIG);
     const [isTerminologyConfigHydrated, setIsTerminologyConfigHydrated] = useState(false);
     const [isTerminologyPromptHydrated, setIsTerminologyPromptHydrated] = useState(false);
     const [isPersonaConfigHydrated, setIsPersonaConfigHydrated] = useState(false);
@@ -1150,7 +1151,7 @@ export function useTranslationFlow(): UseTranslationFlowWithPersonaResult {
                 const personaLoaded = await ConfigGetAll(PERSONA_PROMPT_NAMESPACE);
                 const normalizedPersonaPrompt = normalizePromptConfig(
                     personaLoaded,
-                    normalizedTerminologyPrompt,
+                    DEFAULT_PERSONA_PROMPT_CONFIG,
                 );
                 if (!alive) {
                     return;

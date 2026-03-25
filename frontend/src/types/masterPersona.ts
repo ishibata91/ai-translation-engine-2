@@ -41,7 +41,7 @@ export interface MasterPersonaPromptConfig {
     systemPrompt: string;
 }
 
-export const DEFAULT_MASTER_PERSONA_PROMPT_CONFIG: MasterPersonaPromptConfig = {
+export const DEFAULT_PERSONA_PROMPT_CONFIG: MasterPersonaPromptConfig = {
     userPrompt: 'このNPCを他言語へ翻訳する際の「翻訳ガイドライン」を作成せよ。特に、一人称・二人称の選択、文末のニュアンス（敬語の度合い）、および特徴的な語彙（口癖や専門用語）を特定し、翻訳者が一貫性を保てるように分析すること。',
     systemPrompt: `You are a character persona analyzer for RPG dialogue.
 The user message will contain:

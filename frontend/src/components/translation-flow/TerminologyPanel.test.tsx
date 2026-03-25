@@ -1,6 +1,6 @@
 import {render, screen} from '@testing-library/react';
 import {describe, expect, it, vi} from 'vitest';
-import {DEFAULT_MASTER_PERSONA_LLM_CONFIG, DEFAULT_MASTER_PERSONA_PROMPT_CONFIG} from '../../types/masterPersona';
+import {DEFAULT_MASTER_PERSONA_LLM_CONFIG, DEFAULT_PERSONA_PROMPT_CONFIG} from '../../types/masterPersona';
 import {TerminologyPanel} from './TerminologyPanel';
 
 describe('TerminologyPanel', () => {
@@ -57,7 +57,7 @@ describe('TerminologyPanel', () => {
                     ...DEFAULT_MASTER_PERSONA_LLM_CONFIG,
                     model: 'gemini-2.5-flash',
                 }}
-                promptConfig={DEFAULT_MASTER_PERSONA_PROMPT_CONFIG}
+                promptConfig={DEFAULT_PERSONA_PROMPT_CONFIG}
                 isConfigHydrated
                 isPromptHydrated
                 onConfigChange={vi.fn()}

@@ -4,7 +4,7 @@ import {useShallow} from 'zustand/react/shallow';
 import {useTaskStore} from '../../../store/taskStore';
 import type {FrontendTask, TaskStatus} from '../../../types/task';
 
-const deletableStatuses: ReadonlySet<TaskStatus> = new Set(['pending', 'paused', 'request_generated', 'failed', 'cancelled']);
+const manageableStatuses: ReadonlySet<TaskStatus> = new Set(['pending', 'paused', 'request_generated', 'failed', 'cancelled']);
 
 const formatDeleteError = (error: unknown): string => {
     if (error instanceof Error && error.message !== '') {
@@ -57,7 +57,7 @@ export function useDashboard() {
         void resumeTask(task);
     };
 
-    const isTaskDeletable = (task: FrontendTask): boolean => deletableStatuses.has(task.status);
+    const isTaskManageable = (task: FrontendTask): boolean => manageableStatuses.has(task.status);
 
     const handleDeleteClick = (task: FrontendTask) => {
         setDeleteError(null);
@@ -94,7 +94,7 @@ export function useDashboard() {
         cancelTask,
         handleTaskClick,
         handleResumeClick,
-        isTaskDeletable,
+        isTaskManageable,
         deleteTargetTask,
         isDeleteModalOpen: deleteTargetTask !== null,
         isDeleting,

@@ -15,7 +15,7 @@ import {ConfigGetAll, ConfigSet} from '../../../wailsjs/go/controller/ConfigCont
 import type {FrontendTask, PhaseCompletedEvent} from '../../../types/task';
 import {
     DEFAULT_MASTER_PERSONA_LLM_CONFIG,
-    DEFAULT_MASTER_PERSONA_PROMPT_CONFIG,
+    DEFAULT_PERSONA_PROMPT_CONFIG,
     type MasterPersonaBulkStrategy,
     type MasterPersonaExecutionProfile,
     type MasterPersonaLLMConfig,
@@ -96,14 +96,14 @@ export function useMasterPersona() {
     const [isProgressIndeterminate, setIsProgressIndeterminate] = useState<boolean>(false);
     const [llmConfig, setLLMConfig] = useState<MasterPersonaLLMConfig>(DEFAULT_MASTER_PERSONA_LLM_CONFIG);
     const [isLLMConfigHydrated, setIsLLMConfigHydrated] = useState<boolean>(false);
-    const [promptConfig, setPromptConfig] = useState<MasterPersonaPromptConfig>(DEFAULT_MASTER_PERSONA_PROMPT_CONFIG);
+    const [promptConfig, setPromptConfig] = useState<MasterPersonaPromptConfig>(DEFAULT_PERSONA_PROMPT_CONFIG);
     const [isPromptConfigHydrated, setIsPromptConfigHydrated] = useState<boolean>(false);
     const executionProfile = llmConfig.bulkStrategy;
     const isModelSettingsLocked = Boolean(activeTaskId) && activeTaskStatus !== null && activeTaskStatus !== 'completed' && activeTaskStatus !== 'failed' && activeTaskStatus !== 'cancelled';
     const lastSavedLLMConfigRef = useRef<Partial<Record<MasterPersonaLLMConfig['provider'], MasterPersonaLLMConfig>>>({});
     const latestLLMConfigRef = useRef<MasterPersonaLLMConfig>(DEFAULT_MASTER_PERSONA_LLM_CONFIG);
-    const lastSavedPromptConfigRef = useRef<MasterPersonaPromptConfig>(DEFAULT_MASTER_PERSONA_PROMPT_CONFIG);
-    const latestPromptConfigRef = useRef<MasterPersonaPromptConfig>(DEFAULT_MASTER_PERSONA_PROMPT_CONFIG);
+    const lastSavedPromptConfigRef = useRef<MasterPersonaPromptConfig>(DEFAULT_PERSONA_PROMPT_CONFIG);
+    const latestPromptConfigRef = useRef<MasterPersonaPromptConfig>(DEFAULT_PERSONA_PROMPT_CONFIG);
     const selectedProviderRef = useRef<MasterPersonaLLMConfig['provider']>(DEFAULT_MASTER_PERSONA_LLM_CONFIG.provider);
     const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
     const isSwitchingProviderRef = useRef<boolean>(false);
@@ -144,8 +144,8 @@ export function useMasterPersona() {
     const loadPromptConfig = async (): Promise<MasterPersonaPromptConfig> => {
         const loaded = await ConfigGetAll(MASTER_PERSONA_PROMPT_NAMESPACE);
         return {
-            userPrompt: loaded[USER_PROMPT_KEY] ?? DEFAULT_MASTER_PERSONA_PROMPT_CONFIG.userPrompt,
-            systemPrompt: loaded[SYSTEM_PROMPT_KEY] ?? DEFAULT_MASTER_PERSONA_PROMPT_CONFIG.systemPrompt,
+            userPrompt: loaded[USER_PROMPT_KEY] ?? DEFAULT_PERSONA_PROMPT_CONFIG.userPrompt,
+            systemPrompt: loaded[SYSTEM_PROMPT_KEY] ?? DEFAULT_PERSONA_PROMPT_CONFIG.systemPrompt,
         };
     };
 
@@ -530,9 +530,9 @@ export function useMasterPersona() {
                 if (!alive) {
                     return;
                 }
-                setPromptConfig(DEFAULT_MASTER_PERSONA_PROMPT_CONFIG);
-                lastSavedPromptConfigRef.current = DEFAULT_MASTER_PERSONA_PROMPT_CONFIG;
-                latestPromptConfigRef.current = DEFAULT_MASTER_PERSONA_PROMPT_CONFIG;
+                setPromptConfig(DEFAULT_PERSONA_PROMPT_CONFIG);
+                lastSavedPromptConfigRef.current = DEFAULT_PERSONA_PROMPT_CONFIG;
+                latestPromptConfigRef.current = DEFAULT_PERSONA_PROMPT_CONFIG;
                 setIsPromptConfigHydrated(true);
             });
         return () => {

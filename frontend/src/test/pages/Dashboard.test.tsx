@@ -58,7 +58,7 @@ describe('Dashboard', () => {
         useTaskStore.setState({ tasks: {}, isLoading: false });
     });
 
-    it('削除可能 status の task にのみ削除ボタンを表示する', () => {
+    it('管理対象 status の task にのみ削除ボタンを表示する', () => {
         useTaskStore.setState({
             tasks: {
                 paused: buildTask({ id: 'paused', name: 'paused task', status: 'paused' }),

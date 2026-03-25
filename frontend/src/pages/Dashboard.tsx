@@ -9,7 +9,7 @@ export default function Dashboard() {
         cancelTask,
         handleTaskClick,
         handleResumeClick,
-        isTaskDeletable,
+        isTaskManageable,
         deleteTargetTask,
         isDeleteModalOpen,
         isDeleting,
@@ -100,7 +100,7 @@ export default function Dashboard() {
                                                             停止
                                                         </button>
                                                     )}
-                                                    {isTaskDeletable(task) && (
+                                                    {isTaskManageable(task) && (
                                                         <button
                                                             className="btn btn-xs btn-outline btn-error"
                                                             data-testid={`dashboard-delete-${task.id}`}
