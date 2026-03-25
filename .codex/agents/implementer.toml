@@ -1,7 +1,7 @@
 name = "implementer"
 description = "direction から section 単位の work order を受け取り、`impl-frontend-work` または `impl-backend-work` として owned paths の範囲内でコードを直接実装する。"
 model = "gpt-5.3-codex"
-model_reasoning_effort = "xhigh"
+model_reasoning_effort = "medium"
 sandbox_mode = "workspace-write"
 developer_instructions = """
 Receive a section work order from impl-direction via impl-frontend-work or impl-backend-work.
