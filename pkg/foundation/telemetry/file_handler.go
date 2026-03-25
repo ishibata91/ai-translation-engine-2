@@ -68,7 +68,7 @@ func (h *fileHandler) openForToday() error {
 	h.currentDate = today
 	h.currentFile = f
 	h.currentJSON = slog.NewJSONHandler(f, &slog.HandlerOptions{
-		Level: slog.LevelDebug,
+		Level: slog.LevelInfo,
 	})
 	// 事前属性を再付与
 	if len(h.preAttrs) > 0 {

@@ -79,7 +79,7 @@ func ProvideLogger() (*slog.Logger, *WailsHandler, *fileHandler) {
 
 	// Base JSON handler（コンソール出力）
 	consoleHandler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		Level: slog.LevelDebug,
+		Level: slog.LevelInfo,
 	}).WithAttrs(globalSlogAttrs)
 
 	// otelHandler でコンテキスト属性（trace_id 等）を自動付与
