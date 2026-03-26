@@ -186,3 +186,9 @@ export const TRANSLATION_FLOW_PERSONA_PROMPT_CONFIG = {
   user_prompt: 'Generate a concise RPG persona for the NPC from the provided dialogue excerpts.',
   system_prompt: 'You are a character persona analyzer for Skyrim dialogue.',
 } as const;
+
+export const TRANSLATION_FLOW_MAIN_TRANSLATION_CONVERSATION_LABEL = 'Dialogue line 001';
+export const TRANSLATION_FLOW_MAIN_TRANSLATION_SECOND_CONVERSATION_LABEL = 'Dialogue line 002';
+export const TRANSLATION_FLOW_MAIN_TRANSLATION_QUEST_LABEL = 'Quest Objective B-01';
+export const TRANSLATION_FLOW_MAIN_TRANSLATION_RESUME_CATEGORY = 'quest';
+export const TRANSLATION_FLOW_MAIN_TRANSLATION_RESUME_ROW_ID = 'quest_objective:1';

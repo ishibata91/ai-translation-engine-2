@@ -170,6 +170,154 @@ export interface TerminologyPhaseSummary {
 export type TerminologyTargetViewState = 'loading' | 'ready' | 'empty' | 'error';
 
 /**
+ * 本文翻訳 phase のカテゴリ。
+ */
+type TranslationMainCategory = 'conversation' | 'quest' | 'other';
+
+/**
+ * 本文 1 行の状態。
+ */
+type TranslationMainRowStatus = 'untranslated' | 'aiTranslated' | 'confirmed';
+
+/**
+ * 本文翻訳 phase の view state。
+ */
+type TranslationMainViewState =
+    | 'hydrating'
+    | 'loadError'
+    | 'empty'
+    | 'ready'
+    | 'selectionEmpty'
+    | 'selectionReady'
+    | 'translating'
+    | 'translateCompleted'
+    | 'translatePartialFailed'
+    | 'translateFailed';
+
+/**
+ * 参照コンテキスト panel の 1 セクション。
+ */
+interface TranslationReferencePanel {
+    title: string;
+    items: string[];
+}
+
+/**
+ * 本文翻訳 row の補助メタデータ。
+ */
+interface TranslationMainRowMetadata {
+    sourcePlugin: string;
+    recordType: string;
+    editorId: string;
+    section: string;
+    speakerId: string;
+    npcName: string;
+    questId: string;
+    stageIndex: number | null;
+    objective: string;
+}
+
+/**
+ * 本文翻訳 row の表示用 DTO。
+ */
+interface TranslationMainRow {
+    id: string;
+    category: TranslationMainCategory;
+    displayLabel: string;
+    secondaryLabel: string;
+    sourceText: string;
+    translatedText: string;
+    status: TranslationMainRowStatus;
+    metadata: TranslationMainRowMetadata;
+    referencePanels: TranslationReferencePanel[];
+    systemPrompt: string;
+}
+
+/**
+ * 本文翻訳一覧のカテゴリ別 grouping。
+ */
+interface TranslationMainCategoryGroup {
+    category: TranslationMainCategory;
+    label: string;
+    rows: TranslationMainRow[];
+}
+
+/**
+ * 本文翻訳 phase のサマリ。
+ */
+interface TranslationMainSummary {
+    totalCount: number;
+    untranslatedCount: number;
+    aiTranslatedCount: number;
+    confirmedCount: number;
+    failedCount: number;
+}
+
+/**
+ * 破棄確認の遷移意図。
+ */
+interface TranslationPendingNavigationIntent {
+    type: 'category' | 'row' | 'tab';
+    nextCategory?: TranslationMainCategory;
+    nextRowId?: string;
+    nextTab?: number;
+}
+
+/**
+ * 本文翻訳 phase のカテゴリ。
+ */
+export type MainTranslationCategory = TranslationMainCategory;
+/**
+ * 本文翻訳 phase の行状態。
+ */
+export type MainTranslationRowStatus = TranslationMainRowStatus;
+/**
+ * 本文翻訳 phase の実行状態。
+ */
+export type MainTranslationRunState = TranslationMainViewState;
+/**
+ * 本文翻訳 phase の遷移意図。
+ */
+export type MainTranslationNavigationIntent = 'selectRow' | 'switchCategory' | 'search' | 'page' | 'phaseChange' | 'next';
+/**
+ * 本文翻訳行のメタデータ。
+ */
+export type MainTranslationRowMetadata = TranslationMainRowMetadata;
+/**
+ * 本文翻訳行の normalized view-model。
+ */
+export interface MainTranslationRowViewModel {
+    rowId: string;
+    category: MainTranslationCategory;
+    primaryLabel: string;
+    secondaryMeta: string[];
+    sourceText: string;
+    translatedText: string;
+    status: MainTranslationRowStatus;
+    metadata: MainTranslationRowMetadata;
+}
+/**
+ * 本文翻訳 phase のドラフト状態。
+ */
+export interface MainTranslationDraftState {
+    selectedCategory: MainTranslationCategory;
+    selectedRowId: string;
+    dirtyDraftRowId: string;
+    pendingNavigationIntent: MainTranslationNavigationIntent | null;
+    draftMap: Record<string, string>;
+    confirmedMap: Record<string, string>;
+}
+/**
+ * 本文翻訳 phase の summary。
+ */
+export interface MainTranslationSummary {
+    untranslatedCount: number;
+    aiTranslatedCount: number;
+    confirmedCount: number;
+    failedCount: number;
+}
+
+/**
  * TranslationFlow が保持する state 群。
  */
 interface TranslationFlowState {
@@ -196,6 +344,22 @@ interface TranslationFlowState {
     personaPromptConfig?: MasterPersonaPromptConfig;
     isPersonaConfigHydrated?: boolean;
     isPersonaPromptHydrated?: boolean;
+    translationConfig?: MasterPersonaLLMConfig;
+    translationUserPrompt?: string;
+    isTranslationConfigHydrated?: boolean;
+    translationViewState?: TranslationMainViewState;
+    translationSummary?: TranslationMainSummary;
+    translationStatusLabel?: string;
+    translationErrorMessage?: string;
+    translationCategoryGroups?: TranslationMainCategoryGroup[];
+    selectedTranslationCategory?: TranslationMainCategory;
+    selectedTranslationRowId?: string;
+    selectedTranslationRow?: TranslationMainRow | null;
+    translationDraftText?: string;
+    translationIsDirty?: boolean;
+    translationPendingNavigationIntent?: TranslationPendingNavigationIntent | null;
+    showTranslationDirtyWarning?: boolean;
+    showTranslationNextWarning?: boolean;
 }
 
 /**
@@ -217,6 +381,17 @@ interface TranslationFlowActions {
     handlePersonaConfigChange?: (next: MasterPersonaLLMConfig) => void;
     handlePersonaPromptChange?: (next: MasterPersonaPromptConfig) => void;
     handleAdvanceFromTerminology: () => void;
+    handleTranslationConfigChange?: (next: MasterPersonaLLMConfig) => void;
+    handleTranslationUserPromptChange?: (next: string) => void;
+    handleTranslationCategoryChange?: (next: TranslationMainCategory) => void;
+    handleTranslationSelectRow?: (rowId: string) => void;
+    handleTranslationDraftChange?: (next: string) => void;
+    handleRunTranslationPhase?: () => Promise<void>;
+    handleRetryTranslationPhase?: () => Promise<void>;
+    handleConfirmTranslationDraft?: () => void;
+    handleCancelConfirmedTranslation?: () => void;
+    handleConfirmTranslationNavigation?: () => void;
+    handleDismissTranslationNavigation?: () => void;
 }
 
 /**
@@ -443,4 +618,33 @@ export interface WailsTerminologyProgressEvent {
     Failed?: number;
     message?: string;
     Message?: string;
+}
+
+/**
+ * 本文翻訳 preview row payload。
+ */
+export interface WailsMainTranslationPreviewRow {
+    id?: string;
+    section?: string;
+    record_type?: string;
+    recordType?: string;
+    editor_id?: string;
+    editorId?: string;
+    source_plugin?: string;
+    sourcePlugin?: string;
+    speaker_id?: string;
+    speakerId?: string;
+    npc_name?: string;
+    npcName?: string;
+    quest_id?: string;
+    questId?: string;
+    stage_index?: number;
+    stageIndex?: number;
+    objective?: string;
+    source_text?: string;
+    sourceText?: string;
+    translated_text?: string;
+    translatedText?: string;
+    translation_state?: string;
+    translationState?: string;
 }

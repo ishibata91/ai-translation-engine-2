@@ -167,13 +167,52 @@ function PersonaProbe() {
                 advance from terminology
             </button>
             <button type="button" onClick={() => actions.handleTabChange(3)}>
-                go summary tab
+                go translation tab
             </button>
             <button type="button" onClick={() => actions.handleAdvanceFromPersona()}>
                 advance persona
             </button>
             <button type="button" onClick={() => actions.handleSelectPersonaTarget('Skyrim.esm', 'npc-b')}>
                 select npc-b
+            </button>
+        </div>
+    );
+}
+
+function MainTranslationProbe() {
+    const {state, actions} = useTranslationFlow();
+
+    return (
+        <div>
+            <div data-testid="task-id">{state.taskId}</div>
+            <div data-testid="active-tab">{state.activeTab}</div>
+            <div data-testid="main-translation-run-state">{state.mainTranslationRunState}</div>
+            <div data-testid="main-translation-row-count">{state.mainTranslationRows.length}</div>
+            <div data-testid="main-translation-selected-category">{state.mainTranslationSelectedCategory}</div>
+            <div data-testid="main-translation-selected-row">{state.mainTranslationSelectedRowId}</div>
+            <div data-testid="main-translation-dirty-row">{state.mainTranslationDraftState.dirtyDraftRowId}</div>
+            <div data-testid="main-translation-next-warning-open">{state.mainTranslationNextWarningOpen ? 'true' : 'false'}</div>
+            <div data-testid="main-translation-untranslated-count">{state.mainTranslationSummary.untranslatedCount}</div>
+            <button type="button" onClick={() => actions.handleMainTranslationDraftChange(state.mainTranslationSelectedRowId, 'edited')}>
+                edit draft
+            </button>
+            <button type="button" onClick={() => actions.handleMainTranslationConfirmRow(state.mainTranslationSelectedRowId)}>
+                confirm row
+            </button>
+            <button type="button" onClick={() => void actions.handleRunMainTranslation()}>
+                run main translation
+            </button>
+            <button type="button" onClick={() => actions.handleAdvanceFromMainTranslation()}>
+                advance from main translation
+            </button>
+            <button type="button" onClick={() => actions.handleMainTranslationConfirmNext()}>
+                confirm next
+            </button>
+            <button type="button" onClick={() => actions.handleMainTranslationDiscardAndContinue()}>
+                discard dirty
+            </button>
+            <button type="button" onClick={() => actions.handleTabChange(4)}>
+                go export tab
             </button>
         </div>
     );
@@ -1290,7 +1329,7 @@ describe('useTranslationFlow persona phase', () => {
         );
     });
 
-    it('tab 遷移は persona 完了前は summary を拒否し、完了後に許可する', async () => {
+    it('tab 遷移は persona 完了前は本文翻訳を拒否し、完了後に許可する', async () => {
         render(
             <MemoryRouter initialEntries={['/translation_flow']}>
                 <PersonaProbe />
@@ -1301,7 +1340,7 @@ describe('useTranslationFlow persona phase', () => {
             expect(screen.getByTestId('persona-status')).toHaveTextContent('ready');
         });
 
-        fireEvent.click(screen.getByRole('button', {name: 'go summary tab'}));
+        fireEvent.click(screen.getByRole('button', {name: 'go translation tab'}));
         expect(screen.getByTestId('active-tab')).toHaveTextContent('0');
 
         fireEvent.click(screen.getByRole('button', {name: 'go persona tab'}));
@@ -1314,7 +1353,7 @@ describe('useTranslationFlow persona phase', () => {
             expect(screen.getByTestId('persona-status')).toHaveTextContent('completed');
         });
 
-        fireEvent.click(screen.getByRole('button', {name: 'go summary tab'}));
+        fireEvent.click(screen.getByRole('button', {name: 'go translation tab'}));
         await waitFor(() => {
             expect(screen.getByTestId('active-tab')).toHaveTextContent('3');
         });
@@ -1354,5 +1393,162 @@ describe('useTranslationFlow persona phase', () => {
         await waitFor(() => {
             expect(screen.getByTestId('persona-status')).toHaveTextContent('ready');
         });
+    });
+});
+
+describe('useTranslationFlow main translation workflow', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        runtimeEventHandlers.clear();
+        installDefaultPersonaMocks('existing-task');
+        vi.mocked(ResumeTask).mockResolvedValue(undefined);
+        vi.mocked(ConfigSet).mockResolvedValue(undefined as never);
+        vi.mocked(ConfigGetAll).mockImplementation(async (namespace: string) => {
+            if (namespace === 'translation_flow.terminology.llm') {
+                return asConfigMap({model: 'gemini-2.5-flash', provider: 'gemini'});
+            }
+            if (namespace === 'translation_flow.translation') {
+                return asConfigMap({
+                    selected_provider: 'xai',
+                    model: 'grok-3-beta',
+                    user_prompt: 'translation-user-prompt',
+                });
+            }
+            return asConfigMap({});
+        });
+        vi.mocked(GetAllTasks).mockResolvedValue(asTaskList([
+            buildTask({id: 'existing-task', updated_at: '2026-03-18T10:00:00.000Z'}),
+        ]));
+        vi.mocked(GetTranslationFlowTerminology).mockResolvedValue(asTerminologyPhaseResult({
+            task_id: 'existing-task',
+            status: 'completed',
+            saved_count: 8,
+            failed_count: 0,
+            progress_mode: 'hidden',
+            progress_current: 8,
+            progress_total: 8,
+            progress_message: '',
+        }));
+        vi.mocked(ListTranslationFlowTerminologyTargets).mockResolvedValue(asTerminologyTargetPage({
+            task_id: 'existing-task',
+            page: 1,
+            page_size: 50,
+            total_rows: 1,
+            rows: [{
+                id: 'row-1',
+                record_type: 'NPC_:FULL',
+                editor_id: 'NPC_A_01',
+                source_text: 'NPC Name A-01',
+                translated_text: 'NPC 名 A-01',
+                translation_state: 'translated',
+                variant: 'full',
+                source_file: 'Update.esm.extract.json',
+            }],
+        }));
+        vi.mocked(ListLoadedTranslationFlowFiles).mockResolvedValue(asLoadResult({
+            task_id: 'existing-task',
+            files: [{
+                file_id: 1,
+                file_path: 'Data/Update.esm.extract.json',
+                file_name: 'Update.esm.extract.json',
+                parse_status: 'ready',
+                preview_count: 1,
+                preview: {
+                    file_id: 1,
+                    page: 1,
+                    page_size: 50,
+                    total_rows: 1,
+                    rows: [{
+                        id: 'translation-row-1',
+                        section: 'dialogue',
+                        record_type: 'INFO',
+                        editor_id: 'DIALOGUE_001',
+                        source_text: 'Hello adventurer.',
+                    }],
+                },
+            }],
+        }));
+    });
+
+    afterEach(() => {
+        cleanup();
+    });
+
+    it('main translation の hydrate で ready と選択行を復元する', async () => {
+        render(
+            <MemoryRouter initialEntries={['/translation_flow']}>
+                <MainTranslationProbe />
+            </MemoryRouter>,
+        );
+
+        await waitFor(() => {
+            expect(screen.getByTestId('main-translation-run-state')).toHaveTextContent('selectionReady');
+        });
+        expect(screen.getByTestId('main-translation-row-count')).toHaveTextContent('1');
+        expect(screen.getByTestId('main-translation-selected-row')).not.toHaveTextContent(/^$/);
+    });
+
+    it('draft がある状態で next は dirty warning を経由し、discard 後に遷移できる', async () => {
+        render(
+            <MemoryRouter initialEntries={['/translation_flow']}>
+                <MainTranslationProbe />
+            </MemoryRouter>,
+        );
+
+        await waitFor(() => {
+            expect(screen.getByTestId('main-translation-run-state')).toHaveTextContent('selectionReady');
+        });
+
+        fireEvent.click(screen.getByRole('button', {name: 'edit draft'}));
+        await waitFor(() => {
+            expect(screen.getByTestId('main-translation-dirty-row')).not.toHaveTextContent(/^$/);
+        });
+
+        fireEvent.click(screen.getByRole('button', {name: 'advance from main translation'}));
+        expect(screen.getByTestId('active-tab')).toHaveTextContent('0');
+
+        fireEvent.click(screen.getByRole('button', {name: 'discard dirty'}));
+        await waitFor(() => {
+            expect(screen.getByTestId('active-tab')).toHaveTextContent('4');
+        });
+    });
+
+    it('未翻訳が残る状態で next warning を出し、confirm で export へ進む', async () => {
+        render(
+            <MemoryRouter initialEntries={['/translation_flow']}>
+                <MainTranslationProbe />
+            </MemoryRouter>,
+        );
+
+        await waitFor(() => {
+            expect(screen.getByTestId('main-translation-untranslated-count')).toHaveTextContent('1');
+        });
+
+        fireEvent.click(screen.getByRole('button', {name: 'advance from main translation'}));
+        await waitFor(() => {
+            expect(screen.getByTestId('main-translation-next-warning-open')).toHaveTextContent('true');
+        });
+        expect(screen.getByTestId('active-tab')).toHaveTextContent('0');
+
+        fireEvent.click(screen.getByRole('button', {name: 'confirm next'}));
+        await waitFor(() => {
+            expect(screen.getByTestId('active-tab')).toHaveTextContent('4');
+        });
+    });
+
+    it('translating 中は tab change で export へ移動できない', async () => {
+        render(
+            <MemoryRouter initialEntries={['/translation_flow']}>
+                <MainTranslationProbe />
+            </MemoryRouter>,
+        );
+
+        await waitFor(() => {
+            expect(screen.getByTestId('main-translation-run-state')).toHaveTextContent('selectionReady');
+        });
+
+        fireEvent.click(screen.getByRole('button', {name: 'run main translation'}));
+        fireEvent.click(screen.getByRole('button', {name: 'go export tab'}));
+        expect(screen.getByTestId('active-tab')).toHaveTextContent('0');
     });
 });

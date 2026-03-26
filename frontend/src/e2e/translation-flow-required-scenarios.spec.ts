@@ -1,6 +1,8 @@
 import {test} from './fixtures/app.fixture';
 import {
   TRANSLATION_FLOW_EXPECTED_FILE_NAMES,
+  TRANSLATION_FLOW_MAIN_TRANSLATION_QUEST_LABEL,
+  TRANSLATION_FLOW_MAIN_TRANSLATION_SECOND_CONVERSATION_LABEL,
   TRANSLATION_FLOW_PAGE_TWO_MARKER,
   TRANSLATION_FLOW_SECOND_FILE_MARKER,
 } from './fixtures/translation-flow/mock-data';
@@ -109,4 +111,74 @@ test('TranslationFlow の必須シナリオ: 既存 task 再表示で terminolog
   await app.translationFlow.expectTerminologyPhaseVisible();
   await app.translationFlow.expectTerminologySummary('8', '0');
   await app.translationFlow.expectTerminologyTranslatedText('NPC 名 B-03');
+});
+
+test('TranslationFlow の必須シナリオ: 本文翻訳 phase の基本表示とロックを観測できる', async ({app}) => {
+  await app.translationFlow.open();
+  await app.translationFlow.selectFiles();
+  await app.translationFlow.loadSelectedFiles();
+  await app.translationFlow.proceedToTerminologyPhase();
+  await app.translationFlow.runTerminologyPhase();
+  await app.translationFlow.proceedToPersonaPhase();
+  await app.translationFlow.runPersonaPhase();
+  await app.translationFlow.proceedToTranslationPhase();
+  await app.translationFlow.expectTranslationPhaseVisible();
+  await app.translationFlow.startMainTranslationAndExpectLock();
+  await app.translationFlow.expectMainTranslationRowStatus('AI翻訳済み');
+});
+
+test('TranslationFlow の必須シナリオ: 本文翻訳で dirty warning を表示できる', async ({app}) => {
+  await app.translationFlow.open();
+  await app.translationFlow.selectFiles();
+  await app.translationFlow.loadSelectedFiles();
+  await app.translationFlow.proceedToTerminologyPhase();
+  await app.translationFlow.runTerminologyPhase();
+  await app.translationFlow.proceedToPersonaPhase();
+  await app.translationFlow.runPersonaPhase();
+  await app.translationFlow.proceedToTranslationPhase();
+  await app.translationFlow.runMainTranslation();
+  await app.translationFlow.editMainTranslationDraft('手修正テキスト');
+  await app.translationFlow.selectMainTranslationRow(TRANSLATION_FLOW_MAIN_TRANSLATION_SECOND_CONVERSATION_LABEL);
+  await app.translationFlow.expectDirtyWarning();
+  await app.translationFlow.dismissDirtyWarning();
+});
+
+test('TranslationFlow の必須シナリオ: partial failed で未翻訳 next warning を表示できる', async ({app}) => {
+  await app.translationFlow.open('main-partial');
+  await app.translationFlow.selectFiles();
+  await app.translationFlow.loadSelectedFiles();
+  await app.translationFlow.proceedToTerminologyPhase();
+  await app.translationFlow.runTerminologyPhase();
+  await app.translationFlow.proceedToPersonaPhase();
+  await app.translationFlow.runPersonaPhase();
+  await app.translationFlow.proceedToTranslationPhase();
+  await app.translationFlow.runMainTranslation();
+  await app.translationFlow.proceedFromMainTranslation();
+  await app.translationFlow.expectNextWarning(1);
+});
+
+test('TranslationFlow の必須シナリオ: full failed では次へを無効化する', async ({app}) => {
+  await app.translationFlow.open('main-fullfailed');
+  await app.translationFlow.selectFiles();
+  await app.translationFlow.loadSelectedFiles();
+  await app.translationFlow.proceedToTerminologyPhase();
+  await app.translationFlow.runTerminologyPhase();
+  await app.translationFlow.proceedToPersonaPhase();
+  await app.translationFlow.runPersonaPhase();
+  await app.translationFlow.proceedToTranslationPhase();
+  await app.translationFlow.runMainTranslation();
+  await app.translationFlow.expectMainTranslationRowStatus('失敗');
+});
+
+test('TranslationFlow の必須シナリオ: main translation resume でカテゴリと選択行を復元する', async ({app}) => {
+  await app.translationFlow.open('main-resume');
+  await app.translationFlow.expectLoadPhaseVisible();
+  await app.translationFlow.expectFileTables(TRANSLATION_FLOW_EXPECTED_FILE_NAMES);
+  await app.translationFlow.proceedToTerminologyPhase();
+  await app.translationFlow.expectTerminologySummary('8', '0');
+  await app.translationFlow.proceedToPersonaPhase();
+  await app.translationFlow.proceedToTranslationPhase();
+  await app.translationFlow.expectTranslationPhaseVisible();
+  await app.translationFlow.expectMainTranslationCategoryActive('クエスト');
+  await app.translationFlow.expectMainTranslationRowSelected(TRANSLATION_FLOW_MAIN_TRANSLATION_QUEST_LABEL);
 });

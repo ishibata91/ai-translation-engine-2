@@ -2,7 +2,6 @@ import {useEffect} from 'react';
 import {LoadPanel} from '../components/translation-flow/LoadPanel';
 import {ExportPanel} from '../components/translation-flow/ExportPanel';
 import {PersonaPanel} from '../components/translation-flow/PersonaPanel';
-import {SummaryPanel} from '../components/translation-flow/SummaryPanel';
 import {TerminologyPanel} from '../components/translation-flow/TerminologyPanel';
 import {TranslationPanel} from '../components/translation-flow/TranslationPanel';
 import {useTranslationFlow} from '../hooks/features/translationFlow/useTranslationFlow';
@@ -140,9 +139,39 @@ export default function TranslationFlow() {
                         onTargetPageChange={actions.handlePersonaTargetPageChange}
                         onNext={actions.handleAdvanceFromPersona}
                     />
-                    <SummaryPanel isActive={state.activeTab === 3} onNext={() => actions.handleTabChange(4)} />
-                    <TranslationPanel isActive={state.activeTab === 4} onNext={() => actions.handleTabChange(5)} />
-                    <ExportPanel isActive={state.activeTab === 5} />
+                    <TranslationPanel
+                        isActive={state.activeTab === 3}
+                        taskId={state.taskId}
+                        runState={state.mainTranslationRunState}
+                        rows={state.mainTranslationRows}
+                        selectedCategory={state.mainTranslationSelectedCategory}
+                        selectedRowId={state.mainTranslationSelectedRowId}
+                        draftState={state.mainTranslationDraftState}
+                        summary={state.mainTranslationSummary}
+                        config={state.mainTranslationConfig}
+                        userPrompt={state.mainTranslationUserPrompt}
+                        errorMessage={state.mainTranslationErrorMessage}
+                        dirtyWarningOpen={state.mainTranslationDirtyWarningOpen}
+                        nextWarningOpen={state.mainTranslationNextWarningOpen}
+                        nextWarningCount={state.mainTranslationNextWarningCount}
+                        isHydrated={state.isMainTranslationHydrated}
+                        terminologyPage={state.terminologyTargetPage}
+                        onCategoryChange={actions.handleMainTranslationCategoryChange}
+                        onSelectRow={actions.handleMainTranslationRowSelect}
+                        onDraftChange={actions.handleMainTranslationDraftChange}
+                        onConfirmRow={actions.handleMainTranslationConfirmRow}
+                        onCancelConfirmed={actions.handleMainTranslationCancelConfirmed}
+                        onRun={actions.handleRunMainTranslation}
+                        onRetryFailedOnly={actions.handleRetryFailedMainTranslation}
+                        onNext={actions.handleAdvanceFromMainTranslation}
+                        onDiscardAndContinue={actions.handleMainTranslationDiscardAndContinue}
+                        onKeepEditing={actions.handleMainTranslationKeepEditing}
+                        onConfirmNext={actions.handleMainTranslationConfirmNext}
+                        onCancelNext={actions.handleMainTranslationCancelNext}
+                        onConfigChange={actions.handleMainTranslationConfigChange}
+                        onUserPromptChange={actions.handleMainTranslationUserPromptChange}
+                    />
+                    <ExportPanel isActive={state.activeTab === 4} />
                 </div>
             </div>
         </div>

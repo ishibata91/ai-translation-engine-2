@@ -23,6 +23,7 @@ import {
 } from '../../../types/masterPersona';
 import {
     mapLoadResult,
+    mapMainTranslationPreviewRow,
     mapPersonaPhaseResult,
     mapPersonaTargetPreviewPage,
     mapPreviewPage,
@@ -30,6 +31,13 @@ import {
     mapTerminologyTargetPreviewPage,
 } from './adapters';
 import type {
+    MainTranslationCategory,
+    MainTranslationDraftState,
+    MainTranslationNavigationIntent,
+    MainTranslationRowStatus,
+    MainTranslationRowViewModel,
+    MainTranslationRunState,
+    MainTranslationSummary,
     PersonaPhaseSummary,
     PersonaTargetPreviewPage,
     PersonaTargetPreviewRow,
@@ -48,6 +56,7 @@ const PERSONA_LLM_NAMESPACE = 'translation_flow.persona.llm';
 const TERMINOLOGY_SELECTED_PROVIDER_KEY = 'selected_provider';
 const TERMINOLOGY_PROMPT_NAMESPACE = 'translation_flow.terminology.prompt';
 const PERSONA_PROMPT_NAMESPACE = 'translation_flow.persona.prompt';
+const MAIN_TRANSLATION_NAMESPACE = 'translation_flow.translation';
 const TERMINOLOGY_USER_PROMPT_KEY = 'user_prompt';
 const TERMINOLOGY_SYSTEM_PROMPT_KEY = 'system_prompt';
 const TERMINOLOGY_PROGRESS_EVENT = 'translation_flow.terminology.progress';
@@ -136,7 +145,6 @@ const TABS: TranslationFlowTab[] = [
     {label: 'データロード'},
     {label: '単語翻訳'},
     {label: 'ペルソナ生成'},
-    {label: '要約'},
     {label: '本文翻訳'},
     {label: 'エクスポート'},
 ];
@@ -164,12 +172,55 @@ interface PersonaHookActions {
 }
 
 type UseTranslationFlowWithPersonaResult = UseTranslationFlowResult & {
-    state: UseTranslationFlowResult['state'] & PersonaHookState;
-    actions: UseTranslationFlowResult['actions'] & PersonaHookActions;
+    state: UseTranslationFlowResult['state'] & PersonaHookState & MainTranslationHookState;
+    actions: UseTranslationFlowResult['actions'] & PersonaHookActions & MainTranslationHookActions;
 };
 
 const TO_TASK_RESOLVE_ERROR = 'translation_project task の取得に失敗しました';
 const NO_PERSONA_TARGETS_MESSAGE = 'ペルソナ生成対象 NPC がありません。';
+const MAIN_TRANSLATION_STORAGE_KEY_PREFIX = 'translation_flow.translation.task.';
+
+interface MainTranslationLocalSnapshot {
+    selectedCategory: MainTranslationCategory;
+    selectedRowId: string;
+    runState: MainTranslationRunState;
+    rowStatusMap: Record<string, MainTranslationRowStatus>;
+    draftMap: Record<string, string>;
+    confirmedMap: Record<string, string>;
+}
+
+interface MainTranslationHookState {
+    mainTranslationRunState: MainTranslationRunState;
+    mainTranslationRows: MainTranslationRowViewModel[];
+    mainTranslationSelectedCategory: MainTranslationCategory;
+    mainTranslationSelectedRowId: string;
+    mainTranslationDraftState: MainTranslationDraftState;
+    mainTranslationSummary: MainTranslationSummary;
+    mainTranslationConfig: MasterPersonaLLMConfig;
+    mainTranslationUserPrompt: string;
+    mainTranslationErrorMessage: string;
+    mainTranslationDirtyWarningOpen: boolean;
+    mainTranslationNextWarningOpen: boolean;
+    mainTranslationNextWarningCount: number;
+    isMainTranslationHydrated: boolean;
+}
+
+interface MainTranslationHookActions {
+    handleMainTranslationCategoryChange: (next: MainTranslationCategory) => void;
+    handleMainTranslationRowSelect: (rowId: string) => void;
+    handleMainTranslationDraftChange: (rowId: string, value: string) => void;
+    handleMainTranslationConfirmRow: (rowId: string) => void;
+    handleMainTranslationCancelConfirmed: (rowId: string) => void;
+    handleRunMainTranslation: () => Promise<void>;
+    handleRetryFailedMainTranslation: () => Promise<void>;
+    handleAdvanceFromMainTranslation: () => void;
+    handleMainTranslationDiscardAndContinue: () => void;
+    handleMainTranslationKeepEditing: () => void;
+    handleMainTranslationConfirmNext: () => void;
+    handleMainTranslationCancelNext: () => void;
+    handleMainTranslationConfigChange: (next: MasterPersonaLLMConfig) => void;
+    handleMainTranslationUserPromptChange: (next: string) => void;
+}
 
 const toErrorMessage = (error: unknown, fallback: string): string => {
     if (error instanceof Error && error.message.trim() !== '') {
@@ -482,6 +533,87 @@ const personaStatusLabel = (
     }
 };
 
+const toMainTranslationStorageKey = (taskId: string): string =>
+    `${MAIN_TRANSLATION_STORAGE_KEY_PREFIX}${taskId}`;
+
+const readMainTranslationSnapshot = (taskId: string): MainTranslationLocalSnapshot | null => {
+    if (taskId.trim() === '' || typeof window === 'undefined' || !window.localStorage) {
+        return null;
+    }
+    try {
+        const raw = window.localStorage.getItem(toMainTranslationStorageKey(taskId));
+        if (!raw) {
+            return null;
+        }
+        const parsed = JSON.parse(raw) as Partial<MainTranslationLocalSnapshot>;
+        if (!parsed || typeof parsed !== 'object') {
+            return null;
+        }
+        return {
+            selectedCategory: parsed.selectedCategory ?? 'conversation',
+            selectedRowId: parsed.selectedRowId ?? '',
+            runState: parsed.runState ?? 'hydrating',
+            rowStatusMap: parsed.rowStatusMap ?? {},
+            draftMap: parsed.draftMap ?? {},
+            confirmedMap: parsed.confirmedMap ?? {},
+        };
+    } catch {
+        return null;
+    }
+};
+
+const writeMainTranslationSnapshot = (
+    taskId: string,
+    snapshot: MainTranslationLocalSnapshot,
+): void => {
+    if (taskId.trim() === '' || typeof window === 'undefined' || !window.localStorage) {
+        return;
+    }
+    try {
+        window.localStorage.setItem(toMainTranslationStorageKey(taskId), JSON.stringify(snapshot));
+    } catch {
+        // ignore storage quota / blocked storage errors
+    }
+};
+
+const buildMainTranslationSummary = (rows: MainTranslationRowViewModel[]): MainTranslationSummary => {
+    const initial: MainTranslationSummary = {
+        untranslatedCount: 0,
+        aiTranslatedCount: 0,
+        confirmedCount: 0,
+        failedCount: 0,
+    };
+    return rows.reduce((acc, row) => {
+        if (row.status === 'confirmed') {
+            acc.confirmedCount += 1;
+            return acc;
+        }
+        if (row.status === 'aiTranslated') {
+            acc.aiTranslatedCount += 1;
+            return acc;
+        }
+        acc.untranslatedCount += 1;
+        return acc;
+    }, initial);
+};
+
+const toMainTranslationRowsFromLoadedFiles = (files: UseTranslationFlowResult['state']['loadedFiles']): MainTranslationRowViewModel[] => {
+    const rows: MainTranslationRowViewModel[] = [];
+    for (const file of files) {
+        for (const row of file.rows) {
+            rows.push(mapMainTranslationPreviewRow({
+                id: row.id,
+                section: row.section,
+                recordType: row.recordType,
+                editorId: row.editorId,
+                sourceText: row.sourceText,
+                sourcePlugin: file.fileName,
+            }));
+        }
+    }
+    return rows;
+};
+
 /**
  * TranslationFlow 画面のロードフェーズ状態を headless に管理する。
  */
@@ -527,10 +659,32 @@ export function useTranslationFlow(): UseTranslationFlowWithPersonaResult {
     const [isTerminologyPromptHydrated, setIsTerminologyPromptHydrated] = useState(false);
     const [isPersonaConfigHydrated, setIsPersonaConfigHydrated] = useState(false);
     const [isPersonaPromptHydrated, setIsPersonaPromptHydrated] = useState(false);
+    const [mainTranslationRunState, setMainTranslationRunState] = useState<MainTranslationRunState>('hydrating');
+    const [mainTranslationRows, setMainTranslationRows] = useState<MainTranslationRowViewModel[]>([]);
+    const [mainTranslationSelectedCategory, setMainTranslationSelectedCategory] = useState<MainTranslationCategory>('conversation');
+    const [mainTranslationSelectedRowId, setMainTranslationSelectedRowId] = useState('');
+    const [mainTranslationDraftMap, setMainTranslationDraftMap] = useState<Record<string, string>>({});
+    const [mainTranslationConfirmedMap, setMainTranslationConfirmedMap] = useState<Record<string, string>>({});
+    const [mainTranslationDirtyDraftRowId, setMainTranslationDirtyDraftRowId] = useState('');
+    const [mainTranslationPendingIntent, setMainTranslationPendingIntent] = useState<MainTranslationNavigationIntent | null>(null);
+    const [mainTranslationSummary, setMainTranslationSummary] = useState<MainTranslationSummary>({
+        untranslatedCount: 0,
+        aiTranslatedCount: 0,
+        confirmedCount: 0,
+        failedCount: 0,
+    });
+    const [mainTranslationConfig, setMainTranslationConfig] = useState<MasterPersonaLLMConfig>(DEFAULT_MASTER_PERSONA_LLM_CONFIG);
+    const [mainTranslationUserPrompt, setMainTranslationUserPrompt] = useState('');
+    const [mainTranslationErrorMessage, setMainTranslationErrorMessage] = useState('');
+    const [mainTranslationDirtyWarningOpen, setMainTranslationDirtyWarningOpen] = useState(false);
+    const [mainTranslationNextWarningOpen, setMainTranslationNextWarningOpen] = useState(false);
+    const [mainTranslationNextWarningCount, setMainTranslationNextWarningCount] = useState(0);
+    const [isMainTranslationHydrated, setIsMainTranslationHydrated] = useState(false);
     const terminologyLLMSaveTimerRef = useRef<number | null>(null);
     const terminologyPromptSaveTimerRef = useRef<number | null>(null);
     const personaLLMSaveTimerRef = useRef<number | null>(null);
     const personaPromptSaveTimerRef = useRef<number | null>(null);
+    const mainTranslationConfigSaveTimerRef = useRef<number | null>(null);
     const latestTerminologyConfigRef = useRef<MasterPersonaLLMConfig>(DEFAULT_MASTER_PERSONA_LLM_CONFIG);
     const latestPersonaConfigRef = useRef<MasterPersonaLLMConfig>(DEFAULT_MASTER_PERSONA_LLM_CONFIG);
     const previousTerminologyProviderRef = useRef<MasterPersonaLLMConfig['provider']>(DEFAULT_MASTER_PERSONA_LLM_CONFIG.provider);
@@ -1326,6 +1480,167 @@ export function useTranslationFlow(): UseTranslationFlowWithPersonaResult {
     }, [isPersonaPromptHydrated, persistPromptConfig, personaPromptConfig]);
 
     useEffect(() => {
+        let alive = true;
+        const hydrateMainTranslation = async (): Promise<void> => {
+            if (taskId === '') {
+                if (!alive) {
+                    return;
+                }
+                setMainTranslationRows([]);
+                setMainTranslationRunState('empty');
+                setMainTranslationSelectedCategory('conversation');
+                setMainTranslationSelectedRowId('');
+                setMainTranslationDraftMap({});
+                setMainTranslationConfirmedMap({});
+                setMainTranslationDirtyDraftRowId('');
+                setMainTranslationPendingIntent(null);
+                setMainTranslationSummary({
+                    untranslatedCount: 0,
+                    aiTranslatedCount: 0,
+                    confirmedCount: 0,
+                    failedCount: 0,
+                });
+                setMainTranslationErrorMessage('');
+                setMainTranslationDirtyWarningOpen(false);
+                setMainTranslationNextWarningOpen(false);
+                setMainTranslationNextWarningCount(0);
+                setIsMainTranslationHydrated(true);
+                return;
+            }
+
+            if (alive) {
+                setMainTranslationRunState('hydrating');
+                setIsMainTranslationHydrated(false);
+            }
+
+            try {
+                const storedConfig = await ConfigGetAll(MAIN_TRANSLATION_NAMESPACE);
+                const normalizedConfig = normalizeTerminologyLLMConfig(storedConfig);
+                const nextPrompt = storedConfig[TERMINOLOGY_USER_PROMPT_KEY] ?? '';
+                const snapshot = readMainTranslationSnapshot(taskId);
+                const baseRows = toMainTranslationRowsFromLoadedFiles(loadedFiles);
+
+                const statusMap = snapshot?.rowStatusMap ?? {};
+                const draftMap = snapshot?.draftMap ?? {};
+                const confirmedMap = snapshot?.confirmedMap ?? {};
+
+                const mergedRows = baseRows.map((row) => {
+                    const status = statusMap[row.rowId] ?? row.status;
+                    const draftText = draftMap[row.rowId];
+                    const confirmedText = confirmedMap[row.rowId];
+                    return {
+                        ...row,
+                        status,
+                        translatedText: draftText ?? confirmedText ?? row.translatedText,
+                    };
+                });
+                const summary = buildMainTranslationSummary(mergedRows);
+                const selectedCategory = snapshot?.selectedCategory ?? 'conversation';
+                const selectableRows = mergedRows.filter((row) => row.category === selectedCategory);
+                const selectedRowIdFromSnapshot = snapshot?.selectedRowId ?? '';
+                const selectedRowId = selectableRows.some((row) => row.rowId === selectedRowIdFromSnapshot)
+                    ? selectedRowIdFromSnapshot
+                    : (selectableRows[0]?.rowId ?? '');
+
+                if (!alive) {
+                    return;
+                }
+
+                setMainTranslationConfig(normalizedConfig);
+                setMainTranslationUserPrompt(nextPrompt);
+                setMainTranslationRows(mergedRows);
+                setMainTranslationSelectedCategory(selectedCategory);
+                setMainTranslationSelectedRowId(selectedRowId);
+                setMainTranslationDraftMap(draftMap);
+                setMainTranslationConfirmedMap(confirmedMap);
+                setMainTranslationDirtyDraftRowId('');
+                setMainTranslationPendingIntent(null);
+                setMainTranslationSummary(summary);
+                setMainTranslationErrorMessage('');
+                if (mergedRows.length === 0) {
+                    setMainTranslationRunState('empty');
+                } else if (snapshot?.runState === 'translating') {
+                    setMainTranslationRunState('translating');
+                } else {
+                    setMainTranslationRunState(selectedRowId === '' ? 'selectionEmpty' : 'selectionReady');
+                }
+            } catch (error) {
+                if (!alive) {
+                    return;
+                }
+                setMainTranslationRows([]);
+                setMainTranslationRunState('loadError');
+                setMainTranslationErrorMessage(toErrorMessage(error, '本文翻訳の状態取得に失敗しました'));
+            } finally {
+                if (alive) {
+                    setIsMainTranslationHydrated(true);
+                }
+            }
+        };
+
+        void hydrateMainTranslation();
+        return () => {
+            alive = false;
+        };
+    }, [loadedFiles, taskId]);
+
+    useEffect(() => {
+        if (!isMainTranslationHydrated || taskId === '') {
+            return;
+        }
+        const snapshot: MainTranslationLocalSnapshot = {
+            selectedCategory: mainTranslationSelectedCategory,
+            selectedRowId: mainTranslationSelectedRowId,
+            runState: mainTranslationRunState,
+            rowStatusMap: Object.fromEntries(mainTranslationRows.map((row) => [row.rowId, row.status])),
+            draftMap: mainTranslationDraftMap,
+            confirmedMap: mainTranslationConfirmedMap,
+        };
+        writeMainTranslationSnapshot(taskId, snapshot);
+    }, [
+        isMainTranslationHydrated,
+        mainTranslationConfirmedMap,
+        mainTranslationDraftMap,
+        mainTranslationRows,
+        mainTranslationRunState,
+        mainTranslationSelectedCategory,
+        mainTranslationSelectedRowId,
+        taskId,
+    ]);
+
+    useEffect(() => {
+        if (!isMainTranslationHydrated) {
+            return;
+        }
+        if (mainTranslationConfigSaveTimerRef.current) {
+            window.clearTimeout(mainTranslationConfigSaveTimerRef.current);
+        }
+        mainTranslationConfigSaveTimerRef.current = window.setTimeout(() => {
+            void Promise.all([
+                ConfigSet(MAIN_TRANSLATION_NAMESPACE, TERMINOLOGY_SELECTED_PROVIDER_KEY, mainTranslationConfig.provider),
+                ConfigSet(MAIN_TRANSLATION_NAMESPACE, 'model', mainTranslationConfig.model),
+                ConfigSet(MAIN_TRANSLATION_NAMESPACE, 'endpoint', mainTranslationConfig.endpoint),
+                ConfigSet(
+                    MAIN_TRANSLATION_NAMESPACE,
+                    'api_key',
+                    mainTranslationConfig.provider === 'lmstudio' ? '' : mainTranslationConfig.apiKey,
+                ),
+                ConfigSet(MAIN_TRANSLATION_NAMESPACE, 'temperature', String(mainTranslationConfig.temperature)),
+                ConfigSet(MAIN_TRANSLATION_NAMESPACE, 'context_length', String(mainTranslationConfig.contextLength)),
+                ConfigSet(MAIN_TRANSLATION_NAMESPACE, 'sync_concurrency', String(mainTranslationConfig.syncConcurrency)),
+                ConfigSet(MAIN_TRANSLATION_NAMESPACE, 'bulk_strategy', mainTranslationConfig.bulkStrategy),
+                ConfigSet(MAIN_TRANSLATION_NAMESPACE, TERMINOLOGY_USER_PROMPT_KEY, mainTranslationUserPrompt),
+            ]);
+        }, 250);
+
+        return () => {
+            if (mainTranslationConfigSaveTimerRef.current) {
+                window.clearTimeout(mainTranslationConfigSaveTimerRef.current);
+            }
+        };
+    }, [isMainTranslationHydrated, mainTranslationConfig, mainTranslationUserPrompt]);
+
+    useEffect(() => {
         if (!isTaskIDResolved) {
             return;
         }
@@ -1563,8 +1878,213 @@ export function useTranslationFlow(): UseTranslationFlowWithPersonaResult {
         setPersonaPromptConfig(next);
     }, []);
 
+    const commitMainTranslationIntent = useCallback((intent: MainTranslationNavigationIntent | null) => {
+        if (!intent) {
+            return;
+        }
+        if (intent === 'next') {
+            setActiveTab(4);
+        }
+        setMainTranslationPendingIntent(null);
+    }, []);
+
+    const handleMainTranslationCategoryChange = useCallback((next: MainTranslationCategory) => {
+        if (mainTranslationDirtyDraftRowId !== '') {
+            setMainTranslationPendingIntent('switchCategory');
+            setMainTranslationDirtyWarningOpen(true);
+            return;
+        }
+        setMainTranslationSelectedCategory(next);
+        const firstRow = mainTranslationRows.find((row) => row.category === next);
+        setMainTranslationSelectedRowId(firstRow?.rowId ?? '');
+    }, [mainTranslationDirtyDraftRowId, mainTranslationRows]);
+
+    const handleMainTranslationRowSelect = useCallback((rowId: string) => {
+        if (mainTranslationDirtyDraftRowId !== '' && mainTranslationDirtyDraftRowId !== rowId) {
+            setMainTranslationPendingIntent('selectRow');
+            setMainTranslationDirtyWarningOpen(true);
+            return;
+        }
+        setMainTranslationSelectedRowId(rowId);
+    }, [mainTranslationDirtyDraftRowId]);
+
+    const handleMainTranslationDraftChange = useCallback((rowId: string, value: string) => {
+        setMainTranslationRows((prev) => prev.map((row) =>
+            row.rowId === rowId ? {...row, translatedText: value} : row));
+        setMainTranslationDraftMap((prev) => ({...prev, [rowId]: value}));
+        setMainTranslationDirtyDraftRowId(rowId);
+    }, []);
+
+    const handleMainTranslationConfirmRow = useCallback((rowId: string) => {
+        setMainTranslationRows((prev) => {
+            const nextRows = prev.map((row) => {
+                if (row.rowId !== rowId) {
+                    return row;
+                }
+                return {
+                    ...row,
+                    status: 'confirmed' as MainTranslationRowStatus,
+                };
+            });
+            setMainTranslationSummary(buildMainTranslationSummary(nextRows));
+            return nextRows;
+        });
+        setMainTranslationConfirmedMap((prev) => ({
+            ...prev,
+            [rowId]: mainTranslationDraftMap[rowId] ?? prev[rowId] ?? '',
+        }));
+        setMainTranslationDirtyDraftRowId((prev) => (prev === rowId ? '' : prev));
+    }, [mainTranslationDraftMap]);
+
+    const handleMainTranslationCancelConfirmed = useCallback((rowId: string) => {
+        setMainTranslationRows((prev) => {
+            const nextRows = prev.map((row) => {
+                if (row.rowId !== rowId) {
+                    return row;
+                }
+                return {
+                    ...row,
+                    status: 'aiTranslated' as MainTranslationRowStatus,
+                    translatedText: mainTranslationConfirmedMap[rowId] ?? row.translatedText,
+                };
+            });
+            setMainTranslationSummary(buildMainTranslationSummary(nextRows));
+            return nextRows;
+        });
+        setMainTranslationDraftMap((prev) => {
+            const next = {...prev};
+            delete next[rowId];
+            return next;
+        });
+        setMainTranslationDirtyDraftRowId((prev) => (prev === rowId ? '' : prev));
+    }, [mainTranslationConfirmedMap]);
+
+    const runMainTranslation = useCallback(async (retryOnlyUntranslated: boolean) => {
+        if (taskId === '' || mainTranslationRows.length === 0) {
+            return;
+        }
+        setMainTranslationRunState('translating');
+        setMainTranslationErrorMessage('');
+        await new Promise<void>((resolve) => {
+            window.setTimeout(resolve, 120);
+        });
+        setMainTranslationRows((prev) => {
+            const nextRows = prev.map((row) => {
+                if (retryOnlyUntranslated && row.status !== 'untranslated') {
+                    return row;
+                }
+                const shouldFail = row.sourceText.toLowerCase().includes('[fail]');
+                if (shouldFail) {
+                    return {
+                        ...row,
+                        status: 'untranslated' as MainTranslationRowStatus,
+                    };
+                }
+                if (row.status === 'untranslated') {
+                    const nextText = row.translatedText.trim() === ''
+                        ? `${row.sourceText}（翻訳プレビュー）`
+                        : row.translatedText;
+                    return {
+                        ...row,
+                        status: 'aiTranslated' as MainTranslationRowStatus,
+                        translatedText: nextText,
+                    };
+                }
+                return row;
+            });
+            const nextSummary = buildMainTranslationSummary(nextRows);
+            setMainTranslationSummary(nextSummary);
+            const successfulCount = nextSummary.aiTranslatedCount + nextSummary.confirmedCount;
+            if (nextSummary.untranslatedCount > 0 && successfulCount === 0) {
+                setMainTranslationRunState('translateFailed');
+            } else if (nextSummary.untranslatedCount > 0) {
+                setMainTranslationRunState('translatePartialFailed');
+            } else {
+                setMainTranslationRunState('translateCompleted');
+            }
+            return nextRows;
+        });
+    }, [mainTranslationRows.length, taskId]);
+
+    const handleRunMainTranslation = useCallback(async () => {
+        await runMainTranslation(false);
+    }, [runMainTranslation]);
+
+    const handleRetryFailedMainTranslation = useCallback(async () => {
+        await runMainTranslation(true);
+    }, [runMainTranslation]);
+
+    const handleMainTranslationDiscardAndContinue = useCallback(() => {
+        const dirtyRowId = mainTranslationDirtyDraftRowId;
+        if (dirtyRowId !== '') {
+            setMainTranslationRows((prev) => prev.map((row) => {
+                if (row.rowId !== dirtyRowId) {
+                    return row;
+                }
+                const confirmedText = mainTranslationConfirmedMap[dirtyRowId];
+                return {
+                    ...row,
+                    translatedText: confirmedText ?? row.translatedText,
+                };
+            }));
+            setMainTranslationDraftMap((prev) => {
+                const next = {...prev};
+                delete next[dirtyRowId];
+                return next;
+            });
+            setMainTranslationDirtyDraftRowId('');
+        }
+        setMainTranslationDirtyWarningOpen(false);
+        commitMainTranslationIntent(mainTranslationPendingIntent);
+    }, [commitMainTranslationIntent, mainTranslationConfirmedMap, mainTranslationDirtyDraftRowId, mainTranslationPendingIntent]);
+
+    const handleMainTranslationKeepEditing = useCallback(() => {
+        setMainTranslationDirtyWarningOpen(false);
+        setMainTranslationPendingIntent(null);
+    }, []);
+
+    const handleAdvanceFromMainTranslation = useCallback(() => {
+        if (mainTranslationRunState === 'translating'
+            || mainTranslationRunState === 'translateFailed'
+            || mainTranslationRunState === 'hydrating'
+            || mainTranslationRunState === 'loadError') {
+            return;
+        }
+        if (mainTranslationDirtyDraftRowId !== '') {
+            setMainTranslationPendingIntent('next');
+            setMainTranslationDirtyWarningOpen(true);
+            return;
+        }
+        if (mainTranslationSummary.untranslatedCount > 0) {
+            setMainTranslationNextWarningCount(mainTranslationSummary.untranslatedCount);
+            setMainTranslationNextWarningOpen(true);
+            return;
+        }
+        setActiveTab(4);
+    }, [mainTranslationDirtyDraftRowId, mainTranslationRunState, mainTranslationSummary.untranslatedCount]);
+
+    const handleMainTranslationConfirmNext = useCallback(() => {
+        setMainTranslationNextWarningOpen(false);
+        setActiveTab(4);
+    }, []);
+
+    const handleMainTranslationCancelNext = useCallback(() => {
+        setMainTranslationNextWarningOpen(false);
+    }, []);
+
+    const handleMainTranslationConfigChange = useCallback((next: MasterPersonaLLMConfig) => {
+        setMainTranslationConfig(next);
+    }, []);
+
+    const handleMainTranslationUserPromptChange = useCallback((next: string) => {
+        setMainTranslationUserPrompt(next);
+    }, []);
+
     const handleTabChange = useCallback((index: number) => {
         if (index < 0 || index >= TABS.length) {
+            return;
+        }
+        if (mainTranslationRunState === 'translating' && index !== 3) {
             return;
         }
         if (index > 0 && loadedFiles.length === 0) {
@@ -1583,6 +2103,7 @@ export function useTranslationFlow(): UseTranslationFlowWithPersonaResult {
     }, [
         handleRefreshPersonaPhase,
         loadedFiles.length,
+        mainTranslationRunState,
         personaSummary.status,
         taskId,
         terminologySummary.status,
@@ -1595,6 +2116,27 @@ export function useTranslationFlow(): UseTranslationFlowWithPersonaResult {
         const matched = personaTargetPage.rows.find((row) => normalizePersonaRowKey(row) === selectedPersonaTargetKey);
         return matched ?? personaTargetPage.rows[0] ?? null;
     }, [personaTargetPage.rows, selectedPersonaTargetKey]);
+
+    useEffect(() => {
+        if (mainTranslationRows.length === 0) {
+            return;
+        }
+        const hasCategoryRow = mainTranslationRows.some((row) => row.category === mainTranslationSelectedCategory);
+        const resolvedCategory = hasCategoryRow
+            ? mainTranslationSelectedCategory
+            : mainTranslationRows[0].category;
+        if (!hasCategoryRow) {
+            setMainTranslationSelectedCategory(resolvedCategory);
+        }
+        const hasSelectedRow = mainTranslationRows.some(
+            (row) => row.category === resolvedCategory && row.rowId === mainTranslationSelectedRowId,
+        );
+        if (!hasSelectedRow) {
+            const fallback = mainTranslationRows.find((row) => row.category === resolvedCategory);
+            setMainTranslationSelectedRowId(fallback?.rowId ?? '');
+        }
+        setMainTranslationSummary(buildMainTranslationSummary(mainTranslationRows));
+    }, [mainTranslationRows, mainTranslationSelectedCategory, mainTranslationSelectedRowId]);
 
     return {
         state: {
@@ -1634,6 +2176,26 @@ export function useTranslationFlow(): UseTranslationFlowWithPersonaResult {
             isPersonaRunning,
             selectedPersonaTargetKey,
             selectedPersonaTarget,
+            mainTranslationRunState,
+            mainTranslationRows,
+            mainTranslationSelectedCategory,
+            mainTranslationSelectedRowId,
+            mainTranslationDraftState: {
+                selectedCategory: mainTranslationSelectedCategory,
+                selectedRowId: mainTranslationSelectedRowId,
+                dirtyDraftRowId: mainTranslationDirtyDraftRowId,
+                pendingNavigationIntent: mainTranslationPendingIntent,
+                draftMap: mainTranslationDraftMap,
+                confirmedMap: mainTranslationConfirmedMap,
+            },
+            mainTranslationSummary,
+            mainTranslationConfig,
+            mainTranslationUserPrompt,
+            mainTranslationErrorMessage,
+            mainTranslationDirtyWarningOpen,
+            mainTranslationNextWarningOpen,
+            mainTranslationNextWarningCount,
+            isMainTranslationHydrated,
         },
         actions: {
             handleTabChange,
@@ -1657,6 +2219,20 @@ export function useTranslationFlow(): UseTranslationFlowWithPersonaResult {
             handlePersonaTargetPageChange,
             handleSelectPersonaTarget,
             handleAdvanceFromPersona,
+            handleMainTranslationCategoryChange,
+            handleMainTranslationRowSelect,
+            handleMainTranslationDraftChange,
+            handleMainTranslationConfirmRow,
+            handleMainTranslationCancelConfirmed,
+            handleRunMainTranslation,
+            handleRetryFailedMainTranslation,
+            handleAdvanceFromMainTranslation,
+            handleMainTranslationDiscardAndContinue,
+            handleMainTranslationKeepEditing,
+            handleMainTranslationConfirmNext,
+            handleMainTranslationCancelNext,
+            handleMainTranslationConfigChange,
+            handleMainTranslationUserPromptChange,
         },
         ui: {
             previewPageSize: PREVIEW_PAGE_SIZE,

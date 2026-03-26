@@ -1,5 +1,10 @@
 import type {
     LoadedTranslationFile,
+    MainTranslationCategory,
+    MainTranslationRowMetadata,
+    MainTranslationRowStatus,
+    MainTranslationRowViewModel,
+    WailsMainTranslationPreviewRow,
     PersonaDialogueView,
     PersonaPhaseSummary,
     PersonaTargetStateBadge,
@@ -23,6 +28,7 @@ import type {
     WailsTranslationPreviewPage,
     WailsTranslationPreviewRow,
 } from './types';
+import {resolveTranslationSystemPrompt} from './systemPrompts';
 
 const asRecord = (value: unknown): Record<string, unknown> | null => {
     if (value && typeof value === 'object') {
@@ -44,6 +50,158 @@ const mapPreviewRow = (payload: WailsTranslationPreviewRow): TranslationTargetRo
     editorId: pickString(payload.editor_id ?? payload.editorId),
     sourceText: pickString(payload.source_text ?? payload.sourceText),
 });
+
+const mapMainTranslationRowStatus = (value: unknown): MainTranslationRowStatus => {
+    const normalized = pickString(value).trim().toLowerCase();
+    switch (normalized) {
+    case 'aitranslated':
+    case 'ai_translated':
+    case 'translated':
+    case 'done':
+        return 'aiTranslated';
+    case 'confirmed':
+    case 'fixed':
+        return 'confirmed';
+    default:
+        return 'untranslated';
+    }
+};
+
+const inferMainTranslationCategory = (payload: WailsMainTranslationPreviewRow): MainTranslationCategory => {
+    const section = pickString(payload.section).toLowerCase();
+    const recordType = pickString(payload.record_type ?? payload.recordType).toLowerCase();
+    const speakerId = pickString(payload.speaker_id ?? payload.speakerId).trim();
+    const questId = pickString(payload.quest_id ?? payload.questId).trim();
+
+    if (speakerId !== '' || section.includes('dialogue') || recordType === 'info') {
+        return 'conversation';
+    }
+    if (questId !== '' || section.includes('quest') || recordType === 'qust') {
+        return 'quest';
+    }
+    return 'other';
+};
+
+const mapMainTranslationMetadata = (payload: WailsMainTranslationPreviewRow): MainTranslationRowMetadata => {
+    const stageIndex = pickNumber(payload.stage_index ?? payload.stageIndex, -1);
+
+    return {
+        recordType: pickString(payload.record_type ?? payload.recordType),
+        editorId: pickString(payload.editor_id ?? payload.editorId),
+        sourcePlugin: pickString(payload.source_plugin ?? payload.sourcePlugin),
+        section: pickString(payload.section),
+        speakerId: pickString(payload.speaker_id ?? payload.speakerId),
+        npcName: pickString(payload.npc_name ?? payload.npcName),
+        questId: pickString(payload.quest_id ?? payload.questId),
+        stageIndex: stageIndex >= 0 ? stageIndex : null,
+        objective: pickString(payload.objective),
+    };
+};
+
+const buildSecondaryMeta = (category: MainTranslationCategory, metadata: MainTranslationRowMetadata): string[] => {
+    if (category === 'conversation') {
+        return [
+            metadata.speakerId,
+            metadata.editorId,
+            metadata.sourcePlugin,
+        ].filter((value) => value !== '');
+    }
+    if (category === 'quest') {
+        return [
+            metadata.questId,
+            metadata.stageIndex === null ? '' : `stage:${metadata.stageIndex}`,
+            metadata.sourcePlugin,
+        ].filter((value) => value !== '');
+    }
+    return [
+        metadata.recordType,
+        metadata.editorId,
+        metadata.sourcePlugin,
+    ].filter((value) => value !== '');
+};
+
+export const mapMainTranslationPreviewRow = (payload: WailsMainTranslationPreviewRow): MainTranslationRowViewModel => {
+    const category = inferMainTranslationCategory(payload);
+    const metadata = mapMainTranslationMetadata(payload);
+    const rowId = pickString(payload.id).trim();
+    const sourceText = pickString(payload.source_text ?? payload.sourceText);
+    const editorId = metadata.editorId.trim();
+
+    return {
+        rowId: rowId !== '' ? rowId : `${category}:${editorId}:${sourceText.slice(0, 24)}`,
+        category,
+        primaryLabel: sourceText !== '' ? sourceText : editorId,
+        secondaryMeta: buildSecondaryMeta(category, metadata),
+        sourceText,
+        translatedText: pickString(payload.translated_text ?? payload.translatedText),
+        status: mapMainTranslationRowStatus(payload.translation_state ?? payload.translationState),
+        metadata,
+    };
+};
+
+/**
+ * 本文翻訳 row を UI 用 details へ拡張する。
+ */
+export const mapMainTranslationRowDetail = (
+    row: MainTranslationRowViewModel,
+    terminologyRows: TerminologyTargetPreviewRow[],
+): {
+    systemPrompt: string;
+    referencePanels: Array<{title: string; items: string[]}>;
+} => {
+    const glossaryItems = terminologyRows
+        .filter((entry) => entry.editorId === row.metadata.editorId || entry.recordType === row.metadata.recordType)
+        .filter((entry) => entry.translatedText.trim() !== '')
+        .slice(0, 3)
+        .map((entry) => `${entry.sourceText} -> ${entry.translatedText}`);
+
+    const commonPanels = [{
+        title: row.category === 'conversation' ? '参考単語' : '参考単語',
+        items: glossaryItems.length > 0 ? glossaryItems : ['参考単語なし'],
+    }];
+
+    if (row.category === 'conversation') {
+        return {
+            systemPrompt: resolveTranslationSystemPrompt(row.category, row.metadata.recordType),
+            referencePanels: [
+                {
+                    title: '会話の属性',
+                    items: [
+                        `recordType: ${row.metadata.recordType || 'INFO'}`,
+                        `sourcePlugin: ${row.metadata.sourcePlugin}`,
+                    ],
+                },
+                {
+                    title: 'NPC の属性',
+                    items: [
+                        `speakerId: ${row.metadata.speakerId || row.metadata.editorId}`,
+                        `npcName: ${row.metadata.npcName || row.metadata.editorId}`,
+                    ],
+                },
+                {
+                    title: 'ペルソナ',
+                    items: ['ペルソナ情報は frontend contract で参照表示する'],
+                },
+                ...commonPanels,
+            ],
+        };
+    }
+
+    return {
+        systemPrompt: resolveTranslationSystemPrompt(row.category, row.metadata.recordType),
+        referencePanels: [
+            {
+                title: '本文の属性',
+                items: [
+                    `recordType: ${row.metadata.recordType}`,
+                    `editorId: ${row.metadata.editorId}`,
+                    `sourcePlugin: ${row.metadata.sourcePlugin}`,
+                ],
+            },
+            ...commonPanels,
+        ],
+    };
+};
 
 const mapTerminologyTargetPreviewRow = (payload: WailsTerminologyTargetPreviewRow): TerminologyTargetPreviewRow => ({
     id: pickString(payload.id),

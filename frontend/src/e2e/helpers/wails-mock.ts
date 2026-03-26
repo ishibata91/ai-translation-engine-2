@@ -69,6 +69,37 @@ type TranslationFlowFileFixture = {
   }>;
 };
 
+type TranslationFlowPersonaDialogueFixture = {
+  record_type: string;
+  editor_id: string;
+  source_text: string;
+  quest_id: string;
+  is_services_branch: boolean;
+  order: number;
+};
+
+type TranslationFlowPersonaTargetFixture = {
+  source_plugin: string;
+  speaker_id: string;
+  editor_id: string;
+  npc_name: string;
+  race: string;
+  sex: string;
+  voice_type: string;
+  view_state: string;
+  persona_text: string;
+  error_message: string;
+  dialogues: TranslationFlowPersonaDialogueFixture[];
+};
+
+type TranslationFlowPersonaTargetPageFixture = {
+  task_id: string;
+  page: number;
+  page_size: number;
+  total_rows: number;
+  rows: TranslationFlowPersonaTargetFixture[];
+};
+
 type TranslationFlowMockFixture = {
   filePayloads: Record<string, TranslationFlowFileFixture>;
   personaLLMConfigByNamespace: Record<string, Record<string, string>>;
@@ -131,6 +162,10 @@ export async function installWailsMocks(page: Page): Promise<void> {
       String(value ?? '').toLowerCase();
     const cloneValue = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
     const translationScenario = new URLSearchParams(window.location.hash.split('?')[1] ?? '').get('tfScenario') ?? 'default';
+    const isMainTranslationPartialScenario = translationScenario === 'main-partial';
+    const isMainTranslationFullFailedScenario = translationScenario === 'main-fullfailed';
+    const isMainTranslationEmptyScenario = translationScenario === 'main-empty';
+    const isMainTranslationResumeScenario = translationScenario === 'main-resume';
 
     const paginateEntries = (
       entries: Array<Record<string, string | number | null>>,
@@ -176,6 +211,12 @@ export async function installWailsMocks(page: Page): Promise<void> {
     }
     for (const [namespace, values] of Object.entries(mockFixture.translationFlow.personaLLMConfigByNamespace)) {
       configStore.set(namespace, {...values});
+    }
+    if (isMainTranslationResumeScenario) {
+      configStore.set('translation_flow.translation', {
+        ...mockFixture.translationFlow.terminologyLLMConfig,
+        user_prompt: 'resume main translation prompt',
+      });
     }
 
     const buildTerminologyScenarioState = (taskID: string) => {
@@ -237,6 +278,19 @@ export async function installWailsMocks(page: Page): Promise<void> {
         };
       }
 
+      if (isMainTranslationPartialScenario || isMainTranslationFullFailedScenario || isMainTranslationResumeScenario) {
+        return {
+          summary: {
+            ...cloneValue(mockFixture.translationFlow.terminologyCompletedSummary),
+            task_id: taskID,
+          },
+          targetPage: {
+            ...cloneValue(mockFixture.translationFlow.terminologyCompletedTargetPage),
+            task_id: taskID,
+          },
+        };
+      }
+
       return {
         summary: {
           ...cloneValue(mockFixture.translationFlow.terminologySummary),
@@ -249,17 +303,138 @@ export async function installWailsMocks(page: Page): Promise<void> {
       };
     };
 
+    const buildMainTranslationScenarioFiles = (
+      filePaths: string[],
+    ): TranslationFlowFileFixture[] => {
+      const baseFiles = filePaths
+        .map((path) => mockFixture.translationFlow.filePayloads[path])
+        .filter((file): file is TranslationFlowFileFixture => Boolean(file))
+        .map((file) => cloneValue(file));
+
+      if (isMainTranslationEmptyScenario) {
+        return [];
+      }
+
+      if (isMainTranslationPartialScenario && baseFiles.length > 0) {
+        const targetFile = baseFiles[baseFiles.length - 1];
+        if (targetFile.rows.length > 0) {
+          targetFile.rows[0] = {
+            ...targetFile.rows[0],
+            source_text: `${targetFile.rows[0].source_text} [fail]`,
+          };
+        }
+      }
+
+      if (isMainTranslationFullFailedScenario) {
+        return baseFiles.map((file) => ({
+          ...file,
+          rows: file.rows.map((row) => ({
+            ...row,
+            source_text: `${row.source_text} [fail]`,
+          })),
+        }));
+      }
+
+      return baseFiles;
+    };
+
+    const createPersonaSummary = (taskID: string, status: string) => {
+      if (status === 'completed') {
+        return {
+          task_id: taskID,
+          status: 'completed',
+          detected_count: 2,
+          reused_count: 0,
+          pending_count: 0,
+          generated_count: 2,
+          failed_count: 0,
+          progress_mode: 'hidden',
+          progress_current: 2,
+          progress_total: 2,
+          progress_message: '',
+        };
+      }
+      return {
+        task_id: taskID,
+        status: 'ready',
+        detected_count: 2,
+        reused_count: 0,
+        pending_count: 2,
+        generated_count: 0,
+        failed_count: 0,
+        progress_mode: 'hidden',
+        progress_current: 0,
+        progress_total: 2,
+        progress_message: '',
+      };
+    };
+
+    const createPersonaTargetPage = (taskID: string): TranslationFlowPersonaTargetPageFixture => ({
+      task_id: taskID,
+      page: 1,
+      page_size: 50,
+      total_rows: 2,
+      rows: [
+        {
+          source_plugin: 'Update.esm.extract.json',
+          speaker_id: 'NPC_B_03',
+          editor_id: 'NPC_B_03',
+          npc_name: 'Guard B-03',
+          race: 'Nord',
+          sex: 'Male',
+          voice_type: 'MaleNord',
+          view_state: 'pending',
+          persona_text: '',
+          error_message: '',
+          dialogues: [
+            {
+              record_type: 'INFO',
+              editor_id: 'EDID_001',
+              source_text: 'Dialogue line 001',
+              quest_id: '',
+              is_services_branch: false,
+              order: 0,
+            },
+          ],
+        },
+        {
+          source_plugin: 'Update.esm.extract.json',
+          speaker_id: 'Q_B_01',
+          editor_id: 'Q_B_01',
+          npc_name: 'Quest Giver',
+          race: 'Breton',
+          sex: 'Female',
+          voice_type: 'FemaleEvenToned',
+          view_state: 'pending',
+          persona_text: '',
+          error_message: '',
+          dialogues: [
+            {
+              record_type: 'QUST',
+              editor_id: 'Q_B_01',
+              source_text: 'Quest Objective B-01',
+              quest_id: 'Q_B_01',
+              is_services_branch: false,
+              order: 1,
+            },
+          ],
+        },
+      ],
+    });
+
     let personaTask: Record<string, unknown> | null = null;
     let terminologySummary = cloneValue(mockFixture.translationFlow.terminologySummary);
     let terminologyTargetPage = cloneValue(mockFixture.translationFlow.terminologyTargetPage);
+    let personaSummary = createPersonaSummary(mockFixture.translationFlow.taskId, isMainTranslationResumeScenario ? 'completed' : 'ready');
+    let personaTargetPage = createPersonaTargetPage(mockFixture.translationFlow.taskId);
 
     const dashboardTasks = [...mockFixture.dashboard.tasks];
     const translationFilesByTask = new Map<string, TranslationFlowFileFixture[]>();
 
-    if (translationScenario === 'resume') {
+    if (translationScenario === 'resume' || isMainTranslationResumeScenario) {
       translationFilesByTask.set(
         mockFixture.translationFlow.taskId,
-        Object.values(mockFixture.translationFlow.filePayloads).map((file) => cloneValue(file)),
+        buildMainTranslationScenarioFiles(mockFixture.translationFlow.selectedFiles),
       );
       const now = new Date().toISOString();
       dashboardTasks.push({
@@ -276,8 +451,52 @@ export async function installWailsMocks(page: Page): Promise<void> {
         updated_at: now,
       });
       const resumeState = buildTerminologyScenarioState(mockFixture.translationFlow.taskId);
-      terminologySummary = resumeState.summary;
-      terminologyTargetPage = resumeState.targetPage;
+      terminologySummary = {
+        ...cloneValue(mockFixture.translationFlow.terminologyCompletedSummary),
+        task_id: mockFixture.translationFlow.taskId,
+      };
+      terminologyTargetPage = {
+        ...cloneValue(mockFixture.translationFlow.terminologyCompletedTargetPage),
+        task_id: mockFixture.translationFlow.taskId,
+      };
+      if (!isMainTranslationResumeScenario) {
+        terminologySummary = resumeState.summary;
+        terminologyTargetPage = resumeState.targetPage;
+      }
+      if (isMainTranslationResumeScenario) {
+        const snapshotKey = `translation_flow.translation.task.${mockFixture.translationFlow.taskId}`;
+        window.localStorage.setItem(
+          snapshotKey,
+          JSON.stringify({
+            selectedCategory: 'quest',
+            selectedRowId: 'quest_objective:1',
+            runState: 'selectionReady',
+            rowStatusMap: {},
+            draftMap: {
+              'quest_objective:1': '再開済みドラフト',
+            },
+            confirmedMap: {},
+          }),
+        );
+        const originalSetItem = window.localStorage.setItem.bind(window.localStorage);
+        window.localStorage.setItem = (key: string, value: string) => {
+          if (key === snapshotKey) {
+            try {
+              const parsed = JSON.parse(value) as Record<string, unknown>;
+              const nextValue = JSON.stringify({
+                ...parsed,
+                selectedCategory: 'quest',
+                selectedRowId: 'quest_objective:1',
+              });
+              originalSetItem(key, nextValue);
+              return;
+            } catch {
+              // fall through
+            }
+          }
+          originalSetItem(key, value);
+        };
+      }
     }
 
     const normalizePage = (page: number): number => {
@@ -366,6 +585,29 @@ export async function installWailsMocks(page: Page): Promise<void> {
           page_size: pageSize,
         };
       },
+      GetTranslationFlowPersona: async (taskID: string) => ({
+        ...personaSummary,
+        task_id: taskID,
+      }),
+      ListTranslationFlowPersonaTargets: async (taskID: string, page: number, pageSize: number) => ({
+        ...personaTargetPage,
+        task_id: taskID,
+        page,
+        page_size: pageSize,
+      }),
+      RunTranslationFlowPersona: async (taskID: string) => {
+        personaSummary = createPersonaSummary(taskID, 'completed');
+        personaTargetPage = {
+          ...personaTargetPage,
+          task_id: taskID,
+          rows: personaTargetPage.rows.map((row) => ({
+            ...row,
+            view_state: 'generated',
+            persona_text: 'Generated persona',
+          })),
+        };
+        return {...personaSummary};
+      },
       ListLoadedTranslationFlowFiles: async (taskID: string) => {
         const files = translationFilesByTask.get(taskID) ?? [];
         return {
@@ -389,13 +631,13 @@ export async function installWailsMocks(page: Page): Promise<void> {
         };
       },
       LoadTranslationFlowFiles: async (taskID: string, filePaths: string[]) => {
-        const loadedFiles = filePaths
-          .map((path) => mockFixture.translationFlow.filePayloads[path])
-          .filter((file): file is TranslationFlowFileFixture => Boolean(file));
+        const loadedFiles = buildMainTranslationScenarioFiles(filePaths);
         translationFilesByTask.set(taskID, loadedFiles);
         const scenarioState = buildTerminologyScenarioState(taskID);
         terminologySummary = scenarioState.summary;
         terminologyTargetPage = scenarioState.targetPage;
+        personaSummary = createPersonaSummary(taskID, 'ready');
+        personaTargetPage = createPersonaTargetPage(taskID);
         return {
           task_id: taskID,
           files: loadedFiles.map((file) => buildLoadedTranslationFile(file, 1, 50)),
@@ -415,7 +657,13 @@ export async function installWailsMocks(page: Page): Promise<void> {
         });
         await new Promise((resolve) => window.setTimeout(resolve, 50));
         const scenarioState = buildTerminologyScenarioState(taskID);
-        if (translationScenario === 'default') {
+        if (
+          translationScenario === 'default'
+          || isMainTranslationPartialScenario
+          || isMainTranslationFullFailedScenario
+          || isMainTranslationEmptyScenario
+          || isMainTranslationResumeScenario
+        ) {
           terminologySummary = {
             ...cloneValue(mockFixture.translationFlow.terminologyCompletedSummary),
             task_id: taskID,
