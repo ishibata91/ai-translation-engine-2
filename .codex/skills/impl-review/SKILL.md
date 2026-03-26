@@ -13,6 +13,7 @@ spec 抜粋、統合差分、検証結果、前回 findings を照合し、requi
 ## 必須レビュー観点
 - 仕様適合レビュー: `spec_excerpt` と差分を照合し、仕様未達、contract 逸脱、受け入れ条件抜けを確認する
 - 差分の危険箇所レビュー: 変更の波及範囲、既存動作への退行リスク、責務境界の破壊を確認する
+- 原則適用レビュー: `design_principles`（SRP/SoC/DIP/OCP）への適合と逸脱理由の妥当性を確認する
 - テスト不足レビュー: 変更に対して必要な検証、build、typecheck、lint、再現手順が足りているかを確認する
 - 例外・失敗時レビュー: エラー処理、失敗時の挙動、境界条件、未入力や不正入力時の扱いを確認する
 - 既存設計との整合性レビュー: architecture、既存 contract、責務分離、既存パターンとの整合を確認する
@@ -28,6 +29,7 @@ spec 抜粋、統合差分、検証結果、前回 findings を照合し、requi
 - `tasks.md` または section map
 - `spec_excerpt`
 - `structured_diff`
+- `design_principles`（section ごとの work order で固定された原則）
 - `verification`
   - frontend 差分が含まれる場合は `npm --prefix frontend run build` の結果を含める
 - `previous_findings`
@@ -38,7 +40,7 @@ spec 抜粋、統合差分、検証結果、前回 findings を照合し、requi
    - `docs/governance/architecture/spec.md`
    - `docs/governance/backend-coding-standards/spec.md`
    - `docs/frontend/frontend-coding-standards/spec.md`
-3. 必須レビュー観点を順に確認する。観点を飛ばさず、仕様適合、危険箇所、テスト不足、例外・失敗時、既存設計整合性、セキュリティ・性能の順で見落としを潰す。
+3. 必須レビュー観点を順に確認する。観点を飛ばさず、仕様適合、危険箇所、原則適用、テスト不足、例外・失敗時、既存設計整合性、セキュリティ・性能の順で見落としを潰す。
 4. 退行、contract 逸脱、責務逸脱、未検証を優先して見る。frontend 差分が含まれるのに `npm --prefix frontend run build` の結果が無い、または失敗している場合は最低でも `medium` として扱い、`score` を `0.75` 以下にする。
 5. `severity` は未解消の最高重大度を返す。`critical` `medium` `low` の 3 段階を使い、好みや任意改善は指摘理由に含めない。
 6. `score` は「欠陥の重さ」を表す離散バンドで返す。判定優先順位は `critical > medium > verification不足 > low件数 > external noise` とし、複数条件がある場合は最も低いバンドを採用する。

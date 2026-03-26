@@ -26,7 +26,7 @@ description: AI Translation Engine 2 専用。実装依頼、UI 反映、fronten
 ## 入口許可リスト
 - ユーザーから直接受けてよいのは実装、UI 反映、frontend / backend task 着手、plan artifact 充足確認だけとする。
 - frontend 影響有無の判定は、`ui.md` の有無だけで決めず `references/quality-checklist.md` の routing matrix を正本として行う。
-- `impl-distill` `impl-workplan` `impl-frontend-work` `impl-backend-work` `impl-review` のような non-direction skill の直指定を受けた場合は、`impl-direction` へ戻す handoff を返す入口として扱う。
+- `impl-distill` `impl-workplan` `impl-frontend-work` `impl-backend-work` `impl-review` `risk-report` のような non-direction skill の直指定を受けた場合は、`impl-direction` へ戻す handoff を返す入口として扱う。
 - 自由文が設計、仕様補完、docs 同期、bugfix、再現、原因調査を要求している場合は、適切な direction skill へ振り分ける conflict 入口として扱う。
 
 ## 許可される振り分け
@@ -40,6 +40,7 @@ description: AI Translation Engine 2 専用。実装依頼、UI 反映、fronten
 - section planning は `workplan_builder` に `impl-workplan` を使わせる
 - section 実装は `implementer` agent に `impl-frontend-work` または `impl-backend-work` を使わせる
 - レビューは `review_cycler` に `impl-review` を使わせる
+- 最終差分のリスク棚卸しは `review_cycler` に `risk-report` を使わせる
 
 ## 手順
 1. 依頼が impl lane に属するかを先に判定する。non-direction skill の直指定や plan / fix lane の要求が含まれるなら conflict として停止する。
@@ -53,7 +54,7 @@ description: AI Translation Engine 2 専用。実装依頼、UI 反映、fronten
 9. `impl-workplan` を起動した後は `changes/<id>/context_board/impl-workplan.packet.json`、`impl-workplan.packet.validation.json`、`changes/<id>/tasks.md` を待つ。返却前に自分で section 分割や worker 割り当てを始めない。
 10. `impl-workplan` の validation artifact が `valid: false`、unresolved section、未固定 contract、owner 未確定が残る場合は **実装を始めず**、不足解消に必要な観点を添えて `impl-workplan` を再実行する。
 11. `impl-workplan` が有効な section plan を返したら、`tasks.md` と progress snapshot を照合して resume reconciliation を行い、`pending` または reroute 指定された section だけを dispatch 候補にする。
-12. dispatch payload は `references/templates.md` の `Section Dispatch` を使い、`title` `goal` `depends_on` `shared_contract` `required_reading` `validation_commands` `acceptance` に加えて `progress_snapshot` と `condensed_brief` を含む full work order schema をそのまま渡す。
+12. dispatch payload は `references/templates.md` の `Section Dispatch` を使い、`title` `goal` `depends_on` `shared_contract` `design_principles` `required_reading` `validation_commands` `acceptance` に加えて `progress_snapshot` と `condensed_brief` を含む full work order schema をそのまま渡す。
    - `owner: frontend` の section は `implementer` agent に `impl-frontend-work` を使わせる。
    - `owner: backend` の section は `implementer` agent に `impl-backend-work` を使わせる。
    - 1 section = 1 owner を守り、1 つの section に frontend と backend の品質ゲートを混在させない。
@@ -63,16 +64,18 @@ description: AI Translation Engine 2 専用。実装依頼、UI 反映、fronten
 16. 全 section の実装完了後、統合差分を対象に `impl-review` を起動する（`review_cycler` agent を使う）。
 17. `impl-review.feedback.json` または `impl-review.feedback.validation.json` が invalid、あるいは `impl-review` が required delta を返すか `score < 0.85` の場合は、`affected_sections` を使って該当 section だけを再 dispatch する。`score` の読み方は `impl-review` 側 rubric を正本とし、`low` のみでも 5 件以上なら loop 継続として扱う。
    - reroute では `impl-workplan` が確定した元の full section 契約を崩さず、`required_delta` に加えて `progress_snapshot` と `carry_over_contracts` を添えた状態要約 packet を渡す。
-18. `score >= 0.85` を満たし、`docs_sync_needed` が true の場合だけ `plan-sync` へ handoff する。
-19. `score >= 0.85` かつ `docs_sync_needed` が false の場合は impl lane 完了として終了し、残留リスクがある場合は `tasks.md` に書き戻して終える。
+18. `score >= 0.85` を満たしたら、`risk-report` を起動して `changes/<id>/context_board/impl-risk-report.md` を生成する。diff 根拠の無い推測は書かせない。
+19. `docs_sync_needed` が true の場合だけ `plan-sync` へ handoff する。
+20. `docs_sync_needed` が false の場合は impl lane 完了として終了し、残留リスクがある場合は `tasks.md` と `impl-risk-report.md` に書き戻して終える。
 
 ## 標準チェーン
-- 正本 chain: `impl-distill -> impl-workplan -> impl-frontend-work / impl-backend-work -> impl-review`
-- 標準: `impl-direction` -> `impl-distill` (ctx_loader) -> `impl-workplan` (workplan_builder) -> `impl-frontend-work` / `impl-backend-work` (`implementer`) -> `impl-review` (review_cycler)
+- 正本 chain: `impl-distill -> impl-workplan -> impl-frontend-work / impl-backend-work -> impl-review -> risk-report`
+- 標準: `impl-direction` -> `impl-distill` (ctx_loader) -> `impl-workplan` (workplan_builder) -> `impl-frontend-work` / `impl-backend-work` (`implementer`) -> `impl-review` (review_cycler) -> `risk-report` (review_cycler)
 - plan へ戻す例外: `impl-direction` -> `plan-distill` -> `plan-direction` -> `plan-*` -> `plan-review` -> `impl-direction`
 
 ## 終了条件
 - review の `score >= 0.85` を満たし、impl lane で必要な修正 loop が完了している
+- `changes/<id>/context_board/impl-risk-report.md` が生成され、diff 根拠付きのリスク項目が記録されている
 - docs 昇格が必要な場合は `plan-sync` handoff を明示して終える
 - docs 昇格が不要な場合は impl 完了として終える
 - conflict の場合は downstream work を始めず、正しい direction skill を明示した handoff を返して終える
@@ -84,7 +87,7 @@ description: AI Translation Engine 2 専用。実装依頼、UI 反映、fronten
 - packet schema と validation artifact の検証は `.codex/skills/scripts/validate-packet-contracts.ps1` を使う。
 
 ## 下流スキル起動時のスキル名明示
-- `impl-distill` `impl-workplan` `impl-review` をサブエージェントとして起動するときは、必ず `references/templates.md` の「下流スキル起動」テンプレートを使い、`invoked_skill` と `invoked_by` を明示すること
+- `impl-distill` `impl-workplan` `impl-review` `risk-report` をサブエージェントとして起動するときは、必ず `references/templates.md` の「下流スキル起動」テンプレートを使い、`invoked_skill` と `invoked_by` を明示すること
 - `impl-frontend-work` / `impl-backend-work` は `implementer` agent 上で動く execution skill だが、skill 名は必ず work order に明示する
 - `invoked_skill` には起動する下流スキル名（例: `impl-workplan`）、`invoked_by` には `impl-direction` を設定する
 - サブエージェントは起動時にこの情報で「自分がどのスキルとして起動されたか」を確認できる
@@ -101,6 +104,7 @@ description: AI Translation Engine 2 専用。実装依頼、UI 反映、fronten
 - worker dispatch は `impl-workplan` を経た flow とし、`tasks.md` は progress の正本として扱う
 - section 契約の変更は `impl-workplan` を通して行う
 - `Workplan Summary` `Section Dispatch` `Review Reroute` の section schema では `shared_contract` `required_reading` `validation_commands` `acceptance` `condensed_brief` を常に含める
+- `design_principles`（最低 1 件、SRP 推奨）を `Workplan Summary` `Section Dispatch` `Review Reroute` で常に引き継ぎ、オーケストレーターのログだけで責務分離の意図を追える状態を維持する
 - review feedback は要約せず、必要な affected section へそのまま返す
 - 次工程へ進める review は `score >= 0.85` を満たすものとし、採点根拠は `impl-review` の rubric を正本として読む
 - distill / workplan 起動後の次動作は packet 待ちとし、その返却を起点に section 分割と dispatch を判断する

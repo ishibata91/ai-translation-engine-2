@@ -8,6 +8,7 @@
 - `impl-workplan` validation: `changes/<id>/context_board/impl-workplan.packet.validation.json`
 - `impl-review` 正本: `changes/<id>/context_board/impl-review.feedback.json`
 - `impl-review` validation: `changes/<id>/context_board/impl-review.feedback.validation.json`
+- `risk-report` 正本: `changes/<id>/context_board/impl-risk-report.md`
 
 > downstream packet の正本は会話本文ではなく JSON artifact とし、validation artifact が `valid: true` でない packet は不採用にする。
 
@@ -71,6 +72,11 @@ Inputs:
     goal:
     depends_on:
     shared_contract:
+    design_principles:
+      - principle: SRP | SoC | DIP | OCP
+        decision:
+        scope:
+        verification_note:
     condensed_brief:
       why_now:
       fixed_contracts:
@@ -114,6 +120,11 @@ Inputs:
 - invoked_skill:
 - agent: implementer
 - shared_contract:
+- design_principles:
+  - principle: SRP | SoC | DIP | OCP
+    decision:
+    scope:
+    verification_note:
 - condensed_brief:
   why_now:
   fixed_contracts:
@@ -130,7 +141,7 @@ Inputs:
 
 > `Section Dispatch` は `impl-workplan` の `Work Order` schema を包む dispatch envelope。
 > `title` `goal` `depends_on` `shared_contract` `condensed_brief` `owned_paths` `forbidden_paths` `required_reading`
-> `validation_commands` `acceptance` `progress_snapshot` を workplan 返却から書き換えずに引き継ぐこと。
+> `validation_commands` `acceptance` `progress_snapshot` `design_principles` を workplan 返却から書き換えずに引き継ぐこと。
 
 ## section 結果
 ```md
@@ -145,10 +156,11 @@ Inputs:
 - noise_classification: none | scope_failure | external_validation_noise | known_pre_existing_issue
 - reroute_hint:
 - unverified:
+- principle_adherence:
 ```
 
 > `Section Result` は worker が 1 section 完了または blocked で停止した時点の返却正本。
-> `completed_scope` と `noise_classification` を省略しないこと。
+> `completed_scope` `noise_classification` `principle_adherence` を省略しないこと。
 
 ## review 差し戻し
 ```md
@@ -164,6 +176,7 @@ Inputs:
     goal:
     depends_on:
     shared_contract:
+    design_principles:
     condensed_brief:
     required_reading:
     owned_paths:
@@ -176,7 +189,7 @@ Inputs:
 ```
 
 > `affected_sections` に含まれる section だけを再 dispatch し、元の full work order を崩さない。
-> `carry_over_contracts` には `title` `goal` `depends_on` `shared_contract` `required_reading` `owned_paths` `forbidden_paths` `validation_commands` `acceptance` `condensed_brief` の再利用方針を書く。
+> `carry_over_contracts` には `title` `goal` `depends_on` `shared_contract` `design_principles` `required_reading` `owned_paths` `forbidden_paths` `validation_commands` `acceptance` `condensed_brief` の再利用方針を書く。
 
 ## plan へ差し戻し
 ```md
@@ -185,6 +198,19 @@ Inputs:
 - missing_or_stale_artifacts:
 - required_plan_skill:
 - must_read:
+```
+
+## risk-report 起動
+```md
+Use $risk-report at skills/risk-report with `review_cycler`.
+
+Inputs:
+- invoked_skill: risk-report
+- invoked_by: impl-direction
+- change_id:
+- lane: impl
+- diff_range:
+- focus:
 ```
 
 ## plan-sync handoff

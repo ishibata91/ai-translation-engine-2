@@ -18,6 +18,7 @@
 - lint:backend:
 - validation_result:
 - noise_classification:
+- principle_adherence:
 - 未検証:
 - 未完了:
 ```
@@ -34,6 +35,7 @@
 - noise_classification: none | scope_failure | external_validation_noise | known_pre_existing_issue
 - reroute_hint:
 - unverified:
+- principle_adherence:
 ```
 
 ## Blocked 返却メモ

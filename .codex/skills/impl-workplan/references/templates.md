@@ -12,6 +12,11 @@
 - goal:
 - depends_on:
 - shared_contract:
+- design_principles:
+  - principle: SRP | SoC | DIP | OCP
+    decision:
+    scope:
+    verification_note:
 - condensed_brief:
   why_now:
   fixed_contracts:
@@ -38,6 +43,11 @@
 - depends_on:
 - progress_snapshot:
 - shared_contract:
+- design_principles:
+  - principle: SRP | SoC | DIP | OCP
+    decision:
+    scope:
+    verification_note:
 - condensed_brief:
   why_now:
   fixed_contracts:
@@ -62,6 +72,11 @@
 - goal:
 - depends_on:
 - shared_contract:
+- design_principles:
+  - principle: SRP | SoC | DIP | OCP
+    decision:
+    scope:
+    verification_note:
 - condensed_brief:
   - why_now:
   - fixed_contracts:
@@ -83,6 +98,7 @@
 - `Section Plan` `Work Order` `tasks.md format` は `validation_commands` を唯一の validation field として共有する。
 - `owner` は `frontend | backend` のどちらかで確定済みの値だけを書く。
 - `shared_contract` は worker 起動前に固定済みであり、かつ worker が `owned_paths` 内だけで section を完了するために必要十分な契約だけを書く。
+- `design_principles` は人間レビューで section の意図を追えるように、最低 1 件以上の原則（SRP 推奨）と具体的な decision を必ず書く。
 - `condensed_brief` は worker が履歴全文を再読せずに着手するための圧縮本文であり、`why_now` `fixed_contracts` `non_goals` `known_blockers` `validation_baseline` `carry_over_notes` を欠かさない。
 - owner 未確定、shared contract 未固定、required field 欠落の項目は section にせず `unresolved` 側で止める。
 - `tasks.md` の section 契約と初期 status は `impl-workplan` が定義し、実装中の status / 実装 / 検証注記だけを `impl-direction` が更新する。
