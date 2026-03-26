@@ -8,6 +8,7 @@
 - `fix-trace` validation: `changes/<id>/context_board/fix-trace.packet.validation.json`
 - `fix-review` 正本: `changes/<id>/context_board/fix-review.feedback.json`
 - `fix-review` validation: `changes/<id>/context_board/fix-review.feedback.validation.json`
+- `risk-report` 正本: `changes/<id>/context_board/fix-risk-report.md`
 
 > downstream packet の正本は会話本文ではなく JSON artifact とし、validation artifact が `valid: true` でない packet は不採用にする。
 
@@ -90,6 +91,19 @@
 
 > `State Summary` は full history の代替として `fix-direction` が持つ正本。
 > 再現待ち、review loop、cleanup 状態をこの形式で引き継ぐ。
+
+
+## risk-report 起動
+```md
+### Skill Invocation
+- invoked_skill: risk-report
+- invoked_by: fix-direction
+- agent: review_cycler
+- 対象 change:
+- lane: fix
+- diff_range:
+- focus:
+```
 
 ## 回帰確認
 ```md

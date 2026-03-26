@@ -12,7 +12,7 @@ description: AI Translation Engine 2 専用。`impl-distill` の implementation 
 基本的にMCP経由で走査すること｡
 
 `Section Plan` `Work Order` `tasks.md format` の schema 正本は `references/templates.md` のみとし、
-worker に渡す前に `owner / depends_on / shared_contract / condensed_brief / owned_paths / forbidden_paths / required_reading / validation_commands / acceptance`
+worker に渡す前に `owner / depends_on / shared_contract / design_principles / condensed_brief / owned_paths / forbidden_paths / required_reading / validation_commands / acceptance`
 を必ず固定する。
 ここで固定する `shared_contract` は、worker が `owned_paths` の中だけで section を完了するために必要十分な契約でなければならない。
 
@@ -54,7 +54,9 @@ worker に渡す前に `owner / depends_on / shared_contract / condensed_brief /
 1. 対象 change と implementation packet を確認する。
 2. `ui.md` `scenarios.md` `logic.md` と関連コードを必要最小限だけ読む。
 3. モジュール/契約単位で section 候補を洗い出す。
-4. 各 section について `section_id / title / owner / status / goal / depends_on / shared_contract / condensed_brief / owned_paths / forbidden_paths / required_reading / validation_commands / acceptance` を確定する。
+4. 各 section について `section_id / title / owner / status / goal / depends_on / shared_contract / design_principles / condensed_brief / owned_paths / forbidden_paths / required_reading / validation_commands / acceptance` を確定する。
+   - `design_principles` は人間レビューで読み取れる形で最低 1 件以上入れる。`SRP` を必須候補とし、必要に応じて `SoC` `DIP` `OCP` を追加する。
+   - 各 principle に対して `decision`（何を分離/固定するか）と `scope`（どの path / module に効くか）を明記する。
 5. 各 section ごとに、worker が `owned_paths` だけで compile / test / wiring を完了できるかを確認する。別 path の constructor / DI / test stub / store contract 追従が必要なら section を再分割する。
 6. dispatch 順、shared contract 一覧、progress snapshot を整理する。
 7. `references/templates.md` の `tasks.md format` に従い、`impl-workplan` 自身が `changes/<id>/tasks.md` を生成または更新する。
@@ -82,6 +84,7 @@ worker に渡す前に `owner / depends_on / shared_contract / condensed_brief /
 - section はファイル単位ではなくモジュール/契約単位で切る
 - worker へ渡すのは owner と shared contract が確定した section に限る
 - shared contract は workplan 側で固定して worker へ渡す
+- design_principles は「なぜこの section 分割・責務分離にしたか」を示す人間向け要約として固定し、dispatch 時に欠落させない
 - condensed brief は `required_reading` の代替ではなく、worker が履歴全文を再読せず着手するための圧縮本文として固定する
 - shared contract は API 名の列挙ではなく、worker が `owned_paths` 内だけで section を完了するための実装前提として固定する
 - `depends_on` は参照順と compile 順が整合する形で定義する

@@ -23,6 +23,7 @@ plan 側で確定済みの artifact を読み、実装開始に必要な packet 
 1. 対象 change と task を確認する。
 2. `ui.md` `scenarios.md` `logic.md` と関連 docs / コードを必要最小限だけ読む。
 3. 実装に必要な interface、entry point、module 候補、edit boundary、validation_commands を抽出する。
+   - 各 module 候補で責務分離の観点（SRP/SoC/DIP/OCP）を 1 行ずつメモし、workplan が人間向け説明に転記できる状態にする。
 4. shared contract 候補と implementation を止める unknowns を分けて整理する。
 5. `impl-direction` が次判断できる implementation packet を返す。
 
@@ -36,6 +37,7 @@ plan 側で確定済みの artifact を読み、実装開始に必要な packet 
 - `interfaces`: 実装で守るべき contract
 - `entry_points`: 着手点となる path / symbol
 - `module_candidates`: モジュール/契約単位の section 候補
+- `design_principle_hints`: module 候補ごとの SRP/SoC/DIP/OCP 観点メモ
 - `shared_contract_candidates`: 先に固定すべき shared contract 候補
 - `edit_boundary`: 変更してよい境界
 - `validation_commands`: worker が実行すべき検証コマンド。validation field はこれだけを使う
